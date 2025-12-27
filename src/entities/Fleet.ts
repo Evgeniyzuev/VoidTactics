@@ -14,6 +14,8 @@ export class Fleet extends Entity {
     private rotation: number = 0;
     public color: string;
     public isPlayer: boolean = false;
+    public strength: number = 10;
+    public sizeMultiplier: number = 1.0;
 
     constructor(x: number, y: number, color: string = '#55CCFF', isPlayer: boolean = false) {
         super(x, y);
@@ -161,11 +163,12 @@ export class Fleet extends Entity {
 
         // Draw Ship (Perfect Warp Bubble)
         ctx.beginPath();
-        const shipRadius = 8;
+        const baseRadius = 8;
+        const shipRadius = baseRadius * this.sizeMultiplier;
         ctx.arc(0, 0, shipRadius, 0, Math.PI * 2);
 
         // Fill with Gradient for "Bubble" effect
-        const grad = ctx.createRadialGradient(-2, -2, 1, 0, 0, shipRadius);
+        const grad = ctx.createRadialGradient(-baseRadius * 0.25 * this.sizeMultiplier, -baseRadius * 0.25 * this.sizeMultiplier, baseRadius * 0.12 * this.sizeMultiplier, 0, 0, shipRadius);
         grad.addColorStop(0, '#FFFFFF'); // Highlight
         grad.addColorStop(0.5, this.color);
         grad.addColorStop(1, '#000033'); // Darker edge
@@ -174,17 +177,18 @@ export class Fleet extends Entity {
 
         // High contrast stroke with glow
         ctx.strokeStyle = '#FFFFFF';
-        ctx.lineWidth = 1.5;
-        ctx.shadowBlur = 8;
+        ctx.lineWidth = 1.5 * this.sizeMultiplier;
+        ctx.shadowBlur = 8 * this.sizeMultiplier;
         ctx.shadowColor = this.color;
         ctx.stroke();
         ctx.shadowBlur = 0; // Reset after stroke
 
         // Directional Indicator (Centered Arrow)
         ctx.beginPath();
-        ctx.moveTo(0, -5); // Front
-        ctx.lineTo(3, 3);
-        ctx.lineTo(-3, 3);
+        const arrowSize = 4 * this.sizeMultiplier;
+        ctx.moveTo(0, -arrowSize * 1.25); // Front
+        ctx.lineTo(arrowSize * 0.75, arrowSize * 0.75);
+        ctx.lineTo(-arrowSize * 0.75, arrowSize * 0.75);
         ctx.closePath();
         ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
         ctx.fill();
@@ -192,10 +196,10 @@ export class Fleet extends Entity {
         // Engine Glow/Trail (Behind)
         if (this.velocity.mag() > 10) {
             ctx.beginPath();
-            ctx.moveTo(-4, 7);
-            ctx.quadraticCurveTo(0, 12, 4, 7);
+            ctx.moveTo(-arrowSize, arrowSize * 1.75);
+            ctx.quadraticCurveTo(0, arrowSize * 3, arrowSize, arrowSize * 1.75);
             ctx.strokeStyle = this.color;
-            ctx.lineWidth = 1.5;
+            ctx.lineWidth = 1.5 * this.sizeMultiplier;
             ctx.stroke();
         }
 

@@ -167,12 +167,14 @@ export class Game {
             const pData = saveData.player;
             this.playerFleet = new Fleet(pData.x, pData.y, pData.color, true);
             this.playerFleet.velocity = new Vector2(pData.vx, pData.vy);
+            this.playerFleet.strength = pData.strength || 10;
             this.entities.push(this.playerFleet);
 
             if (saveData.npcs && saveData.npcs.length > 0) {
                 for (const nData of saveData.npcs) {
                     const npc = new Fleet(nData.x, nData.y, nData.color, false);
                     npc.velocity = new Vector2(nData.vx, nData.vy);
+                    npc.strength = nData.strength || 10;
                     this.entities.push(npc);
                     this.npcFleets.push(npc);
                 }
@@ -182,6 +184,7 @@ export class Game {
         } else {
             console.log('Starting New Game...');
             this.playerFleet = new Fleet(500, 500, '#00AAFF', true);
+            this.playerFleet.strength = 10;
             this.entities.push(this.playerFleet);
             this.spawnNPCs();
         }
@@ -189,13 +192,38 @@ export class Game {
 
     private spawnNPCs() {
         const npcColors = ['#FFA500', '#32CD32', '#9370DB', '#FF69B4', '#FFFF00'];
-        for (let i = 0; i < 20; i++) {
-            const angle = (i / 20) * Math.PI * 2;
-            const distance = 800 + Math.random() * 700;
+        const playerCount = 20;
+
+        for (let i = 0; i < playerCount; i++) {
+            const angle = (i / playerCount) * Math.PI * 2;
+            const distance = 800 + Math.random() * 1500;
             const startX = 500 + Math.cos(angle) * distance;
             const startY = 500 + Math.sin(angle) * distance;
             const color = npcColors[i % npcColors.length];
             const npc = new Fleet(startX, startY, color, false);
+
+            // Strength Distribution Logic
+            const playerStrength = this.playerFleet.strength;
+            let baseStrength = playerStrength;
+
+            const category = Math.floor(Math.random() * 3); // 0: same, 1: stronger, 2: weaker
+
+            if (category === 1) {
+                // Stronger: 1/2 chance for 2x, 1/4 for 4x, 1/8 for 8x...
+                let n = 1;
+                while (Math.random() < 0.5 && n < 10) n++;
+                baseStrength = playerStrength * Math.pow(2, n);
+            } else if (category === 2) {
+                // Weaker: 1/2 chance for /2, 1/4 for /4...
+                let n = 1;
+                while (Math.random() < 0.5 && n < 10) n++;
+                baseStrength = playerStrength / Math.pow(2, n);
+            }
+
+            // Apply +-30% variance
+            const variance = 0.7 + Math.random() * 0.6;
+            npc.strength = Math.max(1, Math.round(baseStrength * variance));
+
             this.entities.push(npc);
             this.npcFleets.push(npc);
         }
@@ -255,7 +283,21 @@ export class Game {
     }
 
     private update(dt: number) {
+        if (this.isPaused) return;
+
         dt = dt * this.timeScale;
+
+        // Update Fleet Scaling based on Player Strength
+        const playerStrength = this.playerFleet.strength;
+        for (const entity of this.entities) {
+            if (entity instanceof Fleet) {
+                // Formula: 1 + log2(TotalStrength / PlayerStrength) * 0.2
+                const ratio = entity.strength / playerStrength;
+                entity.sizeMultiplier = 1 + Math.log2(ratio) * 0.2;
+            }
+        }
+
+        for (const e of this.entities) e.update(dt);
 
         const celestialBodies = this.entities.filter(e => e instanceof CelestialBody) as CelestialBody[];
         for (const npc of this.npcFleets) {
@@ -379,6 +421,7 @@ export class Game {
             const fleet = entity as Fleet;
             const isPlayer = fleet === this.playerFleet;
             info = `<strong>${isPlayer ? 'Player Fleet' : 'NPC Fleet'}</strong><br/>`;
+            info += `Сила: ${fleet.strength}<br/>`;
             info += `Speed: ${fleet.velocity.mag().toFixed(1)}<br/>`;
             info += `Pos: (${fleet.position.x.toFixed(0)}, ${fleet.position.y.toFixed(0)})`;
 
