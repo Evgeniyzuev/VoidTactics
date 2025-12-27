@@ -15,8 +15,9 @@ export class Game {
     // Entities
     private entities: Entity[] = [];
     private playerFleet!: Fleet;
+    private npcFleets: Fleet[] = [];
 
-    private backgroundImage: HTMLImageElement;
+    private backgroundCanvas: HTMLCanvasElement;
 
     constructor(canvas: HTMLCanvasElement) {
         this.renderer = new Renderer(canvas);
@@ -25,19 +26,63 @@ export class Game {
         const { width, height } = this.renderer.getDimensions();
         this.camera = new Camera(width, height);
 
-        this.backgroundImage = new Image();
-        this.backgroundImage.src = '/space1.jpg';
+        this.backgroundCanvas = document.createElement('canvas');
+        this.generateBackground(width, height);
 
         this.initWorld();
 
         // Start loop
         requestAnimationFrame((t) => this.loop(t));
 
-        // Resize Listener for Camera
+        // Resize Listener for Camera & Background
         window.addEventListener('resize', () => {
             const { width, height } = this.renderer.getDimensions();
             this.camera.resize(width, height);
+            this.generateBackground(width, height);
         });
+    }
+
+    private generateBackground(width: number, height: number) {
+        this.backgroundCanvas.width = width;
+        this.backgroundCanvas.height = height;
+        const ctx = this.backgroundCanvas.getContext('2d');
+        if (!ctx) return;
+
+        // 1. Deep Space Base
+        const gradient = ctx.createLinearGradient(0, 0, 0, height);
+        gradient.addColorStop(0, '#020205'); // Deepest black-blue
+        gradient.addColorStop(1, '#050510'); // Slightly lighter
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, width, height);
+
+        // 2. Stars
+        const starCount = Math.floor((width * height) / 2000);
+        for (let i = 0; i < starCount; i++) {
+            const x = Math.random() * width;
+            const y = Math.random() * height;
+            const size = Math.random() * 1.5;
+            const alpha = Math.random();
+            ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+            ctx.fillRect(x, y, size, size);
+        }
+
+        // 3. Subtle Nebula / Dust (Noise-like clouds)
+        const cloudCount = 5;
+        for (let i = 0; i < cloudCount; i++) {
+            const x = Math.random() * width;
+            const y = Math.random() * height;
+            const radius = 200 + Math.random() * 400;
+
+            const cloudGrad = ctx.createRadialGradient(x, y, 0, x, y, radius);
+            const r = Math.floor(Math.random() * 50);
+            const g = Math.floor(Math.random() * 20);
+            const b = Math.floor(50 + Math.random() * 100); // Blue-ish
+            cloudGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.04)`);
+            cloudGrad.addColorStop(1, 'transparent');
+
+            ctx.fillStyle = cloudGrad;
+            ctx.fillRect(0, 0, width, height); // Fill whole rect to ensure overlap works? actually arc is better but rect is fine for gradient
+        }
     }
 
     private initWorld() {
@@ -73,8 +118,19 @@ export class Game {
         this.entities.push(new CelestialBody(-600, -600, 20, '#FF00FF', 'Outpost Alpha'));
 
         // Player
-        this.playerFleet = new Fleet(500, 500);
+        this.playerFleet = new Fleet(500, 500, '#00AAFF'); // Player Blue
         this.entities.push(this.playerFleet);
+
+        // NPC Fleets (Civilian Traffic)
+        const npcColors = ['#FFA500', '#32CD32', '#9370DB', '#FF69B4', '#FFFF00'];
+        for (let i = 0; i < 5; i++) {
+            const startX = (Math.random() - 0.5) * 3000;
+            const startY = (Math.random() - 0.5) * 3000;
+            const color = npcColors[i % npcColors.length];
+            const npc = new Fleet(startX, startY, color);
+            this.entities.push(npc);
+            this.npcFleets.push(npc);
+        }
     }
 
     private loop(timestamp: number) {
@@ -96,7 +152,24 @@ export class Game {
             this.playerFleet.setTarget(worldTarget);
         }
 
-        // 2. Update Entities
+        // 2. AI Logic (Simple Patrol)
+        const celestialBodies = this.entities.filter(e => e instanceof CelestialBody) as CelestialBody[];
+        for (const npc of this.npcFleets) {
+            // If idle (no target and stopped)
+            if (!npc.target && npc.velocity.mag() < 5) {
+                // Pick random destination
+                // 1% chance per frame to start moving if idle, so they don't all move instantly
+                if (Math.random() < 0.01 && celestialBodies.length > 0) {
+                    const destBody = celestialBodies[Math.floor(Math.random() * celestialBodies.length)];
+                    // Fly to near the body, not inside it
+                    const offset = new Vector2((Math.random() - 0.5) * 300, (Math.random() - 0.5) * 300);
+                    const dest = destBody.position.add(offset);
+                    npc.setTarget(dest);
+                }
+            }
+        }
+
+        // 3. Update Entities
         for (const e of this.entities) {
             e.update(dt);
         }
@@ -133,32 +206,12 @@ export class Game {
         const ctx = this.renderer.getContext();
         const { width, height } = this.renderer.getDimensions();
 
-        if (this.backgroundImage.complete) {
-            // Parallax or Fixed?
-            // Let's do a simple fixed background but slightly moving with camera (Parallax factor 0.1)
-            const parallax = 0.1;
-            // The background image is likely repeating or large.
-            // For simplicity, let's draw it covering the screen, but offset by camera
-
-            // Calculate offset
-            // We want the image to wrap or be huge.
-            // Assuming the image is tileable or just large "space".
-
-            // Just draw it fullscreen static for "Deep Space" feel relative to screen
-            // ctx.drawImage(this.backgroundImage, 0, 0, width, height);
-
-            // Better: Parallax
-            // const offsetX = (this.camera.position.x * parallax) % this.backgroundImage.width;
-            // const offsetY = (this.camera.position.y * parallax) % this.backgroundImage.height;
-
-            ctx.save();
-            ctx.globalAlpha = 0.4; // Darken background
-            ctx.drawImage(this.backgroundImage, 0, 0, width, height);
-            ctx.restore();
-        }
+        // Draw the generated offscreen canvas
+        // We can implement simple parallax if we generate it slightly larger, but for now fixed
+        ctx.drawImage(this.backgroundCanvas, 0, 0, width, height);
 
         // Overlay Grid (fainter)
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
         ctx.lineWidth = 1;
 
         // Grid Spacing

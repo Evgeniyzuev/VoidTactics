@@ -11,8 +11,12 @@ export class Fleet extends Entity {
     private deceleration: number = 150;
     private stopThreshold: number = 5;
 
-    constructor(x: number, y: number) {
+    private rotation: number = 0;
+    public color: string;
+
+    constructor(x: number, y: number, color: string = '#55CCFF') {
         super(x, y);
+        this.color = color;
     }
 
     setTarget(pos: Vector2) {
@@ -85,6 +89,14 @@ export class Fleet extends Entity {
 
         // Apply Velocity
         this.position = this.position.add(this.velocity.scale(dt));
+
+        // Update Rotation (Smooth turn towards velocity)
+        if (this.velocity.mag() > 1) {
+            const desiredAngle = Math.atan2(this.velocity.y, this.velocity.x);
+            // Simple approach: Set rotation directly for now. 
+            // Better: Lerp rotation. But instant is fine for this style.
+            this.rotation = desiredAngle;
+        }
     }
 
     draw(ctx: CanvasRenderingContext2D, camera: Camera) {
@@ -93,28 +105,17 @@ export class Fleet extends Entity {
         ctx.save();
         ctx.translate(screenPos.x, screenPos.y);
 
-        // Rotate based on velocity or target 
-        let angle = 0;
-        if (this.velocity.mag() > 10) {
-            angle = Math.atan2(this.velocity.y, this.velocity.x);
-        } else if (this.target) {
-            const toTarget = this.target.sub(this.position);
-            angle = Math.atan2(toTarget.y, toTarget.x);
-        }
-        ctx.rotate(angle + Math.PI / 2); // +90deg because drawing points up
+        ctx.rotate(this.rotation + Math.PI / 2); // +90deg because drawing points up
 
-        // Draw Ship (Rounded Pod / Warp Bubble style)
+        // Draw Ship (Perfect Warp Bubble)
         ctx.beginPath();
-        // Main Body (Rounder)
-        ctx.moveTo(0, -15);
-        ctx.quadraticCurveTo(12, 0, 0, 15);
-        ctx.quadraticCurveTo(-12, 0, 0, -15);
-        ctx.closePath();
+        ctx.arc(0, 0, 15, 0, Math.PI * 2);
 
         // Fill with Gradient for "Bubble" effect
-        const grad = ctx.createRadialGradient(0, 0, 2, 0, 0, 15);
-        grad.addColorStop(0, '#55CCFF');
-        grad.addColorStop(1, '#0055AA');
+        const grad = ctx.createRadialGradient(-5, -5, 2, 0, 0, 15);
+        grad.addColorStop(0, '#FFFFFF'); // Highlight
+        grad.addColorStop(0.5, this.color);
+        grad.addColorStop(1, '#000033'); // Darker edge
         ctx.fillStyle = grad;
         ctx.fill();
 
@@ -123,13 +124,24 @@ export class Fleet extends Entity {
         ctx.lineWidth = 2;
         ctx.stroke();
 
-        // Engine Glow/Trail
+        // Directional Indicator (Small arrow or engine inside bubble)
         ctx.beginPath();
-        ctx.moveTo(-5, 12);
-        ctx.quadraticCurveTo(0, 20, 5, 12);
-        ctx.strokeStyle = '#00FFFF';
-        ctx.lineWidth = 2;
-        ctx.stroke();
+        ctx.moveTo(0, -12); // Front
+        ctx.lineTo(4, -4);
+        ctx.lineTo(-4, -4);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.fill();
+
+        // Engine Glow/Trail (Behind)
+        if (this.velocity.mag() > 10) {
+            ctx.beginPath();
+            ctx.moveTo(-6, 14);
+            ctx.quadraticCurveTo(0, 22, 6, 14);
+            ctx.strokeStyle = this.color;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
 
         ctx.restore();
 
