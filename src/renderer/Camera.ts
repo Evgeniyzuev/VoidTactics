@@ -6,6 +6,8 @@ export class Camera {
 
     private width: number;
     private height: number;
+    private minZoom: number = 0.3;
+    private maxZoom: number = 3.0;
 
     constructor(width: number, height: number) {
         this.width = width;
@@ -15,6 +17,16 @@ export class Camera {
     public resize(width: number, height: number) {
         this.width = width;
         this.height = height;
+    }
+
+    public adjustZoom(delta: number) {
+        this.zoom += delta * 0.1;
+        this.zoom = Math.max(this.minZoom, Math.min(this.maxZoom, this.zoom));
+    }
+
+    public pan(deltaX: number, deltaY: number) {
+        this.position.x += deltaX / this.zoom;
+        this.position.y += deltaY / this.zoom;
     }
 
     public worldToScreen(worldPos: Vector2): Vector2 {

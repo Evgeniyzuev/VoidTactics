@@ -26,6 +26,11 @@ export class Game {
     private isPaused: boolean = false;
     private timeScale: number = 1;
     private wasMovingLastFrame: boolean = false;
+    private moveMode: boolean = true; // Movement mode vs Inspect mode
+    private infoTooltip: HTMLDivElement | null = null;
+    private cameraFollow: boolean = true;
+    private isDragging: boolean = false;
+    private lastMousePos: Vector2 = new Vector2(0, 0);
 
     constructor(canvas: HTMLCanvasElement) {
         this.renderer = new Renderer(canvas);
@@ -42,7 +47,9 @@ export class Game {
         // Setup UI
         this.ui = new UIManager('ui-layer', {
             onPlayPause: () => this.togglePause(),
-            onSpeedChange: (speed) => this.setTimeScale(speed)
+            onSpeedChange: (speed) => this.setTimeScale(speed),
+            onMoveModeToggle: (enabled) => this.setMoveMode(enabled),
+            onCameraToggle: (follow) => this.setCameraFollow(follow)
         });
 
         // Start loop
@@ -63,6 +70,18 @@ export class Game {
 
     private setTimeScale(scale: number) {
         this.timeScale = scale;
+    }
+
+    private setMoveMode(enabled: boolean) {
+        this.moveMode = enabled;
+        if (this.infoTooltip) {
+            this.infoTooltip.remove();
+            this.infoTooltip = null;
+        }
+    }
+
+    private setCameraFollow(follow: boolean) {
+        this.cameraFollow = follow;
     }
 
     private generateBackground(width: number, height: number) {
@@ -186,6 +205,51 @@ export class Game {
         const dt = (timestamp - this.lastTime) / 1000;
         this.lastTime = timestamp;
 
+        // Handle Zoom (Wheel or Pinch)
+        const wheelDelta = this.input.getWheelDelta();
+        const pinchDelta = this.input.getPinchDelta();
+        if (wheelDelta !== 0) {
+            this.camera.adjustZoom(wheelDelta);
+        }
+        if (pinchDelta !== 0) {
+            this.camera.adjustZoom(pinchDelta);
+        }
+
+        // Handle Input (Always, even when paused)
+        if (this.input.isMouseDown) {
+            const clickPos = new Vector2(this.input.mousePos.x, this.input.mousePos.y);
+
+            if (!this.cameraFollow && !this.isDragging) {
+                // Start dragging for camera pan
+                this.isDragging = true;
+                this.lastMousePos = clickPos;
+            } else if (this.isDragging) {
+                // Continue dragging
+                const delta = clickPos.sub(this.lastMousePos);
+                this.camera.pan(-delta.x, -delta.y);
+                this.lastMousePos = clickPos;
+            } else {
+                // Normal click interactions
+                const worldTarget = this.camera.screenToWorld(clickPos);
+
+                if (this.moveMode) {
+                    // Movement Mode: Issue move command
+                    this.playerFleet.setTarget(worldTarget);
+
+                    // Resume if paused
+                    if (this.isPaused) {
+                        this.togglePause();
+                    }
+                } else {
+                    // Inspect Mode: Find clicked object and show info
+                    this.inspectObject(worldTarget);
+                }
+            }
+        } else {
+            // Mouse released
+            this.isDragging = false;
+        }
+
         if (!this.isPaused) {
             this.update(dt);
         }
@@ -198,20 +262,7 @@ export class Game {
         // Apply time scale
         dt = dt * this.timeScale;
 
-        // 1. Handle Input
-        if (this.input.isMouseDown) {
-            // Convert screen click to world coordinates
-            const clickPos = new Vector2(this.input.mousePos.x, this.input.mousePos.y);
-            const worldTarget = this.camera.screenToWorld(clickPos);
-            this.playerFleet.setTarget(worldTarget);
-
-            // Resume if paused
-            if (this.isPaused) {
-                this.togglePause();
-            }
-        }
-
-        // 2. AI Logic (Simple Patrol)
+        // 1. AI Logic (Simple Patrol)
         const celestialBodies = this.entities.filter(e => e instanceof CelestialBody) as CelestialBody[];
         for (const npc of this.npcFleets) {
             // If idle (no target and stopped)
@@ -234,12 +285,14 @@ export class Game {
         }
 
         // 4. Update Camera to follow player
-        // Smooth follow
-        const camTarget = this.playerFleet.position;
-        // Simple lerp: cam = cam + (target - cam) * speed * dt
-        const lerpSpeed = 5.0;
-        const diff = camTarget.sub(this.camera.position);
-        this.camera.position = this.camera.position.add(diff.scale(lerpSpeed * dt));
+        if (this.cameraFollow) {
+            // Smooth follow
+            const camTarget = this.playerFleet.position;
+            // Simple lerp: cam = cam + (target - cam) * speed * dt
+            const lerpSpeed = 5.0;
+            const diff = camTarget.sub(this.camera.position);
+            this.camera.position = this.camera.position.add(diff.scale(lerpSpeed * dt));
+        }
 
         // 5. Auto-pause when player fleet stops
         const isMoving = this.playerFleet.velocity.mag() > 1;
@@ -250,6 +303,87 @@ export class Game {
             }
         }
         this.wasMovingLastFrame = isMoving;
+    }
+
+    private inspectObject(worldPos: Vector2) {
+        // Find entity near clicked position
+        let closestEntity: Entity | null = null;
+        let minDist = 100; // Click threshold in world units
+
+        for (const e of this.entities) {
+            const dist = Vector2.distance(e.position, worldPos);
+            if (dist < minDist) {
+                if (e instanceof CelestialBody) {
+                    // Check if click is within radius
+                    if (dist <= (e as CelestialBody).radius) {
+                        closestEntity = e;
+                        minDist = dist;
+                    }
+                } else if (e instanceof Fleet) {
+                    if (dist <= 20) { // Fleet selection radius
+                        closestEntity = e;
+                        minDist = dist;
+                    }
+                }
+            }
+        }
+
+        if (closestEntity) {
+            this.showTooltip(closestEntity, worldPos);
+        } else {
+            // Clear tooltip if clicking empty space
+            if (this.infoTooltip) {
+                this.infoTooltip.remove();
+                this.infoTooltip = null;
+            }
+        }
+    }
+
+    private showTooltip(entity: Entity, worldPos: Vector2) {
+        // Remove old tooltip
+        if (this.infoTooltip) {
+            this.infoTooltip.remove();
+        }
+
+        // Create tooltip
+        this.infoTooltip = document.createElement('div');
+        this.infoTooltip.style.position = 'absolute';
+        this.infoTooltip.style.background = 'rgba(0, 0, 0, 0.8)';
+        this.infoTooltip.style.color = 'white';
+        this.infoTooltip.style.padding = '10px 15px';
+        this.infoTooltip.style.borderRadius = '8px';
+        this.infoTooltip.style.border = '1px solid rgba(255, 255, 255, 0.2)';
+        this.infoTooltip.style.pointerEvents = 'none';
+        this.infoTooltip.style.fontSize = '14px';
+        this.infoTooltip.style.fontFamily = 'monospace';
+        this.infoTooltip.style.zIndex = '1000';
+
+        // Get screen position
+        const screenPos = this.camera.worldToScreen(entity.position);
+        this.infoTooltip.style.left = (screenPos.x + 20) + 'px';
+        this.infoTooltip.style.top = (screenPos.y - 30) + 'px';
+
+        // Fill content
+        let content = '';
+        if (entity instanceof CelestialBody) {
+            const body = entity as CelestialBody;
+            content = `<strong>${body.name}</strong><br/>`;
+            content += body.isStar ? '⭐ Star<br/>' : '🌍 Planet<br/>';
+            content += `Radius: ${body.radius.toFixed(0)}`;
+        } else if (entity instanceof Fleet) {
+            const fleet = entity as Fleet;
+            const isPlayer = fleet === this.playerFleet;
+            content = `<strong>${isPlayer ? 'Player Fleet' : 'NPC Fleet'}</strong><br/>`;
+            content += `Speed: ${fleet.velocity.mag().toFixed(1)}<br/>`;
+            content += `Pos: (${fleet.position.x.toFixed(0)}, ${fleet.position.y.toFixed(0)})`;
+        }
+
+        this.infoTooltip.innerHTML = content;
+
+        const uiLayer = document.getElementById('ui-layer');
+        if (uiLayer) {
+            uiLayer.appendChild(this.infoTooltip);
+        }
     }
 
     private draw() {
