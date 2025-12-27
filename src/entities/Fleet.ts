@@ -10,7 +10,7 @@ export class Fleet extends Entity {
     public followDistance: number = 100; // Distance to maintain when following
     public followMode: 'approach' | 'contact' | null = null;
 
-    private maxSpeed: number = 300;
+    public maxSpeed: number = 300;
     private stopThreshold: number = 5;
 
     private rotation: number = 0;
@@ -50,23 +50,28 @@ export class Fleet extends Entity {
     }
 
     update(dt: number) {
+        if (this.decisionTimer > 0) this.decisionTimer -= dt;
+
         if (this.state === 'combat') {
             this.combatTimer -= dt;
             this.velocity = this.velocity.scale(0.9); // Slow down significantly
-            if (this.combatTimer <= 0) {
-                this.state = 'normal';
-            }
             // Apply residual velocity
             this.position = this.position.add(this.velocity.scale(dt));
             return;
         }
+
+        // Smaller fleets are faster: 300 * (size^-0.2)
+        // size 0.8 -> 313
+        // size 1.0 -> 300
+        // size 1.4 -> 280
+        const currentMaxSpeed = this.maxSpeed * Math.pow(this.sizeMultiplier, -0.2);
 
         // If following another entity, update target to an intercept point
         if (this.followTarget) {
             const targetPos = this.followTarget.position;
             const targetVel = this.followTarget.velocity;
             const myPos = this.position;
-            const maxSpeed = this.maxSpeed;
+            const maxSpeed = currentMaxSpeed;
 
             // Intercept Logic: Find time 't' to reach the target's future position
             // |Pt + Vt*t - Ps| = Vs*t
@@ -140,7 +145,7 @@ export class Fleet extends Entity {
             } else {
                 const dir = toTarget.normalize();
 
-                const desired = dir.scale(this.maxSpeed);
+                const desired = dir.scale(currentMaxSpeed);
                 // Arrive logic
                 const slowRadius = 200;
                 if (dist < slowRadius) {

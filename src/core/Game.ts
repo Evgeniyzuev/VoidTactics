@@ -302,12 +302,27 @@ export class Game {
         requestAnimationFrame((t) => this.loop(t));
     }
 
+    private SYSTEM_RADIUS: number = 8000;
+
     private update(dt: number) {
         if (this.isPaused) return;
 
         dt = dt * this.timeScale;
 
-        // 1. Maintain Population
+        // 1. Maintain Population & Bounds Check
+        const toRemoveBounds: Fleet[] = [];
+        for (const f of this.npcFleets) {
+            if (f.position.mag() > this.SYSTEM_RADIUS) {
+                toRemoveBounds.push(f);
+            }
+        }
+        for (const f of toRemoveBounds) {
+            const idx = this.npcFleets.indexOf(f);
+            if (idx !== -1) this.npcFleets.splice(idx, 1);
+            const eidx = this.entities.indexOf(f);
+            if (eidx !== -1) this.entities.splice(eidx, 1);
+        }
+
         if (this.npcFleets.length < 30) {
             this.spawnNPCs(1);
         }
@@ -319,6 +334,18 @@ export class Game {
                 const ratio = entity.strength / playerStrength;
                 entity.sizeMultiplier = 1 + Math.log2(ratio) * 0.2;
             }
+        }
+
+        // Boundary warning for player
+        if (this.playerFleet.position.mag() > this.SYSTEM_RADIUS * 0.9) {
+            // Very simple warning for now (no UI yet)
+            // console.warn("Approaching system boundary!");
+        }
+        if (this.playerFleet.position.mag() > this.SYSTEM_RADIUS) {
+            // Push player back
+            const dir = this.playerFleet.position.normalize();
+            this.playerFleet.position = dir.scale(this.SYSTEM_RADIUS);
+            this.playerFleet.velocity = this.playerFleet.velocity.scale(-0.5);
         }
 
         // 3. AI & Combat
@@ -383,9 +410,37 @@ export class Game {
 
     private processAI() {
         const detectionRadius = 1000;
+        const giveUpRadius = 2500;
+        const celestialBodies = this.entities.filter(e => e instanceof CelestialBody) as CelestialBody[];
 
         for (const npc of this.npcFleets) {
             if (npc.state === 'combat') continue;
+
+            // Give up chase/flee if too far or futility
+            if (npc.followTarget instanceof Fleet) {
+                const dist = Vector2.distance(npc.position, npc.followTarget.position);
+
+                // If it's a chase: Check if target is much faster or too far
+                const isChasing = this.isHostile(npc, npc.followTarget as Fleet);
+                if (isChasing) {
+                    const targetSpeed = (npc.followTarget as Fleet).velocity.mag();
+                    const myMaxSpeed = npc.maxSpeed * Math.pow(npc.sizeMultiplier, -0.2);
+
+                    if (dist > giveUpRadius || (targetSpeed > myMaxSpeed * 1.1 && dist > 800)) {
+                        npc.stopFollowing();
+                        // Head to random planet
+                        if (celestialBodies.length > 0) {
+                            const poi = celestialBodies[Math.floor(Math.random() * celestialBodies.length)];
+                            npc.setTarget(poi.position.add(new Vector2((Math.random() - 0.5) * 200, (Math.random() - 0.5) * 200)));
+                        }
+                        npc.decisionTimer = 2.0; // Don't re-target immediately
+                        continue;
+                    }
+                }
+            }
+
+            // Reaction Time: Only rethink if timer is zero
+            if (npc.decisionTimer > 0) continue;
 
             let bestTarget: Fleet | null = null;
             let closestThreat: Fleet | null = null;
@@ -422,18 +477,31 @@ export class Game {
             if (closestThreat) {
                 // Flee!
                 const runDir = npc.position.sub(closestThreat.position).normalize();
-                npc.setTarget(npc.position.add(runDir.scale(500)));
+                npc.setTarget(npc.position.add(runDir.scale(800)));
                 npc.state = 'flee';
+                npc.decisionTimer = 1.0 + Math.random(); // Reaction delay
             } else if (bestTarget) {
                 // Attack!
                 npc.setFollowTarget(bestTarget, 'contact');
                 npc.state = 'normal';
-            } else if (!npc.target || npc.velocity.mag() < 2) {
-                // Idle roaming
+                npc.decisionTimer = 0.5 + Math.random();
+            } else if (!npc.target && !npc.followTarget || npc.velocity.mag() < 5) {
+                // Idle roaming: Head to POIs more often
                 npc.state = 'normal';
-                if (Math.random() < 0.005) {
-                    const angle = Math.random() * Math.PI * 2;
-                    npc.setTarget(npc.position.add(new Vector2(Math.cos(angle) * 1000, Math.sin(angle) * 1000)));
+                if (Math.random() < 0.01 && celestialBodies.length > 0) {
+                    // Faction based weighting for POIs
+                    let filteredPOIs = celestialBodies;
+                    if (npc.faction === 'civilian' || npc.faction === 'military') {
+                        filteredPOIs = celestialBodies.filter(b => !b.name.includes('Asteroid') && !b.name.includes('Alpha'));
+                    } else if (npc.faction === 'pirate' || npc.faction === 'orc') {
+                        filteredPOIs = celestialBodies.filter(b => b.name.includes('Asteroid') || b.name.includes('Alpha') || b.isStar);
+                    }
+                    if (filteredPOIs.length === 0) filteredPOIs = celestialBodies;
+
+                    const poi = filteredPOIs[Math.floor(Math.random() * filteredPOIs.length)];
+                    const offset = new Vector2((Math.random() - 0.5) * 400, (Math.random() - 0.5) * 400);
+                    npc.setTarget(poi.position.add(offset));
+                    npc.decisionTimer = 5.0; // Long roams
                 }
             }
         }
@@ -465,12 +533,12 @@ export class Game {
         // 2. Resolve finished combats
         const toRemove: Fleet[] = [];
         for (const f of allFleets) {
-            if (f.state === 'combat' && f.combatTimer <= 0) {
+            if (f.state === 'combat' && f.combatTimer <= 0 && !toRemove.includes(f)) {
                 // Find opponent
                 let opponent: Fleet | null = null;
                 let minDist = 50;
                 for (const other of allFleets) {
-                    if (other === f) continue;
+                    if (other === f || toRemove.includes(other)) continue;
                     if (other.state === 'combat') {
                         const d = Vector2.distance(f.position, other.position);
                         if (d < minDist) {
@@ -482,6 +550,9 @@ export class Game {
 
                 if (opponent) {
                     this.resolveBattle(f, opponent, toRemove);
+                } else {
+                    // Fallback: if somehow the opponent is gone, return to normal
+                    f.state = 'normal';
                 }
             }
         }
