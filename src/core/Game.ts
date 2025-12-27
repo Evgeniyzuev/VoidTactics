@@ -86,6 +86,12 @@ export class Game {
 
     private setCameraFollow(follow: boolean) {
         this.cameraFollow = follow;
+        this.ui.setCameraFollowState(this.cameraFollow);
+
+        // If enabling, immediately snap to player
+        if (this.cameraFollow) {
+            this.camera.position = this.playerFleet.position.clone();
+        }
     }
 
     private generateBackground(width: number, height: number) {
@@ -207,15 +213,25 @@ export class Game {
         if (this.input.isMouseDown) {
             const clickPos = new Vector2(this.input.mousePos.x, this.input.mousePos.y);
 
-            if (!this.cameraFollow && !this.isDragging) {
+            if (!this.isDragging) {
                 this.isDragging = true;
                 this.lastMousePos = clickPos;
-            } else if (this.isDragging) {
-                const delta = clickPos.sub(this.lastMousePos);
-                this.camera.pan(-delta.x, -delta.y);
-                this.lastMousePos = clickPos;
             } else {
-                const worldTarget = this.camera.screenToWorld(clickPos);
+                const delta = clickPos.sub(this.lastMousePos);
+                if (delta.mag() > 2) {
+                    this.camera.pan(-delta.x, -delta.y);
+                    this.lastMousePos = clickPos;
+
+                    if (this.cameraFollow) {
+                        this.cameraFollow = false;
+                        this.ui.setCameraFollowState(false);
+                    }
+                }
+            }
+        } else {
+            if (this.isDragging) {
+                // Was dragging, now released. Check for click
+                const worldTarget = this.camera.screenToWorld(this.input.mousePos);
                 const isDoubleClick = this.input.isDoubleClick();
 
                 if (isDoubleClick) {
@@ -223,10 +239,10 @@ export class Game {
                     if (this.isPaused) this.togglePause();
                     this.closeTooltip();
                 } else {
+                    // Inspect? Only if drag was minimal
                     this.inspectObject(worldTarget);
                 }
             }
-        } else {
             this.isDragging = false;
         }
 
@@ -490,7 +506,71 @@ export class Game {
             ctx.restore();
         }
 
+        this.drawOffscreenIndicator();
         this.updateTooltipPosition();
+    }
+
+    private drawOffscreenIndicator() {
+        const playerPos = this.camera.worldToScreen(this.playerFleet.position);
+        const { width, height } = this.renderer.getDimensions();
+        const padding = 30;
+
+        const isOffscreen = playerPos.x < 0 || playerPos.x > width || playerPos.y < 0 || playerPos.y > height;
+
+        if (isOffscreen) {
+            const ctx = this.renderer.getContext();
+
+            // Center of screen
+            const cx = width / 2;
+            const cy = height / 2;
+
+            // Direction from center to player
+            const dx = playerPos.x - cx;
+            const dy = playerPos.y - cy;
+
+            // Find intersection with screen edges
+            let scale = 1;
+            const absDx = Math.abs(dx);
+            const absDy = Math.abs(dy);
+
+            if (absDx / (width / 2 - padding) > absDy / (height / 2 - padding)) {
+                scale = (width / 2 - padding) / absDx;
+            } else {
+                scale = (height / 2 - padding) / absDy;
+            }
+
+            const ix = cx + dx * scale;
+            const iy = cy + dy * scale;
+
+            // Draw indicator
+            const angle = Math.atan2(dy, dx);
+
+            ctx.save();
+            ctx.translate(ix, iy);
+            ctx.rotate(angle);
+
+            // Arrow shape
+            ctx.beginPath();
+            ctx.moveTo(10, 0);
+            ctx.lineTo(-10, -10);
+            ctx.lineTo(-5, 0);
+            ctx.lineTo(-10, 10);
+            ctx.closePath();
+
+            ctx.fillStyle = this.playerFleet.color;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = this.playerFleet.color;
+            ctx.fill();
+
+            // Label
+            ctx.rotate(-angle);
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 12px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText('YOU', 0, -20);
+
+            ctx.restore();
+        }
     }
 
     private drawBackground() {

@@ -111,6 +111,15 @@ export class UIManager {
         this.playBtn.innerText = isPaused ? '▶' : '⏸';
     }
 
+    public setCameraFollowState(follow: boolean) {
+        this.cameraFollow = follow;
+        if (this.cameraFollow) {
+            this.cameraFollowBtn.classList.add('active');
+        } else {
+            this.cameraFollowBtn.classList.remove('active');
+        }
+    }
+
     public updateSpeedSelection(speed: number) {
         this.speedBtns.forEach(btn => {
             const val = parseFloat(btn.innerText);
