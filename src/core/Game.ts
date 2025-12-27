@@ -3,7 +3,7 @@ import { Renderer } from '../renderer/Renderer';
 import { Camera } from '../renderer/Camera';
 import { Vector2 } from '../utils/Vector2';
 import { CelestialBody } from '../entities/CelestialBody';
-import { Fleet } from '../entities/Fleet';
+import { Fleet, type Faction } from '../entities/Fleet';
 import { Entity } from '../entities/Entity';
 import { SaveSystem } from './SaveSystem';
 import { UIManager } from './UIManager';
@@ -193,8 +193,8 @@ export class Game {
         }
     }
 
-    private spawnNPCs(count: number) {
-        const factions: { type: any, color: string, weight: number }[] = [
+    private spawnNPCs(count: number, specificFaction?: Faction) {
+        const factions: { type: Faction, color: string, weight: number }[] = [
             { type: 'civilian', color: '#32CD32', weight: 0.5 }, // Green
             { type: 'pirate', color: '#FF4444', weight: 0.2 },   // Red
             { type: 'orc', color: '#9370DB', weight: 0.15 },    // Purple
@@ -202,15 +202,19 @@ export class Game {
         ];
 
         for (let i = 0; i < count; i++) {
-            // Pick faction by weight
-            let rand = Math.random();
+            // Pick faction
             let factionDef = factions[0];
-            for (const f of factions) {
-                if (rand < f.weight) {
-                    factionDef = f;
-                    break;
+            if (specificFaction) {
+                factionDef = factions.find(f => f.type === specificFaction) || factions[0];
+            } else {
+                let rand = Math.random();
+                for (const f of factions) {
+                    if (rand < f.weight) {
+                        factionDef = f;
+                        break;
+                    }
+                    rand -= f.weight;
                 }
-                rand -= f.weight;
             }
 
             const angle = Math.random() * Math.PI * 2;
@@ -323,8 +327,24 @@ export class Game {
             if (eidx !== -1) this.entities.splice(eidx, 1);
         }
 
-        if (this.npcFleets.length < 30) {
-            this.spawnNPCs(1);
+        if (this.npcFleets.length < 29) {
+            // Count current factions
+            const counts: Record<string, number> = {
+                civilian: 0,
+                pirate: 0,
+                orc: 0,
+                military: 0
+            };
+            for (const f of this.npcFleets) {
+                if (counts[f.faction] !== undefined) counts[f.faction]++;
+            }
+
+            // Target counts based on weights (Total 30 NPCs: Civ 15, Pirate 6, Orc 4, Military 4)
+            if (counts.civilian < 15) this.spawnNPCs(1, 'civilian');
+            else if (counts.pirate < 6) this.spawnNPCs(1, 'pirate');
+            else if (counts.orc < 4) this.spawnNPCs(1, 'orc');
+            else if (counts.military < 4) this.spawnNPCs(1, 'military');
+            else this.spawnNPCs(1); // Normal weighted spawn
         }
 
         // 2. Update Fleet Scaling based on Player Strength
@@ -383,7 +403,9 @@ export class Game {
         }
 
         const isMoving = this.playerFleet.velocity.mag() > 1;
-        if (this.wasMovingLastFrame && !isMoving && !this.playerFleet.target) {
+        const inCombat = this.playerFleet.state === 'combat';
+
+        if (this.wasMovingLastFrame && !isMoving && !this.playerFleet.target && !inCombat) {
             if (!this.isPaused) this.togglePause();
         }
         this.wasMovingLastFrame = isMoving;
@@ -592,6 +614,12 @@ export class Game {
         winner.state = 'normal';
 
         toRemove.push(loser);
+
+        // Pause if player was involved
+        if (f1 === this.playerFleet || f2 === this.playerFleet) {
+            if (!this.isPaused) this.togglePause();
+        }
+
         console.log(`Battle: ${winner.faction} (${winS}->${winner.strength}) defeated ${loser.faction} (${loseS})`);
     }
 
@@ -753,21 +781,33 @@ export class Game {
 
     private initiateContact(fleet: Fleet) {
         this.closeTooltip();
+        if (!this.isPaused) this.togglePause();
+
         console.log(`Initiating contact with fleet at ${fleet.position.x}, ${fleet.position.y}`);
 
         this.modal.showContactDialog(
             () => {
                 console.log('Establishing communication with fleet...');
                 alert('Связь установлена! (Функция в разработке)');
+                if (this.isPaused) this.togglePause();
             },
             () => {
                 console.log('Initiating battle...');
+                // Manually trigger combat state
+                this.playerFleet.state = 'combat';
+                this.playerFleet.combatTimer = 3.0;
+                fleet.state = 'combat';
+                fleet.combatTimer = 3.0;
+
+                if (this.isPaused) this.togglePause();
+
                 this.modal.showBattleScreen(() => {
-                    console.log('Battle ended');
+                    console.log('Battle animation ended');
                 });
             },
             () => {
                 console.log('Contact cancelled');
+                if (this.isPaused) this.togglePause();
             }
         );
     }
