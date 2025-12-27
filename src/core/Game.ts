@@ -352,7 +352,8 @@ export class Game {
         for (const entity of this.entities) {
             if (entity instanceof Fleet) {
                 const ratio = entity.strength / playerStrength;
-                entity.sizeMultiplier = 1 + Math.log2(ratio) * 0.2;
+                // Clamp sizeMultiplier to at least 0.4 to prevent negative radius crashes
+                entity.sizeMultiplier = Math.max(0.4, 1 + Math.log2(ratio) * 0.2);
             }
         }
 
