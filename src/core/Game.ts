@@ -8,6 +8,8 @@ import { Entity } from '../entities/Entity';
 import { SaveSystem } from './SaveSystem';
 import { UIManager } from './UIManager';
 import { ModalManager } from './ModalManager';
+import { Battle } from './Battle';
+
 
 export class Game {
     private lastTime: number = 0;
@@ -21,6 +23,7 @@ export class Game {
     private entities: Entity[] = [];
     private playerFleet!: Fleet;
     private npcFleets: Fleet[] = [];
+    private battles: Battle[] = [];
 
     private backgroundCanvas: HTMLCanvasElement;
 
@@ -403,7 +406,7 @@ export class Game {
         }
 
         this.processAI();
-        this.processCombat();
+        this.processCombat(dt);
 
         // 4. Update Entities
         for (const e of this.entities) e.update(dt);
@@ -562,19 +565,32 @@ export class Game {
         }
     }
 
-    private processCombat() {
+    private processCombat(dt: number) {
         const allFleets = [this.playerFleet, ...this.npcFleets];
 
-        // 1. Check for new combats
+        // 1. Tick and Check for Resolution
+        const toRemove: Fleet[] = [];
+        for (let i = this.battles.length - 1; i >= 0; i--) {
+            const b = this.battles[i];
+            b.update(dt);
+            if (b.timer <= 0) {
+                this.resolveBattleGroup(b, toRemove);
+                this.battles.splice(i, 1);
+            }
+        }
+
+        // 2. Interaction check for new combats or joining
         for (let i = 0; i < allFleets.length; i++) {
             for (let j = i + 1; j < allFleets.length; j++) {
                 const f1 = allFleets[i];
                 const f2 = allFleets[j];
 
-                if (f1.state === 'combat' || f2.state === 'combat') continue;
                 if (!this.isHostile(f1, f2) && !this.isHostile(f2, f1)) continue;
 
-                // Combat Trigger: 4x the chaser's radius
+                // Support joining already existing battles
+                // If both are in the same battle, ignore
+                if (f1.activeBattle && f1.activeBattle === f2.activeBattle) continue;
+
                 const r1 = 8 * f1.sizeMultiplier;
                 const r2 = 8 * f2.sizeMultiplier;
 
@@ -585,45 +601,23 @@ export class Game {
                 else if (f2.followTarget === f1) triggerDist = 4 * r2;
 
                 if (Vector2.distance(f1.position, f2.position) < triggerDist) {
-                    // Start Combat!
-                    f1.state = 'combat';
-                    f1.combatTimer = 3.0; // 3 seconds
-                    f2.state = 'combat';
-                    f2.combatTimer = 3.0;
+                    if (!f1.activeBattle && !f2.activeBattle) {
+                        // Start NEW Battle
+                        const b = new Battle(f1, f2);
+                        this.battles.push(b);
+                    } else if (f1.activeBattle && !f2.activeBattle) {
+                        // f2 joins f1's battle against f1
+                        f1.activeBattle.addFleet(f2, f1);
+                    } else if (!f1.activeBattle && f2.activeBattle) {
+                        // f1 joins f2's battle against f2
+                        f2.activeBattle.addFleet(f1, f2);
+                    }
+                    // If both already in DIFFERENT battles, we ignore for now to avoid merging complex battles
                 }
             }
         }
 
-        // 2. Resolve or Interrupt combats
-        const toRemove: Fleet[] = [];
-        for (const f of allFleets) {
-            if (f.state === 'combat' && !toRemove.includes(f)) {
-                // Find opponent
-                let opponent: Fleet | null = null;
-                let minDist = 200;
-                for (const other of allFleets) {
-                    if (other === f || toRemove.includes(other)) continue;
-                    if (other.state === 'combat') {
-                        const d = Vector2.distance(f.position, other.position);
-                        if (d < minDist) {
-                            minDist = d;
-                            opponent = other;
-                        }
-                    }
-                }
-                if (opponent) {
-                    // Normal resolution when timer hits 0
-                    if (f.combatTimer <= 0) {
-                        this.resolveBattle(f, opponent, toRemove);
-                    }
-                } else if (f.combatTimer <= 0) {
-                    // Fallback: if opponent is gone
-                    f.state = 'normal';
-                }
-            }
-        }
-
-        // Remove dead fleets
+        // Handle dead fleets
         for (const dead of toRemove) {
             const idx = this.npcFleets.indexOf(dead);
             if (idx !== -1) this.npcFleets.splice(idx, 1);
@@ -639,36 +633,49 @@ export class Game {
     }
 
 
-    private resolveBattle(f1: Fleet, f2: Fleet, toRemove: Fleet[]) {
-        if (toRemove.includes(f1) || toRemove.includes(f2)) return;
+    private resolveBattleGroup(battle: Battle, toRemove: Fleet[]) {
+        const sA = battle.totalSizeA * (0.8 + Math.random() * 0.4);
+        const sB = battle.totalSizeB * (0.8 + Math.random() * 0.4);
 
-        const s1 = f1.strength * (0.8 + Math.random() * 0.4);
-        const s2 = f2.strength * (0.8 + Math.random() * 0.4);
+        const winnerSide = sA > sB ? battle.sideA : battle.sideB;
+        const loserSide = sA > sB ? battle.sideB : battle.sideA;
+        const winS = sA > sB ? sA : sB;
+        const loseS = sA > sB ? sB : sA;
 
-        const winner = s1 > s2 ? f1 : f2;
-        const loser = s1 > s2 ? f2 : f1;
+        const totalWinBase = winnerSide.reduce((sum, f) => sum + f.strength, 0);
 
-        const winS = winner.strength;
-        const loseS = loser.strength;
+        // Damage/Gain calculations based on total side strengths
+        const totalDamage = (loseS / winS) * (loseS * 0.3);
+        const totalGain = loseS * 0.6;
 
-        // Optimized Strength Math
-        // Reward: 60% of loser strength
-        // Damage: 30% of loser strength scaled by the difficulty (loseS/winS ratio)
-        const damage = (loseS / winS) * (loseS * 0.3);
-        const gain = loseS * 0.6;
+        // Distribute proportionally to each winner's size
+        for (const winner of winnerSide) {
+            const share = winner.strength / totalWinBase;
+            const damage = totalDamage * share;
+            const gain = totalGain * share;
 
-        winner.strength = Math.max(1, Math.round(winS - damage + gain));
-        winner.state = 'normal';
-
-        toRemove.push(loser);
-
-        // Pause if player was involved
-        if (f1 === this.playerFleet || f2 === this.playerFleet) {
-            if (!this.isPaused) this.togglePause();
+            winner.strength = Math.max(1, Math.round(winner.strength - damage + gain));
+            winner.state = 'normal';
+            winner.activeBattle = null;
         }
 
-        console.log(`Battle: ${winner.faction} (${winS}->${winner.strength}) defeated ${loser.faction} (${loseS})`);
+        // Losers are removed
+        for (const loser of loserSide) {
+            toRemove.push(loser);
+            loser.activeBattle = null;
+        }
+
+        // Pause if player was involved
+        const playerInvolved = winnerSide.includes(this.playerFleet) || loserSide.includes(this.playerFleet);
+        if (playerInvolved) {
+            if (!this.isPaused) this.togglePause();
+            const playerWon = winnerSide.includes(this.playerFleet);
+            console.log(`Battle group resolved. Player ${playerWon ? 'won' : 'lost'}.`);
+        }
+
+        console.log(`Battle Resolved: ${sA.toFixed(0)} vs ${sB.toFixed(0)}. ${sA > sB ? 'Side A' : 'Side B'} wins.`);
     }
+
 
     private inspectObject(worldPos: Vector2) {
         let closestEntity: Entity | null = null;
@@ -840,11 +847,15 @@ export class Game {
             },
             () => {
                 console.log('Initiating battle...');
-                // Manually trigger combat state
-                this.playerFleet.state = 'combat';
-                this.playerFleet.combatTimer = 3.0;
-                fleet.state = 'combat';
-                fleet.combatTimer = 3.0;
+                // Use the new Battle system
+                if (!this.playerFleet.activeBattle && !fleet.activeBattle) {
+                    const b = new Battle(this.playerFleet, fleet);
+                    this.battles.push(b);
+                } else if (this.playerFleet.activeBattle && !fleet.activeBattle) {
+                    this.playerFleet.activeBattle.addFleet(fleet, this.playerFleet);
+                } else if (!this.playerFleet.activeBattle && fleet.activeBattle) {
+                    fleet.activeBattle.addFleet(this.playerFleet, fleet);
+                }
 
                 if (this.isPaused) this.togglePause();
 

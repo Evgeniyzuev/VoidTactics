@@ -22,6 +22,7 @@ export class Fleet extends Entity {
     public faction: Faction = 'civilian';
     public state: 'normal' | 'combat' | 'flee' = 'normal';
     public combatTimer: number = 0;
+    public activeBattle: any = null; // Reference to ongoing Battle
     public decisionTimer: number = 0;
     public lastAcceleration: Vector2 = new Vector2(0, 0);
 
