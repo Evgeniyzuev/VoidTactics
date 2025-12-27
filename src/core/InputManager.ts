@@ -6,11 +6,16 @@ export class InputManager {
 
     private canvas: HTMLCanvasElement;
     private wheelDelta: number = 0;
-    private lastPinchDistance: number = 0;
     private pinchDelta: number = 0;
     private lastClickTime: number = 0;
+    private lastClickPos: Vector2 = new Vector2(0, 0);
     private doubleClickThreshold: number = 300; // milliseconds
+    private doubleClickDistThreshold: number = 30; // pixels
     private isDoubleClickFlag: boolean = false;
+
+    // Multi-touch tracking
+    private activePointers: Map<number, Vector2> = new Map();
+    private initialPinchDistance: number = 0;
 
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
@@ -20,67 +25,72 @@ export class InputManager {
     private initListeners() {
         // Pointer Events (Unified Mouse/Touch)
         window.addEventListener('pointerdown', (e) => {
-            this.isMouseDown = true;
-            this.mousePos = new Vector2(e.clientX, e.clientY);
+            this.activePointers.set(e.pointerId, new Vector2(e.clientX, e.clientY));
 
-            // Track click timing for double-click detection
-            const now = Date.now();
-            const timeSinceLastClick = now - this.lastClickTime;
+            if (this.activePointers.size === 1) {
+                this.isMouseDown = true;
+                this.mousePos = new Vector2(e.clientX, e.clientY);
 
-            if (timeSinceLastClick > 0 && timeSinceLastClick < this.doubleClickThreshold) {
-                this.isDoubleClickFlag = true;
-            } else {
-                this.isDoubleClickFlag = false;
+                // Track click timing for double-click detection (only if 1 pointer)
+                const now = Date.now();
+                const timeSinceLastClick = now - this.lastClickTime;
+                const distSinceLastClick = Vector2.distance(this.mousePos, this.lastClickPos);
+
+                if (timeSinceLastClick > 0 && timeSinceLastClick < this.doubleClickThreshold && distSinceLastClick < this.doubleClickDistThreshold) {
+                    this.isDoubleClickFlag = true;
+                } else {
+                    this.isDoubleClickFlag = false;
+                }
+
+                this.lastClickTime = now;
+                this.lastClickPos = this.mousePos.clone();
+            } else if (this.activePointers.size === 2) {
+                // Potential Pinch Start
+                this.isMouseDown = false;
+                this.isDoubleClickFlag = false; // Cancel any pending DC
+                this.initialPinchDistance = this.getPointersDistance();
             }
-
-            this.lastClickTime = now;
         });
 
         window.addEventListener('pointermove', (e) => {
-            this.mousePos = new Vector2(e.clientX, e.clientY);
+            const pos = new Vector2(e.clientX, e.clientY);
+            this.activePointers.set(e.pointerId, pos);
+
+            if (this.activePointers.size === 1) {
+                this.mousePos = pos;
+            } else if (this.activePointers.size === 2) {
+                const dist = this.getPointersDistance();
+                if (this.initialPinchDistance > 0) {
+                    const delta = dist - this.initialPinchDistance;
+                    this.pinchDelta = Math.sign(delta) * 0.5; // Sensitivity
+                    this.initialPinchDistance = dist;
+                }
+            }
         });
 
-        window.addEventListener('pointerup', () => {
-            this.isMouseDown = false;
-        });
+        const handlePointerUp = (e: PointerEvent) => {
+            this.activePointers.delete(e.pointerId);
+            if (this.activePointers.size === 0) {
+                this.isMouseDown = false;
+            } else if (this.activePointers.size < 2) {
+                this.initialPinchDistance = 0;
+            }
+        };
 
-        // Mouse Wheel for Zoom
+        window.addEventListener('pointerup', handlePointerUp);
+        window.addEventListener('pointercancel', handlePointerUp);
+
+        // Mouse Wheel for Zoom (remain for PC)
         this.canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
             this.wheelDelta = -Math.sign(e.deltaY); // Positive = zoom in
         }, { passive: false });
-
-        // Touch Events for Pinch Zoom
-        let touches: TouchList | null = null;
-
-        this.canvas.addEventListener('touchstart', (e) => {
-            if (e.touches.length === 2) {
-                touches = e.touches;
-                const dist = this.getTouchDistance(touches);
-                this.lastPinchDistance = dist;
-            }
-        });
-
-        this.canvas.addEventListener('touchmove', (e) => {
-            if (e.touches.length === 2 && touches) {
-                e.preventDefault();
-                const dist = this.getTouchDistance(e.touches);
-                const delta = dist - this.lastPinchDistance;
-                this.pinchDelta = Math.sign(delta) * 0.5; // Sensitivity adjustment
-                this.lastPinchDistance = dist;
-            }
-        }, { passive: false });
-
-        this.canvas.addEventListener('touchend', () => {
-            touches = null;
-            this.lastPinchDistance = 0;
-        });
     }
 
-    private getTouchDistance(touches: TouchList): number {
-        const dx = touches[0].clientX - touches[1].clientX;
-        const dy = touches[0].clientY - touches[1].clientY;
-        return Math.sqrt(dx * dx + dy * dy);
+    private getPointersDistance(): number {
+        if (this.activePointers.size < 2) return 0;
+        const pts = Array.from(this.activePointers.values());
+        return Vector2.distance(pts[0], pts[1]);
     }
 
     public getWheelDelta(): number {
