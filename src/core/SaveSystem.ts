@@ -7,6 +7,7 @@ export interface SavedFleetState {
     vy: number;
     color: string;
     strength: number;
+    faction: string;
 }
 
 export interface GameSaveData {
@@ -26,7 +27,8 @@ export class SaveSystem {
                 vx: player.velocity.x,
                 vy: player.velocity.y,
                 color: player.color,
-                strength: player.strength
+                strength: player.strength,
+                faction: player.faction
             },
             npcs: npcs.map(npc => ({
                 x: npc.position.x,
@@ -34,7 +36,8 @@ export class SaveSystem {
                 vx: npc.velocity.x,
                 vy: npc.velocity.y,
                 color: npc.color,
-                strength: npc.strength
+                strength: npc.strength,
+                faction: npc.faction
             })),
             lastSaveTime: Date.now()
         };

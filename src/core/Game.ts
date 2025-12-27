@@ -168,6 +168,7 @@ export class Game {
             this.playerFleet = new Fleet(pData.x, pData.y, pData.color, true);
             this.playerFleet.velocity = new Vector2(pData.vx, pData.vy);
             this.playerFleet.strength = pData.strength || 10;
+            this.playerFleet.faction = 'player';
             this.entities.push(this.playerFleet);
 
             if (saveData.npcs && saveData.npcs.length > 0) {
@@ -175,54 +176,73 @@ export class Game {
                     const npc = new Fleet(nData.x, nData.y, nData.color, false);
                     npc.velocity = new Vector2(nData.vx, nData.vy);
                     npc.strength = nData.strength || 10;
+                    npc.faction = nData.faction as any || 'civilian';
                     this.entities.push(npc);
                     this.npcFleets.push(npc);
                 }
             } else {
-                this.spawnNPCs();
+                this.spawnNPCs(30);
             }
         } else {
             console.log('Starting New Game...');
             this.playerFleet = new Fleet(500, 500, '#00AAFF', true);
             this.playerFleet.strength = 10;
+            this.playerFleet.faction = 'player';
             this.entities.push(this.playerFleet);
-            this.spawnNPCs();
+            this.spawnNPCs(30);
         }
     }
 
-    private spawnNPCs() {
-        const npcColors = ['#FFA500', '#32CD32', '#9370DB', '#FF69B4', '#FFFF00'];
-        const playerCount = 20;
+    private spawnNPCs(count: number) {
+        const factions: { type: any, color: string, weight: number }[] = [
+            { type: 'civilian', color: '#32CD32', weight: 0.5 }, // Green
+            { type: 'pirate', color: '#FF4444', weight: 0.2 },   // Red
+            { type: 'orc', color: '#9370DB', weight: 0.15 },    // Purple
+            { type: 'military', color: '#FFFF00', weight: 0.15 } // Yellow
+        ];
 
-        for (let i = 0; i < playerCount; i++) {
-            const angle = (i / playerCount) * Math.PI * 2;
-            const distance = 800 + Math.random() * 1500;
-            const startX = 500 + Math.cos(angle) * distance;
-            const startY = 500 + Math.sin(angle) * distance;
-            const color = npcColors[i % npcColors.length];
-            const npc = new Fleet(startX, startY, color, false);
+        for (let i = 0; i < count; i++) {
+            // Pick faction by weight
+            let rand = Math.random();
+            let factionDef = factions[0];
+            for (const f of factions) {
+                if (rand < f.weight) {
+                    factionDef = f;
+                    break;
+                }
+                rand -= f.weight;
+            }
+
+            const angle = Math.random() * Math.PI * 2;
+            const distance = 1000 + Math.random() * 3000;
+            const startX = Math.cos(angle) * distance;
+            const startY = Math.sin(angle) * distance;
+
+            const npc = new Fleet(startX, startY, factionDef.color, false);
+            npc.faction = factionDef.type;
 
             // Strength Distribution Logic
             const playerStrength = this.playerFleet.strength;
-            let baseStrength = playerStrength;
+            let baseS = playerStrength;
 
-            const category = Math.floor(Math.random() * 3); // 0: same, 1: stronger, 2: weaker
-
-            if (category === 1) {
-                // Stronger: 1/2 chance for 2x, 1/4 for 4x, 1/8 for 8x...
+            const category = Math.random();
+            if (category < 0.33) {
+                // Similar
+            } else if (category < 0.66) {
+                // Stronger
                 let n = 1;
-                while (Math.random() < 0.5 && n < 10) n++;
-                baseStrength = playerStrength * Math.pow(2, n);
-            } else if (category === 2) {
-                // Weaker: 1/2 chance for /2, 1/4 for /4...
+                while (Math.random() < 0.5 && n < 8) n++;
+                baseS = playerStrength * Math.pow(2, n);
+            } else {
+                // Weaker
                 let n = 1;
-                while (Math.random() < 0.5 && n < 10) n++;
-                baseStrength = playerStrength / Math.pow(2, n);
+                while (Math.random() < 0.5 && n < 8) n++;
+                baseS = playerStrength / Math.pow(2, n);
             }
 
             // Apply +-30% variance
             const variance = 0.7 + Math.random() * 0.6;
-            npc.strength = Math.max(1, Math.round(baseStrength * variance));
+            npc.strength = Math.max(1, Math.round(baseS * variance));
 
             this.entities.push(npc);
             this.npcFleets.push(npc);
@@ -287,33 +307,26 @@ export class Game {
 
         dt = dt * this.timeScale;
 
-        // Update Fleet Scaling based on Player Strength
+        // 1. Maintain Population
+        if (this.npcFleets.length < 30) {
+            this.spawnNPCs(1);
+        }
+
+        // 2. Update Fleet Scaling based on Player Strength
         const playerStrength = this.playerFleet.strength;
         for (const entity of this.entities) {
             if (entity instanceof Fleet) {
-                // Formula: 1 + log2(TotalStrength / PlayerStrength) * 0.2
                 const ratio = entity.strength / playerStrength;
                 entity.sizeMultiplier = 1 + Math.log2(ratio) * 0.2;
             }
         }
 
+        // 3. AI & Combat
+        this.processAI();
+        this.processCombat();
+
+        // 4. Update Entities
         for (const e of this.entities) e.update(dt);
-
-        const celestialBodies = this.entities.filter(e => e instanceof CelestialBody) as CelestialBody[];
-        for (const npc of this.npcFleets) {
-            if (!npc.target && npc.velocity.mag() < 5) {
-                if (Math.random() < 0.01 && celestialBodies.length > 0) {
-                    const destBody = celestialBodies[Math.floor(Math.random() * celestialBodies.length)];
-                    const offset = new Vector2((Math.random() - 0.5) * 300, (Math.random() - 0.5) * 300);
-                    const dest = destBody.position.add(offset);
-                    npc.setTarget(dest);
-                }
-            }
-        }
-
-        for (const e of this.entities) {
-            e.update(dt);
-        }
 
         if (this.cameraFollow) {
             const camTarget = this.playerFleet.position;
@@ -347,6 +360,168 @@ export class Game {
             if (!this.isPaused) this.togglePause();
         }
         this.wasMovingLastFrame = isMoving;
+    }
+
+    private isHostile(a: Fleet, b: Fleet): boolean {
+        if (a === b) return false;
+        const f1 = a.faction;
+        const f2 = b.faction;
+
+        if (f1 === 'player') {
+            return f2 === 'pirate' || f2 === 'orc';
+        }
+        if (f1 === 'civilian') return false;
+        if (f1 === 'pirate') return f2 === 'civilian' || f2 === 'player' || f2 === 'military';
+        if (f1 === 'orc') {
+            if (f2 === 'orc') return Math.random() < 0.1; // Seldom fight own kind
+            return true;
+        }
+        if (f1 === 'military') return f2 === 'pirate' || f2 === 'orc';
+
+        return false;
+    }
+
+    private processAI() {
+        const detectionRadius = 1000;
+
+        for (const npc of this.npcFleets) {
+            if (npc.state === 'combat') continue;
+
+            let bestTarget: Fleet | null = null;
+            let closestThreat: Fleet | null = null;
+            let minDistThreat = detectionRadius;
+            let minDistTarget = detectionRadius;
+
+            // Scan all fleets (including player)
+            const allFleets = [this.playerFleet, ...this.npcFleets];
+            for (const other of allFleets) {
+                if (npc === other || other.state === 'combat') continue;
+
+                const dist = Vector2.distance(npc.position, other.position);
+                if (dist > detectionRadius) continue;
+
+                const hostileAtoB = this.isHostile(npc, other);
+                const hostileBtoA = this.isHostile(other, npc);
+
+                if (hostileBtoA && other.strength > npc.strength * 1.2) {
+                    // Threat: He wants to kill me and is stronger
+                    if (dist < minDistThreat) {
+                        minDistThreat = dist;
+                        closestThreat = other;
+                    }
+                } else if (hostileAtoB && other.strength < npc.strength * 0.8) {
+                    // Target: I want to kill him and am stronger
+                    if (dist < minDistTarget) {
+                        minDistTarget = dist;
+                        bestTarget = other;
+                    }
+                }
+            }
+
+            // Decide action
+            if (closestThreat) {
+                // Flee!
+                const runDir = npc.position.sub(closestThreat.position).normalize();
+                npc.setTarget(npc.position.add(runDir.scale(500)));
+                npc.state = 'flee';
+            } else if (bestTarget) {
+                // Attack!
+                npc.setFollowTarget(bestTarget, 'contact');
+                npc.state = 'normal';
+            } else if (!npc.target || npc.velocity.mag() < 2) {
+                // Idle roaming
+                npc.state = 'normal';
+                if (Math.random() < 0.005) {
+                    const angle = Math.random() * Math.PI * 2;
+                    npc.setTarget(npc.position.add(new Vector2(Math.cos(angle) * 1000, Math.sin(angle) * 1000)));
+                }
+            }
+        }
+    }
+
+    private processCombat() {
+        const combatTriggerDist = 25;
+        const allFleets = [this.playerFleet, ...this.npcFleets];
+
+        // 1. Check for new combats
+        for (let i = 0; i < allFleets.length; i++) {
+            for (let j = i + 1; j < allFleets.length; j++) {
+                const f1 = allFleets[i];
+                const f2 = allFleets[j];
+
+                if (f1.state === 'combat' || f2.state === 'combat') continue;
+                if (!this.isHostile(f1, f2) && !this.isHostile(f2, f1)) continue;
+
+                if (Vector2.distance(f1.position, f2.position) < combatTriggerDist) {
+                    // Start Combat!
+                    f1.state = 'combat';
+                    f1.combatTimer = 3.0;
+                    f2.state = 'combat';
+                    f2.combatTimer = 3.0;
+                }
+            }
+        }
+
+        // 2. Resolve finished combats
+        const toRemove: Fleet[] = [];
+        for (const f of allFleets) {
+            if (f.state === 'combat' && f.combatTimer <= 0) {
+                // Find opponent
+                let opponent: Fleet | null = null;
+                let minDist = 50;
+                for (const other of allFleets) {
+                    if (other === f) continue;
+                    if (other.state === 'combat') {
+                        const d = Vector2.distance(f.position, other.position);
+                        if (d < minDist) {
+                            minDist = d;
+                            opponent = other;
+                        }
+                    }
+                }
+
+                if (opponent) {
+                    this.resolveBattle(f, opponent, toRemove);
+                }
+            }
+        }
+
+        // Remove dead fleets
+        for (const dead of toRemove) {
+            const idx = this.npcFleets.indexOf(dead);
+            if (idx !== -1) this.npcFleets.splice(idx, 1);
+            const eidx = this.entities.indexOf(dead);
+            if (eidx !== -1) this.entities.splice(eidx, 1);
+
+            if (dead === this.playerFleet) {
+                alert('ВАШ ФЛОТ УНИЧТОЖЕН!');
+                SaveSystem.clear();
+                location.reload();
+            }
+        }
+    }
+
+    private resolveBattle(f1: Fleet, f2: Fleet, toRemove: Fleet[]) {
+        if (toRemove.includes(f1) || toRemove.includes(f2)) return;
+
+        const s1 = f1.strength * (0.8 + Math.random() * 0.4);
+        const s2 = f2.strength * (0.8 + Math.random() * 0.4);
+
+        const winner = s1 > s2 ? f1 : f2;
+        const loser = s1 > s2 ? f2 : f1;
+
+        const winS = winner.strength;
+        const loseS = loser.strength;
+
+        // Damage winner based on relative strength
+        const damage = (loseS / winS) * (loseS * 0.5);
+        const gain = loseS * 0.5;
+
+        winner.strength = Math.max(1, Math.round(winS - damage + gain));
+        winner.state = 'normal';
+
+        toRemove.push(loser);
+        console.log(`Battle: ${winner.faction} (${winS}->${winner.strength}) defeated ${loser.faction} (${loseS})`);
     }
 
     private inspectObject(worldPos: Vector2) {
@@ -420,7 +595,14 @@ export class Game {
         } else if (entity instanceof Fleet) {
             const fleet = entity as Fleet;
             const isPlayer = fleet === this.playerFleet;
-            info = `<strong>${isPlayer ? 'Player Fleet' : 'NPC Fleet'}</strong><br/>`;
+            const factionNames: any = {
+                'player': 'Player Fleet',
+                'civilian': 'Civilian',
+                'pirate': 'Pirate',
+                'orc': 'Orc',
+                'military': 'Military'
+            };
+            info = `<strong>${factionNames[fleet.faction] || 'Unknown'}</strong><br/>`;
             info += `Сила: ${fleet.strength}<br/>`;
             info += `Speed: ${fleet.velocity.mag().toFixed(1)}<br/>`;
             info += `Pos: (${fleet.position.x.toFixed(0)}, ${fleet.position.y.toFixed(0)})`;

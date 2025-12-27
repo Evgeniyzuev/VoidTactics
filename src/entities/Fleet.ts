@@ -2,6 +2,8 @@ import { Entity } from './Entity';
 import { Camera } from '../renderer/Camera';
 import { Vector2 } from '../utils/Vector2';
 
+export type Faction = 'civilian' | 'pirate' | 'orc' | 'military' | 'player';
+
 export class Fleet extends Entity {
     public target: Vector2 | null = null;
     public followTarget: Entity | null = null; // Entity to follow
@@ -16,11 +18,16 @@ export class Fleet extends Entity {
     public isPlayer: boolean = false;
     public strength: number = 10;
     public sizeMultiplier: number = 1.0;
+    public faction: Faction = 'civilian';
+    public state: 'normal' | 'combat' | 'flee' = 'normal';
+    public combatTimer: number = 0;
+    public decisionTimer: number = 0;
 
     constructor(x: number, y: number, color: string = '#55CCFF', isPlayer: boolean = false) {
         super(x, y);
         this.color = color;
         this.isPlayer = isPlayer;
+        if (isPlayer) this.faction = 'player';
         this.radius = 8;
     }
 
@@ -43,6 +50,17 @@ export class Fleet extends Entity {
     }
 
     update(dt: number) {
+        if (this.state === 'combat') {
+            this.combatTimer -= dt;
+            this.velocity = this.velocity.scale(0.9); // Slow down significantly
+            if (this.combatTimer <= 0) {
+                this.state = 'normal';
+            }
+            // Apply residual velocity
+            this.position = this.position.add(this.velocity.scale(dt));
+            return;
+        }
+
         // If following another entity, update target to an intercept point
         if (this.followTarget) {
             const targetPos = this.followTarget.position;
@@ -132,8 +150,9 @@ export class Fleet extends Entity {
 
                 const steering = desired.sub(this.velocity);
 
-                // Let's use direct acceleration for "Drift" feel
-                const steerForce = steering.scale(2.0 * dt); // 2.0 is responsiveness
+                // Acceleration depends on size (larger is slower to accelerate)
+                const responsiveness = 2.0 / Math.sqrt(this.sizeMultiplier);
+                const steerForce = steering.scale(responsiveness * dt);
                 this.velocity = this.velocity.add(steerForce);
             }
         } else {
@@ -175,11 +194,17 @@ export class Fleet extends Entity {
         ctx.fillStyle = grad;
         ctx.fill();
 
+        // Combat Flashes
+        if (this.state === 'combat' && Math.random() > 0.7) {
+            ctx.fillStyle = 'white';
+            ctx.fill();
+        }
+
         // High contrast stroke with glow
         ctx.strokeStyle = '#FFFFFF';
         ctx.lineWidth = 1.5 * this.sizeMultiplier;
-        ctx.shadowBlur = 8 * this.sizeMultiplier;
-        ctx.shadowColor = this.color;
+        ctx.shadowBlur = (this.state === 'combat' ? 20 : 8) * this.sizeMultiplier;
+        ctx.shadowColor = this.state === 'combat' ? '#FFFFFF' : this.color;
         ctx.stroke();
         ctx.shadowBlur = 0; // Reset after stroke
 
@@ -194,7 +219,7 @@ export class Fleet extends Entity {
         ctx.fill();
 
         // Engine Glow/Trail (Behind)
-        if (this.velocity.mag() > 10) {
+        if (this.velocity.mag() > 10 && this.state !== 'combat') {
             ctx.beginPath();
             ctx.moveTo(-arrowSize, arrowSize * 1.75);
             ctx.quadraticCurveTo(0, arrowSize * 3, arrowSize, arrowSize * 1.75);
