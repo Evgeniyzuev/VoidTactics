@@ -545,7 +545,7 @@ export class Game {
                 // Radius is 8 * sizeMultiplier
                 const r1 = 8 * f1.sizeMultiplier;
                 const r2 = 8 * f2.sizeMultiplier;
-                const combatTriggerDist = 3 * Math.max(r1, r2);
+                const combatTriggerDist = 4 * Math.max(r1, r2);
 
                 if (Vector2.distance(f1.position, f2.position) < combatTriggerDist) {
                     // Start Combat!
@@ -563,7 +563,7 @@ export class Game {
             if (f.state === 'combat' && !toRemove.includes(f)) {
                 // Find opponent
                 let opponent: Fleet | null = null;
-                let minDist = 100;
+                let minDist = 200;
                 for (const other of allFleets) {
                     if (other === f || toRemove.includes(other)) continue;
                     if (other.state === 'combat') {
@@ -647,9 +647,11 @@ export class Game {
         const winS = winner.strength;
         const loseS = loser.strength;
 
-        // Damage winner based on relative strength
-        const damage = (loseS / winS) * (loseS * 0.5);
-        const gain = loseS * 0.5;
+        // Optimized Strength Math
+        // Reward: 60% of loser strength
+        // Damage: 30% of loser strength scaled by the difficulty (loseS/winS ratio)
+        const damage = (loseS / winS) * (loseS * 0.3);
+        const gain = loseS * 0.6;
 
         winner.strength = Math.max(1, Math.round(winS - damage + gain));
         winner.state = 'normal';

@@ -157,8 +157,8 @@ export class Fleet extends Entity {
                 const steering = desired.sub(this.velocity);
 
                 // Acceleration depends on size (larger is slower to accelerate)
-                // Reduced responsiveness by 30%: 2.0 -> 1.4
-                const responsiveness = 1.4 / Math.sqrt(this.sizeMultiplier);
+                // Much slower responsiveness: 0.6
+                const responsiveness = 0.6 / Math.sqrt(this.sizeMultiplier);
                 const steerForce = steering.scale(responsiveness * dt);
                 this.velocity = this.velocity.add(steerForce);
             }
