@@ -530,7 +530,6 @@ export class Game {
     }
 
     private processCombat() {
-        const combatTriggerDist = 25;
         const allFleets = [this.playerFleet, ...this.npcFleets];
 
         // 1. Check for new combats
@@ -542,23 +541,29 @@ export class Game {
                 if (f1.state === 'combat' || f2.state === 'combat') continue;
                 if (!this.isHostile(f1, f2) && !this.isHostile(f2, f1)) continue;
 
+                // Dynamic radius: 3x the radius of the larger fleet
+                // Radius is 8 * sizeMultiplier
+                const r1 = 8 * f1.sizeMultiplier;
+                const r2 = 8 * f2.sizeMultiplier;
+                const combatTriggerDist = 3 * Math.max(r1, r2);
+
                 if (Vector2.distance(f1.position, f2.position) < combatTriggerDist) {
                     // Start Combat!
                     f1.state = 'combat';
-                    f1.combatTimer = 3.0;
+                    f1.combatTimer = 3.0; // 3 seconds
                     f2.state = 'combat';
                     f2.combatTimer = 3.0;
                 }
             }
         }
 
-        // 2. Resolve finished combats
+        // 2. Resolve or Interrupt combats
         const toRemove: Fleet[] = [];
         for (const f of allFleets) {
-            if (f.state === 'combat' && f.combatTimer <= 0 && !toRemove.includes(f)) {
+            if (f.state === 'combat' && !toRemove.includes(f)) {
                 // Find opponent
                 let opponent: Fleet | null = null;
-                let minDist = 50;
+                let minDist = 100;
                 for (const other of allFleets) {
                     if (other === f || toRemove.includes(other)) continue;
                     if (other.state === 'combat') {
@@ -571,9 +576,22 @@ export class Game {
                 }
 
                 if (opponent) {
-                    this.resolveBattle(f, opponent, toRemove);
-                } else {
-                    // Fallback: if somehow the opponent is gone, return to normal
+                    // Check for interruption by Player movement
+                    if (f === this.playerFleet && this.playerFleet.target) {
+                        this.interruptCombat(f, opponent);
+                        continue;
+                    }
+                    if (opponent === this.playerFleet && this.playerFleet.target) {
+                        this.interruptCombat(opponent, f);
+                        continue;
+                    }
+
+                    // Normal resolution when timer hits 0
+                    if (f.combatTimer <= 0) {
+                        this.resolveBattle(f, opponent, toRemove);
+                    }
+                } else if (f.combatTimer <= 0) {
+                    // Fallback: if opponent is gone
                     f.state = 'normal';
                 }
             }
@@ -592,6 +610,29 @@ export class Game {
                 location.reload();
             }
         }
+    }
+
+    private interruptCombat(f1: Fleet, f2: Fleet) {
+        const spentTime = 3.0 - f1.combatTimer;
+        const progress = spentTime / 3.0;
+
+        // Base loss up to 50%
+        const calculateLoss = (self: Fleet, other: Fleet) => {
+            // Factor: how much stronger is the opponent (max 2x multiplier for loss)
+            const strengthFactor = (other.strength / (self.strength + other.strength)) * 2;
+            return Math.round(self.strength * 0.5 * progress * strengthFactor);
+        };
+
+        const l1 = calculateLoss(f1, f2);
+        const l2 = calculateLoss(f2, f1);
+
+        f1.strength = Math.max(1, f1.strength - l1);
+        f2.strength = Math.max(1, f2.strength - l2);
+
+        f1.state = 'normal';
+        f2.state = 'normal';
+
+        console.log(`Combat interrupted! ${f1.faction} lost ${l1}, ${f2.faction} lost ${l2}`);
     }
 
     private resolveBattle(f1: Fleet, f2: Fleet, toRemove: Fleet[]) {

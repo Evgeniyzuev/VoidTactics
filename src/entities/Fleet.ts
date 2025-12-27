@@ -54,8 +54,9 @@ export class Fleet extends Entity {
 
         if (this.state === 'combat') {
             this.combatTimer -= dt;
-            this.velocity = this.velocity.scale(0.9); // Slow down significantly
-            // Apply residual velocity
+            // If player has a target and is in combat, they might be trying to break it
+            // We'll let Game.ts handle the logic, but here we still freeze movement
+            this.velocity = this.velocity.scale(0.9);
             this.position = this.position.add(this.velocity.scale(dt));
             return;
         }
@@ -156,7 +157,8 @@ export class Fleet extends Entity {
                 const steering = desired.sub(this.velocity);
 
                 // Acceleration depends on size (larger is slower to accelerate)
-                const responsiveness = 2.0 / Math.sqrt(this.sizeMultiplier);
+                // Reduced responsiveness by 30%: 2.0 -> 1.4
+                const responsiveness = 1.4 / Math.sqrt(this.sizeMultiplier);
                 const steerForce = steering.scale(responsiveness * dt);
                 this.velocity = this.velocity.add(steerForce);
             }
