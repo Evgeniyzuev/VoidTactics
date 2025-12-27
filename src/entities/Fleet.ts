@@ -32,6 +32,7 @@ export class Fleet extends Entity {
     };
     public isCloaked: boolean = false;
     public isBubbled: boolean = false; // Set by external bubbles
+    public stunTimer: number = 0;
 
     constructor(x: number, y: number, color: string = '#55CCFF', isPlayer: boolean = false) {
         super(x, y);
@@ -61,6 +62,14 @@ export class Fleet extends Entity {
 
     update(dt: number) {
         if (this.decisionTimer > 0) this.decisionTimer -= dt;
+
+        if (this.stunTimer > 0) {
+            this.stunTimer -= dt;
+            this.velocity = this.velocity.scale(0.5); // Rapidly bleed velocity
+            if (this.velocity.mag() < 1) this.velocity = new Vector2(0, 0);
+            this.position = this.position.add(this.velocity.scale(dt));
+            return;
+        }
 
         // Tick abilities
         for (const key in this.abilities) {
@@ -218,7 +227,7 @@ export class Fleet extends Entity {
         if (this.abilities.bubble.active) {
             ctx.save();
             ctx.beginPath();
-            const bubbleRadiusScreen = 8 * this.sizeMultiplier * 5 * camera.zoom;
+            const bubbleRadiusScreen = 8 * this.sizeMultiplier * 25 * camera.zoom;
             ctx.arc(0, 0, bubbleRadiusScreen, 0, Math.PI * 2);
             ctx.fillStyle = 'rgba(100, 200, 255, 0.15)';
             ctx.fill();

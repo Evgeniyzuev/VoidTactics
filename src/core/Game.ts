@@ -377,7 +377,7 @@ export class Game {
         // Bubble Field Effect
         for (const f of allFleets) {
             if (f.abilities.bubble.active) {
-                const bubbleRadius = 8 * f.sizeMultiplier * 5;
+                const bubbleRadius = 8 * f.sizeMultiplier * 25; // Match visual radius
                 for (const other of allFleets) {
                     if (f === other) continue;
                     if (Vector2.distance(f.position, other.position) < bubbleRadius) {
@@ -1048,6 +1048,16 @@ export class Game {
         a.cooldown = a.cdMax;
 
         if (id === 'cloak') this.playerFleet.isCloaked = true;
+        if (id === 'bubble') {
+            const bubbleRadius = 8 * this.playerFleet.sizeMultiplier * 25;
+            const allFleets = [this.playerFleet, ...this.npcFleets];
+            for (const other of allFleets) {
+                if (other === this.playerFleet) continue;
+                if (Vector2.distance(this.playerFleet.position, other.position) < bubbleRadius) {
+                    other.stunTimer = 1.0;
+                }
+            }
+        }
 
         console.log(`Ability activated: ${id}`);
     }

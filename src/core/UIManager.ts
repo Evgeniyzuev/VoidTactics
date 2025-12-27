@@ -113,6 +113,7 @@ export class UIManager {
         panel.style.bottom = '20px';
         panel.style.left = '50%';
         panel.style.transform = 'translateX(-50%)';
+        panel.style.zIndex = '50';
         panel.style.display = 'flex';
         panel.style.gap = '15px';
         panel.style.padding = '10px 20px';
