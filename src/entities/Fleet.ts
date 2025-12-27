@@ -19,6 +19,7 @@ export class Fleet extends Entity {
         super(x, y);
         this.color = color;
         this.isPlayer = isPlayer;
+        this.radius = 8;
     }
 
     setTarget(pos: Vector2) {
@@ -160,10 +161,11 @@ export class Fleet extends Entity {
 
         // Draw Ship (Perfect Warp Bubble)
         ctx.beginPath();
-        ctx.arc(0, 0, 15, 0, Math.PI * 2);
+        const shipRadius = 8;
+        ctx.arc(0, 0, shipRadius, 0, Math.PI * 2);
 
         // Fill with Gradient for "Bubble" effect
-        const grad = ctx.createRadialGradient(-5, -5, 2, 0, 0, 15);
+        const grad = ctx.createRadialGradient(-2, -2, 1, 0, 0, shipRadius);
         grad.addColorStop(0, '#FFFFFF'); // Highlight
         grad.addColorStop(0.5, this.color);
         grad.addColorStop(1, '#000033'); // Darker edge
@@ -172,28 +174,28 @@ export class Fleet extends Entity {
 
         // High contrast stroke with glow
         ctx.strokeStyle = '#FFFFFF';
-        ctx.lineWidth = 2;
-        ctx.shadowBlur = 10;
+        ctx.lineWidth = 1.5;
+        ctx.shadowBlur = 8;
         ctx.shadowColor = this.color;
         ctx.stroke();
         ctx.shadowBlur = 0; // Reset after stroke
 
-        // Directional Indicator (Small arrow or engine inside bubble)
+        // Directional Indicator (Centered Arrow)
         ctx.beginPath();
-        ctx.moveTo(0, -12); // Front
-        ctx.lineTo(4, -4);
-        ctx.lineTo(-4, -4);
+        ctx.moveTo(0, -5); // Front
+        ctx.lineTo(3, 3);
+        ctx.lineTo(-3, 3);
         ctx.closePath();
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
         ctx.fill();
 
         // Engine Glow/Trail (Behind)
         if (this.velocity.mag() > 10) {
             ctx.beginPath();
-            ctx.moveTo(-6, 14);
-            ctx.quadraticCurveTo(0, 22, 6, 14);
+            ctx.moveTo(-4, 7);
+            ctx.quadraticCurveTo(0, 12, 4, 7);
             ctx.strokeStyle = this.color;
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 1.5;
             ctx.stroke();
         }
 

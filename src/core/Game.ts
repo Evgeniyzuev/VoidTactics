@@ -506,16 +506,22 @@ export class Game {
             ctx.restore();
         }
 
-        this.drawOffscreenIndicator();
+        // Draw off-screen indicators
+        const star = this.entities.find(e => e instanceof CelestialBody && (e as CelestialBody).isStar);
+        if (star) {
+            this.drawEntityIndicator(star.position, '#FFD700', 8); // Star indicator
+        }
+        this.drawEntityIndicator(this.playerFleet.position, this.playerFleet.color, 6); // Player indicator (smaller)
+
         this.updateTooltipPosition();
     }
 
-    private drawOffscreenIndicator() {
-        const playerPos = this.camera.worldToScreen(this.playerFleet.position);
+    private drawEntityIndicator(worldPos: Vector2, color: string, size: number) {
+        const screenPos = this.camera.worldToScreen(worldPos);
         const { width, height } = this.renderer.getDimensions();
-        const padding = 30;
+        const padding = 20;
 
-        const isOffscreen = playerPos.x < 0 || playerPos.x > width || playerPos.y < 0 || playerPos.y > height;
+        const isOffscreen = screenPos.x < 0 || screenPos.x > width || screenPos.y < 0 || screenPos.y > height;
 
         if (isOffscreen) {
             const ctx = this.renderer.getContext();
@@ -524,9 +530,9 @@ export class Game {
             const cx = width / 2;
             const cy = height / 2;
 
-            // Direction from center to player
-            const dx = playerPos.x - cx;
-            const dy = playerPos.y - cy;
+            // Direction from center to target
+            const dx = screenPos.x - cx;
+            const dy = screenPos.y - cy;
 
             // Find intersection with screen edges
             let scale = 1;
@@ -549,25 +555,18 @@ export class Game {
             ctx.translate(ix, iy);
             ctx.rotate(angle);
 
-            // Arrow shape
+            // Arrow shape (scaled by size)
             ctx.beginPath();
-            ctx.moveTo(10, 0);
-            ctx.lineTo(-10, -10);
-            ctx.lineTo(-5, 0);
-            ctx.lineTo(-10, 10);
+            ctx.moveTo(size, 0);
+            ctx.lineTo(-size, -size * 0.8);
+            ctx.lineTo(-size * 0.5, 0);
+            ctx.lineTo(-size, size * 0.8);
             ctx.closePath();
 
-            ctx.fillStyle = this.playerFleet.color;
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = this.playerFleet.color;
+            ctx.fillStyle = color;
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = color;
             ctx.fill();
-
-            // Label
-            ctx.rotate(-angle);
-            ctx.fillStyle = 'white';
-            ctx.font = 'bold 12px monospace';
-            ctx.textAlign = 'center';
-            ctx.fillText('YOU', 0, -20);
 
             ctx.restore();
         }

@@ -6,8 +6,8 @@ export class Camera {
 
     private width: number;
     private height: number;
-    private minZoom: number = 0.3;
-    private maxZoom: number = 3.0;
+    private minZoom: number = 0.05;
+    private maxZoom: number = 10.0;
 
     constructor(width: number, height: number) {
         this.width = width;
