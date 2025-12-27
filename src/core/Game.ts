@@ -452,13 +452,45 @@ export class Game {
         if (f1 === 'player') {
             return f2 === 'pirate' || f2 === 'orc';
         }
-        if (f1 === 'civilian') return false;
+        if (f1 === 'civilian') {
+            // Hostile to anyone who is attacking them or their allies
+            if (b.activeBattle) {
+                const bat = b.activeBattle;
+                const otherSide = bat.sideA.includes(b) ? bat.sideB : bat.sideA;
+                return otherSide.some((ally: Fleet) => this.isAlly(a, ally));
+            }
+            return false;
+        }
         if (f1 === 'pirate') return f2 === 'civilian' || f2 === 'player' || f2 === 'military';
         if (f1 === 'orc') {
             if (f2 === 'orc') return Math.random() < 0.1; // Seldom fight own kind
             return true;
         }
-        if (f1 === 'military') return f2 === 'pirate' || f2 === 'orc';
+        if (f1 === 'military') {
+            if (f2 === 'pirate' || f2 === 'orc') return true;
+            // Hostile to anyone attacking allies
+            if (b.activeBattle) {
+                const bat = b.activeBattle;
+                const otherSide = bat.sideA.includes(b) ? bat.sideB : bat.sideA;
+                return otherSide.some((ally: Fleet) => this.isAlly(a, ally));
+            }
+            return false;
+        }
+
+        return false;
+    }
+
+    private isAlly(a: Fleet, b: Fleet): boolean {
+        if (a === b) return true;
+        const f1 = a.faction;
+        const f2 = b.faction;
+
+        // Same faction are always allies
+        if (f1 === f2) return true;
+
+        // Military always helps civilians
+        if (f1 === 'military' && f2 === 'civilian') return true;
+        if (f1 === 'civilian' && f2 === 'military') return true;
 
         return false;
     }
@@ -582,35 +614,61 @@ export class Game {
                 const f1 = allFleets[i];
                 const f2 = allFleets[j];
 
-                if (!this.isHostile(f1, f2) && !this.isHostile(f2, f1)) continue;
-
-                // Support joining already existing battles
-                // If both are in the same battle, ignore
                 if (f1.activeBattle && f1.activeBattle === f2.activeBattle) continue;
 
                 const r1 = 8 * f1.sizeMultiplier;
                 const r2 = 8 * f2.sizeMultiplier;
 
-                let triggerDist = 4 * Math.max(r1, r2); // Default
+                const baseTriggerDist = 4 * Math.max(r1, r2);
+                const joinDist = 200; // Much larger radius for allies to notice and join
 
-                // If one is specifically chasing/fleeing, use Chaser's 4x radius
-                if (f1.followTarget === f2) triggerDist = 4 * r1;
-                else if (f2.followTarget === f1) triggerDist = 4 * r2;
+                const dist = Vector2.distance(f1.position, f2.position);
 
-                if (Vector2.distance(f1.position, f2.position) < triggerDist) {
-                    if (!f1.activeBattle && !f2.activeBattle) {
-                        // Start NEW Battle
-                        const b = new Battle(f1, f2);
-                        this.battles.push(b);
-                    } else if (f1.activeBattle && !f2.activeBattle) {
-                        // f2 joins f1's battle against f1
-                        f1.activeBattle.addFleet(f2, f1);
-                    } else if (!f1.activeBattle && f2.activeBattle) {
-                        // f1 joins f2's battle against f2
-                        f2.activeBattle.addFleet(f1, f2);
+                // 1. Check for starting NEW combat or joining as ENEMY
+                if (this.isHostile(f1, f2) || this.isHostile(f2, f1)) {
+                    let triggerDist = baseTriggerDist;
+                    if (f1.followTarget === f2) triggerDist = 4 * r1;
+                    else if (f2.followTarget === f1) triggerDist = 4 * r2;
+
+                    if (dist < triggerDist) {
+                        if (!f1.activeBattle && !f2.activeBattle) {
+                            const b = new Battle(f1, f2);
+                            this.battles.push(b);
+                        } else if (f1.activeBattle && !f2.activeBattle) {
+                            f1.activeBattle.addFleet(f2, f1);
+                        } else if (!f1.activeBattle && f2.activeBattle) {
+                            f2.activeBattle.addFleet(f1, f2);
+                        }
                     }
-                    // If both already in DIFFERENT battles, we ignore for now to avoid merging complex battles
                 }
+
+                // 2. Check for joining as ALLY
+                if (this.isAlly(f1, f2) && dist < joinDist) {
+                    let ally: Fleet | null = null;
+                    let helper: Fleet | null = null;
+
+                    if (f1.activeBattle && !f2.activeBattle) { ally = f1; helper = f2; }
+                    else if (!f1.activeBattle && f2.activeBattle) { ally = f2; helper = f1; }
+
+                    if (ally && helper) {
+                        const battle = ally.activeBattle!;
+                        const allySide = battle.sideA.includes(ally) ? 'A' : 'B';
+                        const ownStr = (allySide === 'A' ? battle.totalSizeA : battle.totalSizeB) + helper.strength;
+                        const enemyStr = (allySide === 'A' ? battle.totalSizeB : battle.totalSizeA);
+
+                        let shouldJoin = false;
+                        if (helper.faction === 'military' || helper.faction === 'orc') {
+                            shouldJoin = true;
+                        } else if (helper.faction === 'pirate' || helper.faction === 'civilian') {
+                            shouldJoin = ownStr > enemyStr;
+                        }
+
+                        if (shouldJoin) {
+                            battle.joinSide(helper, allySide);
+                        }
+                    }
+                }
+
             }
         }
 

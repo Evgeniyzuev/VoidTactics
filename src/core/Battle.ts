@@ -17,6 +17,17 @@ export class Battle {
         f2.combatTimer = this.timer;
     }
 
+    joinSide(fleet: Fleet, side: 'A' | 'B') {
+        const targetSide = side === 'A' ? this.sideA : this.sideB;
+        if (!targetSide.includes(fleet)) {
+            targetSide.push(fleet);
+            fleet.activeBattle = this;
+            fleet.state = 'combat';
+            fleet.combatTimer = this.timer;
+            this.timer = Math.max(this.timer, 2.0);
+        }
+    }
+
     addFleet(fleet: Fleet, against: Fleet) {
         if (this.sideA.includes(against)) {
             if (!this.sideB.includes(fleet)) {

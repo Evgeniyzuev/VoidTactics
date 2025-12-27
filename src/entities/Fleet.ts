@@ -87,6 +87,11 @@ export class Fleet extends Entity {
         }
 
         if (this.state === 'combat') {
+            // Safety fallback: if battle is missing or finished, reset state
+            if (!this.activeBattle) {
+                this.state = 'normal';
+                return;
+            }
             this.combatTimer -= dt;
             // Movement is restricted during combat
             this.velocity = this.velocity.scale(0.9);
