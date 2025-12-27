@@ -28,6 +28,10 @@ export class Vector2 {
     return m === 0 ? new Vector2() : this.scale(1 / m);
   }
 
+  dot(v: Vector2): number {
+    return this.x * v.x + this.y * v.y;
+  }
+
   static distance(a: Vector2, b: Vector2): number {
     const dx = a.x - b.x;
     const dy = a.y - b.y;

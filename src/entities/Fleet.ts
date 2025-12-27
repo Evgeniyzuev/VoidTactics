@@ -3,10 +3,10 @@ import { Camera } from '../renderer/Camera';
 import { Vector2 } from '../utils/Vector2';
 
 export class Fleet extends Entity {
-    public velocity: Vector2 = new Vector2(0, 0);
     public target: Vector2 | null = null;
     public followTarget: Entity | null = null; // Entity to follow
     public followDistance: number = 100; // Distance to maintain when following
+    public followMode: 'approach' | 'contact' | null = null;
 
     private maxSpeed: number = 300;
     private stopThreshold: number = 5;
@@ -24,30 +24,88 @@ export class Fleet extends Entity {
     setTarget(pos: Vector2) {
         this.target = pos;
         this.followTarget = null; // Clear follow mode when setting direct target
+        this.followMode = null;
     }
 
-    setFollowTarget(entity: Entity) {
+    setFollowTarget(entity: Entity, mode: 'approach' | 'contact' = 'approach') {
         this.followTarget = entity;
+        this.followMode = mode;
         this.target = null; // Will be set in update
     }
 
     stopFollowing() {
         this.followTarget = null;
+        this.followMode = null;
         this.target = null;
     }
 
     update(dt: number) {
-        // If following another fleet, update target to their position
+        // If following another entity, update target to an intercept point
         if (this.followTarget) {
-            const toTarget = this.followTarget.position.sub(this.position);
-            const dist = toTarget.mag();
+            const targetPos = this.followTarget.position;
+            const targetVel = this.followTarget.velocity;
+            const myPos = this.position;
+            const maxSpeed = this.maxSpeed;
 
-            // Maintain follow distance
-            if (dist > this.followDistance) {
-                const dir = toTarget.normalize();
-                this.target = this.followTarget.position.sub(dir.scale(this.followDistance));
+            // Intercept Logic: Find time 't' to reach the target's future position
+            // |Pt + Vt*t - Ps| = Vs*t
+            const D = targetPos.sub(myPos);
+            const a = targetVel.dot(targetVel) - maxSpeed * maxSpeed;
+            const b = 2 * D.dot(targetVel);
+            const c = D.dot(D);
+
+            let t = -1;
+            if (Math.abs(a) < 0.001) {
+                // Special case: my speed matches target speed or target is static
+                if (Math.abs(b) > 0.001) {
+                    t = -c / b;
+                }
             } else {
-                this.target = null; // We're at the right distance
+                const discriminant = b * b - 4 * a * c;
+                if (discriminant >= 0) {
+                    const t1 = (-b + Math.sqrt(discriminant)) / (2 * a);
+                    const t2 = (-b - Math.sqrt(discriminant)) / (2 * a);
+
+                    if (t1 > 0 && t2 > 0) t = Math.min(t1, t2);
+                    else if (t1 > 0) t = t1;
+                    else if (t2 > 0) t = t2;
+                }
+            }
+
+            // Calculate effective follow distance
+            const effectiveFollowDist = this.followDistance + this.followTarget.radius;
+
+            // If we found a valid time, set target to the intercept point
+            if (t > 0) {
+                const interceptPoint = targetPos.add(targetVel.scale(t));
+
+                if (this.followMode === 'approach') {
+                    const toTarget = interceptPoint.sub(myPos);
+                    const dist = toTarget.mag();
+                    if (dist > effectiveFollowDist) {
+                        const dir = toTarget.normalize();
+                        this.target = interceptPoint.sub(dir.scale(effectiveFollowDist));
+                    } else {
+                        this.target = null;
+                    }
+                } else {
+                    // Contact mode: directly to intercept point
+                    this.target = interceptPoint;
+                }
+            } else {
+                // Fallback to direct follow if intercept calc fails
+                if (this.followMode === 'approach') {
+                    const toTarget = targetPos.sub(myPos);
+                    const dist = toTarget.mag();
+                    if (dist > effectiveFollowDist) {
+                        const dir = toTarget.normalize();
+                        this.target = targetPos.sub(dir.scale(effectiveFollowDist));
+                    } else {
+                        this.target = null;
+                    }
+                } else {
+                    this.target = targetPos;
+                }
             }
         }
 

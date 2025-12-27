@@ -28,14 +28,12 @@ export class Game {
     private isPaused: boolean = false;
     private timeScale: number = 1;
     private wasMovingLastFrame: boolean = false;
-    private moveMode: boolean = true; // Movement mode vs Inspect mode
     private infoTooltip: HTMLDivElement | null = null;
     private cameraFollow: boolean = true;
     private isDragging: boolean = false;
     private lastMousePos: Vector2 = new Vector2(0, 0);
 
     // Fleet interaction
-    private selectedFleet: Fleet | null = null;
     private contactDistance: number = 50; // Distance for contact dialog
     private inspectedEntity: Entity | null = null; // Entity being inspected for tooltip
 
@@ -55,7 +53,6 @@ export class Game {
         this.ui = new UIManager('ui-layer', {
             onPlayPause: () => this.togglePause(),
             onSpeedChange: (speed) => this.setTimeScale(speed),
-            onMoveModeToggle: (enabled) => this.setMoveMode(enabled),
             onCameraToggle: (follow) => this.setCameraFollow(follow)
         });
 
@@ -85,11 +82,6 @@ export class Game {
 
     private setTimeScale(scale: number) {
         this.timeScale = scale;
-    }
-
-    private setMoveMode(enabled: boolean) {
-        this.moveMode = enabled;
-        this.closeTooltip();
     }
 
     private setCameraFollow(follow: boolean) {
@@ -226,9 +218,10 @@ export class Game {
                 const worldTarget = this.camera.screenToWorld(clickPos);
                 const isDoubleClick = this.input.isDoubleClick();
 
-                if (this.moveMode || isDoubleClick) {
+                if (isDoubleClick) {
                     this.playerFleet.setTarget(worldTarget);
                     if (this.isPaused) this.togglePause();
+                    this.closeTooltip();
                 } else {
                     this.inspectObject(worldTarget);
                 }
@@ -271,12 +264,23 @@ export class Game {
             this.camera.position = this.camera.position.add(diff.scale(lerpSpeed * dt));
         }
 
-        if (this.selectedFleet && this.playerFleet.followTarget === this.selectedFleet) {
-            const dist = Vector2.distance(this.playerFleet.position, this.selectedFleet.position);
-            if (dist <= this.contactDistance) {
-                this.initiateContact(this.selectedFleet);
-                this.playerFleet.stopFollowing();
-                this.selectedFleet = null;
+        // Handle proximity triggers for follow modes
+        if (this.playerFleet.followTarget) {
+            const dist = Vector2.distance(this.playerFleet.position, this.playerFleet.followTarget.position);
+
+            if (this.playerFleet.followMode === 'contact') {
+                const triggerDist = this.playerFleet.followTarget instanceof CelestialBody ?
+                    (this.playerFleet.followTarget as CelestialBody).radius + 10 :
+                    this.contactDistance;
+
+                if (dist <= triggerDist) {
+                    if (this.playerFleet.followTarget instanceof Fleet) {
+                        this.initiateContact(this.playerFleet.followTarget);
+                    } else if (this.playerFleet.followTarget instanceof CelestialBody) {
+                        alert(`Прибытие к ${(this.playerFleet.followTarget as CelestialBody).name}`);
+                    }
+                    this.playerFleet.stopFollowing();
+                }
             }
         }
 
@@ -332,6 +336,10 @@ export class Game {
         this.infoTooltip.style.zIndex = '1000';
         this.infoTooltip.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.5)';
 
+        // Prevent clicks on tooltip from affecting game
+        this.infoTooltip.addEventListener('click', (e) => e.stopPropagation());
+        this.infoTooltip.addEventListener('pointerdown', (e) => e.stopPropagation());
+
         const screenPos = this.camera.worldToScreen(entity.position);
         this.infoTooltip.style.left = (screenPos.x + 20) + 'px';
         this.infoTooltip.style.top = (screenPos.y - 30) + 'px';
@@ -372,15 +380,16 @@ export class Game {
         buttonContainer.style.gap = '8px';
         buttonContainer.style.flexWrap = 'wrap';
 
-        const createButton = (text: string, color: string, callback: () => void) => {
+        const createButton = (text: string, title: string, color: string, callback: () => void) => {
             const btn = document.createElement('button');
             btn.textContent = text;
+            btn.title = title;
             btn.style.padding = '6px 12px';
             btn.style.border = 'none';
             btn.style.borderRadius = '4px';
             btn.style.background = color;
             btn.style.color = 'white';
-            btn.style.fontSize = '12px';
+            btn.style.fontSize = '18px';
             btn.style.cursor = 'pointer';
             btn.style.fontWeight = 'bold';
             btn.style.fontFamily = 'monospace';
@@ -388,30 +397,30 @@ export class Game {
                 e.stopPropagation();
                 callback();
             });
+            btn.addEventListener('pointerdown', (e) => {
+                e.stopPropagation();
+            });
             return btn;
         };
 
         if (showApproach) {
-            const approachBtn = createButton('🚀 Приближение', '#0088FF', () => {
-                this.playerFleet.setFollowTarget(entity);
-                this.selectedFleet = entity instanceof Fleet ? entity : null;
+            const approachBtn = createButton('🚀', 'Приближение (Intercept & Follow)', '#0088FF', () => {
+                console.log('Approach command issued for', entity);
+                this.playerFleet.setFollowTarget(entity, 'approach');
                 this.closeTooltip();
+                if (this.isPaused) this.togglePause();
             });
             buttonContainer.appendChild(approachBtn);
         }
 
-        if (showContact && entity instanceof Fleet) {
-            const contactBtn = createButton('📡 Контакт', '#00AA00', () => {
-                this.initiateContact(entity);
+        if (showContact || showDock) {
+            const contactBtn = createButton('🎯', 'Контакт/Стыковка (Intercept & Dock)', '#00AA00', () => {
+                console.log('Contact command issued for', entity);
+                this.playerFleet.setFollowTarget(entity, 'contact');
+                this.closeTooltip();
+                if (this.isPaused) this.togglePause();
             });
             buttonContainer.appendChild(contactBtn);
-        }
-
-        if (showDock) {
-            const dockBtn = createButton('⚓ Стыковка', '#9370DB', () => {
-                alert('Стыковка в разработке...');
-            });
-            buttonContainer.appendChild(dockBtn);
         }
 
         if (buttonContainer.children.length > 0) {

@@ -3,7 +3,6 @@ import { Camera } from '../renderer/Camera';
 import { Vector2 } from '../utils/Vector2';
 
 export class CelestialBody extends Entity {
-    public radius: number;
     public color: string;
     public name: string;
     public isStar: boolean;

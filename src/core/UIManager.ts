@@ -2,18 +2,15 @@ export class UIManager {
     private container: HTMLElement;
     private onPlayPause: () => void;
     private onSpeedChange: (speed: number) => void;
-    private onMoveModeToggle: (enabled: boolean) => void;
     private onCameraToggle: (follow: boolean) => void;
 
     private playBtn!: HTMLButtonElement;
-    private moveModeBtn!: HTMLButtonElement;
     private cameraFollowBtn!: HTMLButtonElement;
     private speedBtn!: HTMLButtonElement;
     private speedGroup!: HTMLElement;
     private speedBtns: HTMLButtonElement[] = [];
     private speedExpanded: boolean = false;
     private currentSpeed: number = 1;
-    private moveMode: boolean = true; // Default: movement enabled
     private cameraFollow: boolean = true;
 
     constructor(
@@ -21,7 +18,6 @@ export class UIManager {
         callbacks: {
             onPlayPause: () => void,
             onSpeedChange: (speed: number) => void,
-            onMoveModeToggle: (enabled: boolean) => void,
             onCameraToggle: (follow: boolean) => void
         }
     ) {
@@ -30,7 +26,6 @@ export class UIManager {
         this.container = el;
         this.onPlayPause = callbacks.onPlayPause;
         this.onSpeedChange = callbacks.onSpeedChange;
-        this.onMoveModeToggle = callbacks.onMoveModeToggle;
         this.onCameraToggle = callbacks.onCameraToggle;
 
         this.render();
@@ -44,16 +39,6 @@ export class UIManager {
         hud.addEventListener('click', (e) => e.stopPropagation());
         hud.addEventListener('pointerdown', (e) => e.stopPropagation());
 
-        // Move Mode Button
-        this.moveModeBtn = document.createElement('button');
-        this.moveModeBtn.className = 'control-btn active';
-        this.moveModeBtn.innerText = '🎯'; // Target icon for movement
-        this.moveModeBtn.title = 'Move Mode';
-        this.moveModeBtn.onclick = () => this.toggleMoveMode();
-
-        const sep1 = document.createElement('div');
-        sep1.className = 'separator';
-
         // Play/Pause Button
         this.playBtn = document.createElement('button');
         this.playBtn.className = 'control-btn';
@@ -63,8 +48,8 @@ export class UIManager {
             this.onPlayPause();
         };
 
-        const sep2 = document.createElement('div');
-        sep2.className = 'separator';
+        const sep1 = document.createElement('div');
+        sep1.className = 'separator';
 
         // Speed Toggle Button (collapsed state)
         this.speedBtn = document.createElement('button');
@@ -93,8 +78,8 @@ export class UIManager {
             this.speedGroup.appendChild(btn);
         });
 
-        const sep3 = document.createElement('div');
-        sep3.className = 'separator';
+        const sep2 = document.createElement('div');
+        sep2.className = 'separator';
 
         // Camera Follow Button
         this.cameraFollowBtn = document.createElement('button');
@@ -103,27 +88,13 @@ export class UIManager {
         this.cameraFollowBtn.title = 'Camera Follow';
         this.cameraFollowBtn.onclick = () => this.toggleCameraFollow();
 
-        hud.appendChild(this.moveModeBtn);
-        hud.appendChild(sep1);
         hud.appendChild(this.playBtn);
-        hud.appendChild(sep2);
+        hud.appendChild(sep1);
         hud.appendChild(this.speedBtn);
         hud.appendChild(this.speedGroup);
-        hud.appendChild(sep3);
+        hud.appendChild(sep2);
         hud.appendChild(this.cameraFollowBtn);
         this.container.appendChild(hud);
-    }
-
-    private toggleMoveMode() {
-        this.moveMode = !this.moveMode;
-        if (this.moveMode) {
-            this.moveModeBtn.classList.add('active');
-            this.moveModeBtn.innerText = '🎯';
-        } else {
-            this.moveModeBtn.classList.remove('active');
-            this.moveModeBtn.innerText = 'ℹ️'; // Info icon for inspect mode
-        }
-        this.onMoveModeToggle(this.moveMode);
     }
 
     private toggleCameraFollow() {
