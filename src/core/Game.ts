@@ -53,7 +53,8 @@ export class Game {
         this.ui = new UIManager('ui-layer', {
             onPlayPause: () => this.togglePause(),
             onSpeedChange: (speed) => this.setTimeScale(speed),
-            onCameraToggle: (follow) => this.setCameraFollow(follow)
+            onCameraToggle: (follow) => this.setCameraFollow(follow),
+            onAbility: (id) => this.activateAbility(id)
         });
 
         // Setup Modal Manager
@@ -299,7 +300,8 @@ export class Game {
         }
 
         if (!this.isPaused) {
-            this.update(dt);
+            this.update(dt * this.timeScale);
+            this.ui.updateAbilities(this.playerFleet);
         }
         this.draw();
 
@@ -369,7 +371,22 @@ export class Game {
             this.playerFleet.velocity = this.playerFleet.velocity.scale(-0.5);
         }
 
-        // 3. AI & Combat
+        // 3. AI & Combat & Abilities
+        const allFleets = [this.playerFleet, ...this.npcFleets];
+
+        // Bubble Field Effect
+        for (const f of allFleets) {
+            if (f.abilities.bubble.active) {
+                const bubbleRadius = 8 * f.sizeMultiplier * 5;
+                for (const other of allFleets) {
+                    if (f === other) continue;
+                    if (Vector2.distance(f.position, other.position) < bubbleRadius) {
+                        other.isBubbled = true;
+                    }
+                }
+            }
+        }
+
         this.processAI();
         this.processCombat();
 
@@ -473,7 +490,7 @@ export class Game {
             // Scan all fleets (including player)
             const allFleets = [this.playerFleet, ...this.npcFleets];
             for (const other of allFleets) {
-                if (npc === other || other.state === 'combat') continue;
+                if (npc === other || other.state === 'combat' || other.isCloaked) continue;
 
                 const dist = Vector2.distance(npc.position, other.position);
                 if (dist > detectionRadius) continue;
@@ -542,13 +559,17 @@ export class Game {
                 if (f1.state === 'combat' || f2.state === 'combat') continue;
                 if (!this.isHostile(f1, f2) && !this.isHostile(f2, f1)) continue;
 
-                // Dynamic radius: 3x the radius of the larger fleet
-                // Radius is 8 * sizeMultiplier
+                // Combat Trigger: 4x the chaser's radius
                 const r1 = 8 * f1.sizeMultiplier;
                 const r2 = 8 * f2.sizeMultiplier;
-                const combatTriggerDist = 4 * Math.max(r1, r2);
 
-                if (Vector2.distance(f1.position, f2.position) < combatTriggerDist) {
+                let triggerDist = 4 * Math.max(r1, r2); // Default
+
+                // If one is specifically chasing/fleeing, use Chaser's 4x radius
+                if (f1.followTarget === f2) triggerDist = 4 * r1;
+                else if (f2.followTarget === f1) triggerDist = 4 * r2;
+
+                if (Vector2.distance(f1.position, f2.position) < triggerDist) {
                     // Start Combat!
                     f1.state = 'combat';
                     f1.combatTimer = 3.0; // 3 seconds
@@ -746,7 +767,7 @@ export class Game {
                 'military': 'Military'
             };
             info = `<strong>${factionNames[fleet.faction] || 'Unknown'}</strong><br/>`;
-            info += `Сила: ${fleet.strength}<br/>`;
+            info += `Size: ${fleet.strength}<br/>`;
             info += `Speed: ${fleet.velocity.mag().toFixed(1)}<br/>`;
             info += `Pos: (${fleet.position.x.toFixed(0)}, ${fleet.position.y.toFixed(0)})`;
 
@@ -871,19 +892,52 @@ export class Game {
         const ctx = this.renderer.getContext();
         for (const e of this.entities) e.draw(ctx, this.camera);
 
-        if (this.playerFleet.followTarget) {
-            const playerPos = this.camera.worldToScreen(this.playerFleet.position);
-            const targetPos = this.camera.worldToScreen(this.playerFleet.followTarget.position);
+        const allFleets = [this.playerFleet, ...this.npcFleets];
+        for (const fleet of allFleets) {
+            if (fleet.followTarget && (fleet === this.playerFleet || fleet.followTarget === this.playerFleet ||
+                (fleet.followTarget instanceof Fleet && this.isHostile(fleet, fleet.followTarget)))) {
 
-            ctx.save();
-            ctx.strokeStyle = 'rgba(0, 200, 255, 0.5)';
-            ctx.lineWidth = 2;
-            ctx.setLineDash([10, 5]);
-            ctx.beginPath();
-            ctx.moveTo(playerPos.x, playerPos.y);
-            ctx.lineTo(targetPos.x, targetPos.y);
-            ctx.stroke();
-            ctx.restore();
+                const fleetPos = this.camera.worldToScreen(fleet.position);
+                const targetPos = this.camera.worldToScreen(fleet.followTarget.position);
+
+                ctx.save();
+                // Intercept Line (mostly for player or important chases)
+                if (fleet === this.playerFleet || fleet.followTarget === this.playerFleet) {
+                    ctx.strokeStyle = fleet.color + '66'; // 40% alpha
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([5, 5]);
+                    ctx.beginPath();
+                    ctx.moveTo(fleetPos.x, fleetPos.y);
+                    ctx.lineTo(targetPos.x, targetPos.y);
+                    ctx.stroke();
+                }
+
+                // Interception Radius around the CHASER
+                const r = 8 * fleet.sizeMultiplier;
+                const combatTriggerDist = 4 * r;
+                const screenRadius = combatTriggerDist * this.camera.zoom;
+
+                ctx.beginPath();
+                ctx.arc(fleetPos.x, fleetPos.y, screenRadius, 0, Math.PI * 2);
+                ctx.setLineDash([2, 4]);
+                ctx.strokeStyle = fleet.color + '99'; // 60% alpha
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+                // If player is chasing, show intercept point
+                if (fleet === this.playerFleet && fleet.target) {
+                    const interceptPos = this.camera.worldToScreen(fleet.target);
+                    ctx.beginPath();
+                    ctx.arc(interceptPos.x, interceptPos.y, 4, 0, Math.PI * 2);
+                    ctx.fillStyle = '#00FFFF';
+                    ctx.fill();
+
+                    ctx.fillStyle = 'rgba(0, 255, 255, 0.8)';
+                    ctx.font = '10px monospace';
+                    ctx.fillText('INTERCEPT', interceptPos.x + 8, interceptPos.y - 8);
+                }
+                ctx.restore();
+            }
         }
 
         // Draw off-screen indicators
@@ -983,5 +1037,18 @@ export class Game {
             ctx.lineTo(p2.x, p2.y);
         }
         ctx.stroke();
+    }
+
+    private activateAbility(id: string) {
+        const a = (this.playerFleet.abilities as any)[id];
+        if (!a || a.cooldown > 0 || a.active) return;
+
+        a.active = true;
+        a.timer = a.duration;
+        a.cooldown = a.cdMax;
+
+        if (id === 'cloak') this.playerFleet.isCloaked = true;
+
+        console.log(`Ability activated: ${id}`);
     }
 }
