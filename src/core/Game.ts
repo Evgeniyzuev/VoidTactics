@@ -5,12 +5,15 @@ import { Vector2 } from '../utils/Vector2';
 import { CelestialBody } from '../entities/CelestialBody';
 import { Fleet } from '../entities/Fleet';
 import { Entity } from '../entities/Entity';
+import { SaveSystem } from './SaveSystem';
+import { UIManager } from './UIManager';
 
 export class Game {
     private lastTime: number = 0;
     private renderer: Renderer;
     private input: InputManager;
     private camera: Camera;
+    private ui: UIManager;
 
     // Entities
     private entities: Entity[] = [];
@@ -18,6 +21,11 @@ export class Game {
     private npcFleets: Fleet[] = [];
 
     private backgroundCanvas: HTMLCanvasElement;
+
+    // Time Control
+    private isPaused: boolean = false;
+    private timeScale: number = 1;
+    private wasMovingLastFrame: boolean = false;
 
     constructor(canvas: HTMLCanvasElement) {
         this.renderer = new Renderer(canvas);
@@ -31,6 +39,12 @@ export class Game {
 
         this.initWorld();
 
+        // Setup UI
+        this.ui = new UIManager('ui-layer', {
+            onPlayPause: () => this.togglePause(),
+            onSpeedChange: (speed) => this.setTimeScale(speed)
+        });
+
         // Start loop
         requestAnimationFrame((t) => this.loop(t));
 
@@ -40,6 +54,15 @@ export class Game {
             this.camera.resize(width, height);
             this.generateBackground(width, height);
         });
+    }
+
+    private togglePause() {
+        this.isPaused = !this.isPaused;
+        this.ui.updatePlayIcon(this.isPaused);
+    }
+
+    private setTimeScale(scale: number) {
+        this.timeScale = scale;
     }
 
     private generateBackground(width: number, height: number) {
@@ -86,7 +109,7 @@ export class Game {
     }
 
     private initWorld() {
-        // Create System
+        // 1. Static World (Planets/Stars) - Always create these
         // Star
         const star = new CelestialBody(0, 0, 150, '#FFD700', 'Sol', true);
         this.entities.push(star);
@@ -117,39 +140,75 @@ export class Game {
         // Space Station
         this.entities.push(new CelestialBody(-600, -600, 20, '#FF00FF', 'Outpost Alpha'));
 
-        // Player
-        this.playerFleet = new Fleet(500, 500, '#00AAFF'); // Player Blue
-        this.entities.push(this.playerFleet);
+        // 2. Dynamic Entities (Fleets) - Try to load from Save
+        const saveData = SaveSystem.load();
 
-        // NPC Fleets (Civilian Traffic)
-        const npcColors = ['#FFA500', '#32CD32', '#9370DB', '#FF69B4', '#FFFF00'];
-        for (let i = 0; i < 5; i++) {
-            const startX = (Math.random() - 0.5) * 3000;
-            const startY = (Math.random() - 0.5) * 3000;
-            const color = npcColors[i % npcColors.length];
-            const npc = new Fleet(startX, startY, color);
-            this.entities.push(npc);
-            this.npcFleets.push(npc);
+        if (saveData) {
+            console.log('Loading Save Game...');
+            // Load Player
+            const pData = saveData.player;
+            this.playerFleet = new Fleet(pData.x, pData.y, pData.color);
+            this.playerFleet.velocity = new Vector2(pData.vx, pData.vy);
+            this.entities.push(this.playerFleet);
+
+            // Load NPCs
+            for (const nData of saveData.npcs) {
+                const npc = new Fleet(nData.x, nData.y, nData.color);
+                npc.velocity = new Vector2(nData.vx, nData.vy);
+                this.entities.push(npc);
+                this.npcFleets.push(npc);
+            }
+        } else {
+            console.log('Starting New Game...');
+            // Player
+            this.playerFleet = new Fleet(500, 500, '#00AAFF'); // Player Blue
+            this.entities.push(this.playerFleet);
+
+            // NPC Fleets (Civilian Traffic)
+            const npcColors = ['#FFA500', '#32CD32', '#9370DB', '#FF69B4', '#FFFF00'];
+            for (let i = 0; i < 5; i++) {
+                const startX = (Math.random() - 0.5) * 3000;
+                const startY = (Math.random() - 0.5) * 3000;
+                const color = npcColors[i % npcColors.length];
+                const npc = new Fleet(startX, startY, color);
+                this.entities.push(npc);
+                this.npcFleets.push(npc);
+            }
         }
+
+        // Auto-Save Interval (5 seconds)
+        setInterval(() => {
+            SaveSystem.save(this.playerFleet, this.npcFleets);
+        }, 5000);
     }
 
     private loop(timestamp: number) {
         const dt = (timestamp - this.lastTime) / 1000;
         this.lastTime = timestamp;
 
-        this.update(dt);
+        if (!this.isPaused) {
+            this.update(dt);
+        }
         this.draw();
 
         requestAnimationFrame((t) => this.loop(t));
     }
 
     private update(dt: number) {
+        // Apply time scale
+        dt = dt * this.timeScale;
+
         // 1. Handle Input
         if (this.input.isMouseDown) {
             // Convert screen click to world coordinates
             const clickPos = new Vector2(this.input.mousePos.x, this.input.mousePos.y);
             const worldTarget = this.camera.screenToWorld(clickPos);
             this.playerFleet.setTarget(worldTarget);
+
+            // Resume if paused
+            if (this.isPaused) {
+                this.togglePause();
+            }
         }
 
         // 2. AI Logic (Simple Patrol)
@@ -174,13 +233,23 @@ export class Game {
             e.update(dt);
         }
 
-        // 3. Update Camera to follow player
+        // 4. Update Camera to follow player
         // Smooth follow
         const camTarget = this.playerFleet.position;
         // Simple lerp: cam = cam + (target - cam) * speed * dt
         const lerpSpeed = 5.0;
         const diff = camTarget.sub(this.camera.position);
         this.camera.position = this.camera.position.add(diff.scale(lerpSpeed * dt));
+
+        // 5. Auto-pause when player fleet stops
+        const isMoving = this.playerFleet.velocity.mag() > 1;
+        if (this.wasMovingLastFrame && !isMoving && !this.playerFleet.target) {
+            // Just stopped and has no target
+            if (!this.isPaused) {
+                this.togglePause();
+            }
+        }
+        this.wasMovingLastFrame = isMoving;
     }
 
     private draw() {
