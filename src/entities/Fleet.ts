@@ -9,6 +9,7 @@ export class Fleet extends Entity {
     public followTarget: Entity | null = null; // Entity to follow
     public followDistance: number = 100; // Distance to maintain when following
     public followMode: 'approach' | 'contact' | null = null;
+    public manualSteerTarget: Vector2 | null = null; // Manual override for interception
 
     public maxSpeed: number = 300;
     private stopThreshold: number = 5;
@@ -162,7 +163,10 @@ export class Fleet extends Entity {
             // Calculate effective follow distance
             const effectiveFollowDist = this.followDistance + this.followTarget.radius;
 
-            if (this.followMode === 'approach') {
+            if (this.manualSteerTarget) {
+                // Manual nudge: prioritize player input over calculated intercept
+                this.target = this.manualSteerTarget;
+            } else if (this.followMode === 'approach') {
                 const toTarget = finalAimedPoint.sub(myPos);
                 const dist = toTarget.mag();
                 if (dist > effectiveFollowDist) {
@@ -188,9 +192,9 @@ export class Fleet extends Entity {
                 const dir = toTarget.normalize();
 
                 const desired = dir.scale(currentMaxSpeed);
-                // Arrive logic
+                // Arrive logic (skip if manually steering for "thrust" feeling)
                 const slowRadius = 200;
-                if (dist < slowRadius) {
+                if (dist < slowRadius && !this.manualSteerTarget) {
                     desired.x *= (dist / slowRadius);
                     desired.y *= (dist / slowRadius);
                 }

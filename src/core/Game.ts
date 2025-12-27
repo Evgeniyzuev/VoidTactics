@@ -270,8 +270,18 @@ export class Game {
                 this.isDragging = true;
                 this.lastMousePos = clickPos;
             } else {
+                const worldPos = this.camera.screenToWorld(this.input.mousePos);
+
+                // If following someone, use Mouse Down to direct thrust
+                if (this.playerFleet.followTarget) {
+                    this.playerFleet.manualSteerTarget = worldPos;
+                    // While steering, we might prefer NOT to pan unless deliberate
+                }
+
                 const delta = clickPos.sub(this.lastMousePos);
-                if (delta.mag() > 2) {
+                // Only pan if we are NOT manually steering OR if we drag quite a bit
+                const panThreshold = this.playerFleet.followTarget ? 20 : 2;
+                if (delta.mag() > panThreshold) {
                     this.camera.pan(-delta.x, -delta.y);
                     this.lastMousePos = clickPos;
 
@@ -279,9 +289,14 @@ export class Game {
                         this.cameraFollow = false;
                         this.ui.setCameraFollowState(false);
                     }
+                    // If panned, clear steering to avoid conflict
+                    this.playerFleet.manualSteerTarget = null;
                 }
             }
         } else {
+            const wasSteering = this.playerFleet.manualSteerTarget !== null;
+            this.playerFleet.manualSteerTarget = null;
+
             if (this.isDragging) {
                 // Was dragging, now released. Check for click
                 const worldTarget = this.camera.screenToWorld(this.input.mousePos);
@@ -291,8 +306,8 @@ export class Game {
                     this.playerFleet.setTarget(worldTarget);
                     if (this.isPaused) this.togglePause();
                     this.closeTooltip();
-                } else {
-                    // Inspect? Only if drag was minimal
+                } else if (!wasSteering) {
+                    // Inspect only if we weren't manually guiding the ship
                     this.inspectObject(worldTarget);
                 }
             }
