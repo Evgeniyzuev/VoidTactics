@@ -87,8 +87,7 @@ export class Fleet extends Entity {
 
         if (this.state === 'combat') {
             this.combatTimer -= dt;
-            // If player has a target and is in combat, they might be trying to break it
-            // We'll let Game.ts handle the logic, but here we still freeze movement
+            // Movement is restricted during combat
             this.velocity = this.velocity.scale(0.9);
             this.position = this.position.add(this.velocity.scale(dt));
             return;

@@ -611,18 +611,7 @@ export class Game {
                         }
                     }
                 }
-
                 if (opponent) {
-                    // Check for interruption by Player movement
-                    if (f === this.playerFleet && this.playerFleet.target) {
-                        this.interruptCombat(f, opponent);
-                        continue;
-                    }
-                    if (opponent === this.playerFleet && this.playerFleet.target) {
-                        this.interruptCombat(opponent, f);
-                        continue;
-                    }
-
                     // Normal resolution when timer hits 0
                     if (f.combatTimer <= 0) {
                         this.resolveBattle(f, opponent, toRemove);
@@ -649,28 +638,6 @@ export class Game {
         }
     }
 
-    private interruptCombat(f1: Fleet, f2: Fleet) {
-        const spentTime = 3.0 - f1.combatTimer;
-        const progress = spentTime / 3.0;
-
-        // Base loss up to 50%
-        const calculateLoss = (self: Fleet, other: Fleet) => {
-            // Factor: how much stronger is the opponent (max 2x multiplier for loss)
-            const strengthFactor = (other.strength / (self.strength + other.strength)) * 2;
-            return Math.round(self.strength * 0.5 * progress * strengthFactor);
-        };
-
-        const l1 = calculateLoss(f1, f2);
-        const l2 = calculateLoss(f2, f1);
-
-        f1.strength = Math.max(1, f1.strength - l1);
-        f2.strength = Math.max(1, f2.strength - l2);
-
-        f1.state = 'normal';
-        f2.state = 'normal';
-
-        console.log(`Combat interrupted! ${f1.faction} lost ${l1}, ${f2.faction} lost ${l2}`);
-    }
 
     private resolveBattle(f1: Fleet, f2: Fleet, toRemove: Fleet[]) {
         if (toRemove.includes(f1) || toRemove.includes(f2)) return;
