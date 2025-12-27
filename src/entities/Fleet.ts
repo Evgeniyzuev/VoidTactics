@@ -125,12 +125,14 @@ export class Fleet extends Entity {
             // Iterative Intercept (Accounts for Acceleration)
             // We do a few passes to find a stable time 't'
             let t = 0;
-            const iterations = 3;
+            const iterations = 5;
             for (let i = 0; i < iterations; i++) {
                 // Future position: P + V*t + 0.5*A*t^2
+                // We clamp the acceleration time lookahead to 2s to avoid extreme overshooting
+                const tAcc = Math.min(t, 2);
                 const futurePos = targetPos
                     .add(targetVel.scale(t))
-                    .add(targetAcc.scale(0.5 * t * t));
+                    .add(targetAcc.scale(0.5 * tAcc * tAcc));
 
                 const dist = futurePos.sub(myPos).mag();
                 t = dist / maxSpeed;
@@ -142,25 +144,36 @@ export class Fleet extends Entity {
                 }
             }
 
-            const interceptPoint = targetPos
+            // Calculate final intercept point
+            const tAccFinal = Math.min(t, 2);
+            let interceptPoint = targetPos
                 .add(targetVel.scale(t))
-                .add(targetAcc.scale(0.5 * t * t));
+                .add(targetAcc.scale(0.5 * tAccFinal * tAccFinal));
+
+            // Hybrid Pursuit/Intercept:
+            // At long distances, steer more towards the actual current position 
+            // to avoid flying "too parallel" and actually close the distance faster.
+            const directDist = targetPos.sub(myPos).mag();
+            const interceptWeight = Math.max(0, Math.min(1, 1 - (directDist - 500) / 2000));
+            // 1.0 (full intercept) at 500 units, 0.0 (full pursuit) at 2500 units.
+
+            const finalAimedPoint = targetPos.scale(1 - interceptWeight).add(interceptPoint.scale(interceptWeight));
 
             // Calculate effective follow distance
             const effectiveFollowDist = this.followDistance + this.followTarget.radius;
 
             if (this.followMode === 'approach') {
-                const toTarget = interceptPoint.sub(myPos);
+                const toTarget = finalAimedPoint.sub(myPos);
                 const dist = toTarget.mag();
                 if (dist > effectiveFollowDist) {
                     const dir = toTarget.normalize();
-                    this.target = interceptPoint.sub(dir.scale(effectiveFollowDist));
+                    this.target = finalAimedPoint.sub(dir.scale(effectiveFollowDist));
                 } else {
                     this.target = null;
                 }
             } else {
-                // Contact mode: Directly to intercept point
-                this.target = interceptPoint;
+                // Contact mode: Directly to aimed point
+                this.target = finalAimedPoint;
             }
         }
 
@@ -185,8 +198,8 @@ export class Fleet extends Entity {
                 const steering = desired.sub(this.velocity);
 
                 // Acceleration depends on size (larger is slower to accelerate)
-                // Much slower responsiveness: 0.6
-                let responsiveness = 0.6 / Math.sqrt(this.sizeMultiplier);
+                // Snappier responsiveness: 1.2 base
+                let responsiveness = 1.2 / Math.sqrt(this.sizeMultiplier);
                 if (this.abilities.afterburner.active) responsiveness *= 1.5;
 
                 const steerForce = steering.scale(responsiveness * dt);
