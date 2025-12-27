@@ -5,12 +5,10 @@ import { Vector2 } from '../utils/Vector2';
 export class Fleet extends Entity {
     public velocity: Vector2 = new Vector2(0, 0);
     public target: Vector2 | null = null;
-    public followTarget: Fleet | null = null; // Fleet to follow
+    public followTarget: Entity | null = null; // Entity to follow
     public followDistance: number = 100; // Distance to maintain when following
 
     private maxSpeed: number = 300;
-    private acceleration: number = 200;
-    private deceleration: number = 150;
     private stopThreshold: number = 5;
 
     private rotation: number = 0;
@@ -28,8 +26,8 @@ export class Fleet extends Entity {
         this.followTarget = null; // Clear follow mode when setting direct target
     }
 
-    setFollowTarget(fleet: Fleet) {
-        this.followTarget = fleet;
+    setFollowTarget(entity: Entity) {
+        this.followTarget = entity;
         this.target = null; // Will be set in update
     }
 
@@ -114,10 +112,13 @@ export class Fleet extends Entity {
         ctx.fillStyle = grad;
         ctx.fill();
 
-        // High contrast stroke
+        // High contrast stroke with glow
         ctx.strokeStyle = '#FFFFFF';
         ctx.lineWidth = 2;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = this.color;
         ctx.stroke();
+        ctx.shadowBlur = 0; // Reset after stroke
 
         // Directional Indicator (Small arrow or engine inside bubble)
         ctx.beginPath();

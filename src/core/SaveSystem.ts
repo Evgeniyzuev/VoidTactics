@@ -1,5 +1,4 @@
 import { Fleet } from '../entities/Fleet';
-import { Vector2 } from '../utils/Vector2';
 
 export interface SavedFleetState {
     x: number;

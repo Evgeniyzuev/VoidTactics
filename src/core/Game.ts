@@ -37,6 +37,7 @@ export class Game {
     // Fleet interaction
     private selectedFleet: Fleet | null = null;
     private contactDistance: number = 50; // Distance for contact dialog
+    private inspectedEntity: Entity | null = null; // Entity being inspected for tooltip
 
     constructor(canvas: HTMLCanvasElement) {
         this.renderer = new Renderer(canvas);
@@ -61,10 +62,13 @@ export class Game {
         // Setup Modal Manager
         this.modal = new ModalManager();
 
-
-
         // Start loop
         requestAnimationFrame((t) => this.loop(t));
+
+        // Auto-Save Interval (5 seconds)
+        setInterval(() => {
+            SaveSystem.save(this.playerFleet, this.npcFleets);
+        }, 5000);
 
         // Resize Listener for Camera & Background
         window.addEventListener('resize', () => {
@@ -85,10 +89,7 @@ export class Game {
 
     private setMoveMode(enabled: boolean) {
         this.moveMode = enabled;
-        if (this.infoTooltip) {
-            this.infoTooltip.remove();
-            this.infoTooltip = null;
-        }
+        this.closeTooltip();
     }
 
     private setCameraFollow(follow: boolean) {
@@ -134,30 +135,22 @@ export class Game {
             cloudGrad.addColorStop(1, 'transparent');
 
             ctx.fillStyle = cloudGrad;
-            ctx.fillRect(0, 0, width, height); // Fill whole rect to ensure overlap works? actually arc is better but rect is fine for gradient
+            ctx.fillRect(0, 0, width, height);
         }
     }
 
     private initWorld() {
-        // 1. Static World (Planets/Stars) - Always create these
         // Star
         const star = new CelestialBody(0, 0, 150, '#FFD700', 'Sol', true);
         this.entities.push(star);
 
         // Planets
-        const terra = new CelestialBody(800, 0, 40, '#00CED1', 'Terra');
-        this.entities.push(terra);
-
-        // Moons for Terra
+        this.entities.push(new CelestialBody(800, 0, 40, '#00CED1', 'Terra'));
         this.entities.push(new CelestialBody(860, 0, 10, '#AAAAAA', 'Luna'));
-
-        // Mars-like
         this.entities.push(new CelestialBody(-1200, 400, 60, '#FF4500', 'Marsish'));
-
-        // Gas Giant
         this.entities.push(new CelestialBody(400, -1500, 110, '#DEB887', 'Jupit'));
 
-        // Asteroid Belt (Random)
+        // Asteroid Belt
         for (let i = 0; i < 20; i++) {
             const angle = Math.random() * Math.PI * 2;
             const dist = 2000 + Math.random() * 500;
@@ -167,98 +160,80 @@ export class Game {
             this.entities.push(new CelestialBody(x, y, size, '#888888', 'Asteroid'));
         }
 
-        // Space Station
         this.entities.push(new CelestialBody(-600, -600, 20, '#FF00FF', 'Outpost Alpha'));
 
-        // 2. Dynamic Entities (Fleets) - Try to load from Save
         const saveData = SaveSystem.load();
 
         if (saveData) {
             console.log('Loading Save Game...');
-            // Load Player
             const pData = saveData.player;
             this.playerFleet = new Fleet(pData.x, pData.y, pData.color, true);
             this.playerFleet.velocity = new Vector2(pData.vx, pData.vy);
             this.entities.push(this.playerFleet);
 
-            // Load NPCs
-            for (const nData of saveData.npcs) {
-                const npc = new Fleet(nData.x, nData.y, nData.color, false);
-                npc.velocity = new Vector2(nData.vx, nData.vy);
-                this.entities.push(npc);
-                this.npcFleets.push(npc);
+            if (saveData.npcs && saveData.npcs.length > 0) {
+                for (const nData of saveData.npcs) {
+                    const npc = new Fleet(nData.x, nData.y, nData.color, false);
+                    npc.velocity = new Vector2(nData.vx, nData.vy);
+                    this.entities.push(npc);
+                    this.npcFleets.push(npc);
+                }
+            } else {
+                this.spawnNPCs();
             }
         } else {
             console.log('Starting New Game...');
-            // Player
             this.playerFleet = new Fleet(500, 500, '#00AAFF', true);
             this.entities.push(this.playerFleet);
-
-            // NPC Fleets (Civilian Traffic)
-            const npcColors = ['#FFA500', '#32CD32', '#9370DB', '#FF69B4', '#FFFF00'];
-            for (let i = 0; i < 20; i++) {
-                const startX = (Math.random() - 0.5) * 4000;
-                const startY = (Math.random() - 0.5) * 4000;
-                const color = npcColors[i % npcColors.length];
-                const npc = new Fleet(startX, startY, color, false);
-                this.entities.push(npc);
-                this.npcFleets.push(npc);
-            }
+            this.spawnNPCs();
         }
+    }
 
-        // Auto-Save Interval (5 seconds)
-        setInterval(() => {
-            SaveSystem.save(this.playerFleet, this.npcFleets);
-        }, 5000);
+    private spawnNPCs() {
+        const npcColors = ['#FFA500', '#32CD32', '#9370DB', '#FF69B4', '#FFFF00'];
+        for (let i = 0; i < 20; i++) {
+            const angle = (i / 20) * Math.PI * 2;
+            const distance = 800 + Math.random() * 700;
+            const startX = 500 + Math.cos(angle) * distance;
+            const startY = 500 + Math.sin(angle) * distance;
+            const color = npcColors[i % npcColors.length];
+            const npc = new Fleet(startX, startY, color, false);
+            this.entities.push(npc);
+            this.npcFleets.push(npc);
+        }
     }
 
     private loop(timestamp: number) {
         const dt = (timestamp - this.lastTime) / 1000;
         this.lastTime = timestamp;
 
-        // Handle Zoom (Wheel or Pinch)
         const wheelDelta = this.input.getWheelDelta();
         const pinchDelta = this.input.getPinchDelta();
-        if (wheelDelta !== 0) {
-            this.camera.adjustZoom(wheelDelta);
-        }
-        if (pinchDelta !== 0) {
-            this.camera.adjustZoom(pinchDelta);
-        }
+        if (wheelDelta !== 0) this.camera.adjustZoom(wheelDelta);
+        if (pinchDelta !== 0) this.camera.adjustZoom(pinchDelta);
 
-        // Handle Input (Always, even when paused)
         if (this.input.isMouseDown) {
             const clickPos = new Vector2(this.input.mousePos.x, this.input.mousePos.y);
 
             if (!this.cameraFollow && !this.isDragging) {
-                // Start dragging for camera pan
                 this.isDragging = true;
                 this.lastMousePos = clickPos;
             } else if (this.isDragging) {
-                // Continue dragging
                 const delta = clickPos.sub(this.lastMousePos);
                 this.camera.pan(-delta.x, -delta.y);
                 this.lastMousePos = clickPos;
             } else {
-                // Normal click interactions
                 const worldTarget = this.camera.screenToWorld(clickPos);
                 const isDoubleClick = this.input.isDoubleClick();
 
                 if (this.moveMode || isDoubleClick) {
-                    // Movement Mode OR Double-click in inspect mode: Issue move command
                     this.playerFleet.setTarget(worldTarget);
-
-                    // Resume if paused
-                    if (this.isPaused) {
-                        this.togglePause();
-                    }
+                    if (this.isPaused) this.togglePause();
                 } else {
-                    // Inspect Mode (single click): Find clicked object and show info
                     this.inspectObject(worldTarget);
                 }
             }
         } else {
-            // Mouse released
             this.isDragging = false;
         }
 
@@ -271,19 +246,13 @@ export class Game {
     }
 
     private update(dt: number) {
-        // Apply time scale
         dt = dt * this.timeScale;
 
-        // 1. AI Logic (Simple Patrol)
         const celestialBodies = this.entities.filter(e => e instanceof CelestialBody) as CelestialBody[];
         for (const npc of this.npcFleets) {
-            // If idle (no target and stopped)
             if (!npc.target && npc.velocity.mag() < 5) {
-                // Pick random destination
-                // 1% chance per frame to start moving if idle, so they don't all move instantly
                 if (Math.random() < 0.01 && celestialBodies.length > 0) {
                     const destBody = celestialBodies[Math.floor(Math.random() * celestialBodies.length)];
-                    // Fly to near the body, not inside it
                     const offset = new Vector2((Math.random() - 0.5) * 300, (Math.random() - 0.5) * 300);
                     const dest = destBody.position.add(offset);
                     npc.setTarget(dest);
@@ -291,59 +260,47 @@ export class Game {
             }
         }
 
-        // 3. Update Entities
         for (const e of this.entities) {
             e.update(dt);
         }
 
-        // 4. Update Camera to follow player
         if (this.cameraFollow) {
-            // Smooth follow
             const camTarget = this.playerFleet.position;
-            // Simple lerp: cam = cam + (target - cam) * speed * dt
             const lerpSpeed = 5.0;
             const diff = camTarget.sub(this.camera.position);
             this.camera.position = this.camera.position.add(diff.scale(lerpSpeed * dt));
         }
 
-        // 5. Check for contact with followed fleet
         if (this.selectedFleet && this.playerFleet.followTarget === this.selectedFleet) {
             const dist = Vector2.distance(this.playerFleet.position, this.selectedFleet.position);
             if (dist <= this.contactDistance) {
-                // In contact range - show dialog
                 this.initiateContact(this.selectedFleet);
                 this.playerFleet.stopFollowing();
                 this.selectedFleet = null;
             }
         }
 
-        // 6. Auto-pause when player fleet stops
         const isMoving = this.playerFleet.velocity.mag() > 1;
         if (this.wasMovingLastFrame && !isMoving && !this.playerFleet.target) {
-            // Just stopped and has no target
-            if (!this.isPaused) {
-                this.togglePause();
-            }
+            if (!this.isPaused) this.togglePause();
         }
         this.wasMovingLastFrame = isMoving;
     }
 
     private inspectObject(worldPos: Vector2) {
-        // Find entity near clicked position
         let closestEntity: Entity | null = null;
-        let minDist = 100; // Click threshold in world units
+        let minDist = 100;
 
         for (const e of this.entities) {
             const dist = Vector2.distance(e.position, worldPos);
             if (dist < minDist) {
                 if (e instanceof CelestialBody) {
-                    // Check if click is within radius
                     if (dist <= (e as CelestialBody).radius) {
                         closestEntity = e;
                         minDist = dist;
                     }
                 } else if (e instanceof Fleet) {
-                    if (dist <= 20) { // Fleet selection radius
+                    if (dist <= 20) {
                         closestEntity = e;
                         minDist = dist;
                     }
@@ -352,23 +309,16 @@ export class Game {
         }
 
         if (closestEntity) {
-            this.showTooltip(closestEntity, worldPos);
+            this.inspectedEntity = closestEntity;
+            this.showTooltip(closestEntity);
         } else {
-            // Clear tooltip if clicking empty space
-            if (this.infoTooltip) {
-                this.infoTooltip.remove();
-                this.infoTooltip = null;
-            }
+            this.closeTooltip();
         }
     }
 
-    private showTooltip(entity: Entity, worldPos: Vector2) {
-        // Remove old tooltip
-        if (this.infoTooltip) {
-            this.infoTooltip.remove();
-        }
+    private showTooltip(entity: Entity) {
+        this.closeTooltip();
 
-        // Create tooltip
         this.infoTooltip = document.createElement('div');
         this.infoTooltip.style.position = 'absolute';
         this.infoTooltip.style.background = 'rgba(0, 0, 0, 0.9)';
@@ -376,145 +326,146 @@ export class Game {
         this.infoTooltip.style.padding = '12px 16px';
         this.infoTooltip.style.borderRadius = '8px';
         this.infoTooltip.style.border = '1px solid rgba(255, 255, 255, 0.3)';
-        this.infoTooltip.style.pointerEvents = 'auto'; // Allow interaction with buttons
+        this.infoTooltip.style.pointerEvents = 'auto';
         this.infoTooltip.style.fontSize = '14px';
         this.infoTooltip.style.fontFamily = 'monospace';
         this.infoTooltip.style.zIndex = '1000';
         this.infoTooltip.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.5)';
 
-        // Get screen position
         const screenPos = this.camera.worldToScreen(entity.position);
         this.infoTooltip.style.left = (screenPos.x + 20) + 'px';
         this.infoTooltip.style.top = (screenPos.y - 30) + 'px';
 
-        // Fill content
-        let content = '';
+        const header = document.createElement('div');
+        header.style.marginBottom = '8px';
+
+        let info = '';
+        let showApproach = false;
+        let showContact = false;
+        let showDock = false;
+
         if (entity instanceof CelestialBody) {
             const body = entity as CelestialBody;
-            content = `<strong>${body.name}</strong><br/>`;
-            content += body.isStar ? '⭐ Star<br/>' : '🌍 Planet<br/>';
-            content += `Radius: ${body.radius.toFixed(0)}`;
+            info = `<strong>${body.name}</strong><br/>`;
+            info += body.isStar ? '⭐ Star<br/>' : '🌍 Planet<br/>';
+            info += `Radius: ${body.radius.toFixed(0)}`;
+            showApproach = true;
+            if (!body.isStar && body.name !== 'Asteroid') showDock = true;
         } else if (entity instanceof Fleet) {
             const fleet = entity as Fleet;
             const isPlayer = fleet === this.playerFleet;
-            content = `<strong>${isPlayer ? 'Player Fleet' : 'NPC Fleet'}</strong><br/>`;
-            content += `Speed: ${fleet.velocity.mag().toFixed(1)}<br/>`;
-            content += `Pos: (${fleet.position.x.toFixed(0)}, ${fleet.position.y.toFixed(0)})`;
+            info = `<strong>${isPlayer ? 'Player Fleet' : 'NPC Fleet'}</strong><br/>`;
+            info += `Speed: ${fleet.velocity.mag().toFixed(1)}<br/>`;
+            info += `Pos: (${fleet.position.x.toFixed(0)}, ${fleet.position.y.toFixed(0)})`;
 
-            // Add buttons for NPC fleets
             if (!isPlayer) {
-                const buttonContainer = document.createElement('div');
-                buttonContainer.style.marginTop = '10px';
-                buttonContainer.style.display = 'flex';
-                buttonContainer.style.gap = '8px';
-
-                const createButton = (text: string, color: string, callback: () => void) => {
-                    const btn = document.createElement('button');
-                    btn.textContent = text;
-                    btn.style.padding = '6px 12px';
-                    btn.style.border = 'none';
-                    btn.style.borderRadius = '4px';
-                    btn.style.background = color;
-                    btn.style.color = 'white';
-                    btn.style.fontSize = '12px';
-                    btn.style.cursor = 'pointer';
-                    btn.style.fontWeight = 'bold';
-                    btn.style.transition = 'transform 0.2s';
-                    btn.style.fontFamily = 'monospace';
-
-                    btn.addEventListener('mouseenter', () => {
-                        btn.style.transform = 'scale(1.05)';
-                    });
-
-                    btn.addEventListener('mouseleave', () => {
-                        btn.style.transform = 'scale(1)';
-                    });
-
-                    btn.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        callback();
-                    });
-
-                    return btn;
-                };
-
-                const approachBtn = createButton('🚀 Приближение', '#0088FF', () => {
-                    this.playerFleet.setFollowTarget(fleet);
-                    this.selectedFleet = fleet;
-                    if (this.infoTooltip) {
-                        this.infoTooltip.remove();
-                        this.infoTooltip = null;
-                    }
-                });
-
-                const contactBtn = createButton('📡 Контакт', '#00AA00', () => {
-                    this.initiateContact(fleet);
-                });
-
-                buttonContainer.appendChild(approachBtn);
-                buttonContainer.appendChild(contactBtn);
-
-                this.infoTooltip.innerHTML = content;
-                this.infoTooltip.appendChild(buttonContainer);
-
-                const uiLayer = document.getElementById('ui-layer');
-                if (uiLayer) {
-                    uiLayer.appendChild(this.infoTooltip);
-                }
-                return;
+                showApproach = true;
+                showContact = true;
             }
         }
 
-        this.infoTooltip.innerHTML = content;
+        header.innerHTML = info;
+        this.infoTooltip.appendChild(header);
+
+        const buttonContainer = document.createElement('div');
+        buttonContainer.style.display = 'flex';
+        buttonContainer.style.gap = '8px';
+        buttonContainer.style.flexWrap = 'wrap';
+
+        const createButton = (text: string, color: string, callback: () => void) => {
+            const btn = document.createElement('button');
+            btn.textContent = text;
+            btn.style.padding = '6px 12px';
+            btn.style.border = 'none';
+            btn.style.borderRadius = '4px';
+            btn.style.background = color;
+            btn.style.color = 'white';
+            btn.style.fontSize = '12px';
+            btn.style.cursor = 'pointer';
+            btn.style.fontWeight = 'bold';
+            btn.style.fontFamily = 'monospace';
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                callback();
+            });
+            return btn;
+        };
+
+        if (showApproach) {
+            const approachBtn = createButton('🚀 Приближение', '#0088FF', () => {
+                this.playerFleet.setFollowTarget(entity);
+                this.selectedFleet = entity instanceof Fleet ? entity : null;
+                this.closeTooltip();
+            });
+            buttonContainer.appendChild(approachBtn);
+        }
+
+        if (showContact && entity instanceof Fleet) {
+            const contactBtn = createButton('📡 Контакт', '#00AA00', () => {
+                this.initiateContact(entity);
+            });
+            buttonContainer.appendChild(contactBtn);
+        }
+
+        if (showDock) {
+            const dockBtn = createButton('⚓ Стыковка', '#9370DB', () => {
+                alert('Стыковка в разработке...');
+            });
+            buttonContainer.appendChild(dockBtn);
+        }
+
+        if (buttonContainer.children.length > 0) {
+            this.infoTooltip.appendChild(buttonContainer);
+        }
 
         const uiLayer = document.getElementById('ui-layer');
-        if (uiLayer) {
-            uiLayer.appendChild(this.infoTooltip);
+        if (uiLayer) uiLayer.appendChild(this.infoTooltip);
+    }
+
+    private closeTooltip() {
+        if (this.infoTooltip) {
+            this.infoTooltip.remove();
+            this.infoTooltip = null;
+            this.inspectedEntity = null;
         }
     }
 
     private initiateContact(fleet: Fleet) {
-        // Close tooltip if open
-        if (this.infoTooltip) {
-            this.infoTooltip.remove();
-            this.infoTooltip = null;
-        }
+        this.closeTooltip();
+        console.log(`Initiating contact with fleet at ${fleet.position.x}, ${fleet.position.y}`);
 
         this.modal.showContactDialog(
             () => {
-                // On Communicate
                 console.log('Establishing communication with fleet...');
-                // TODO: Implement communication system
                 alert('Связь установлена! (Функция в разработке)');
             },
             () => {
-                // On Attack
                 console.log('Initiating battle...');
                 this.modal.showBattleScreen(() => {
                     console.log('Battle ended');
                 });
             },
             () => {
-                // On Cancel
                 console.log('Contact cancelled');
             }
         );
     }
 
+    private updateTooltipPosition() {
+        if (this.infoTooltip && this.inspectedEntity) {
+            const screenPos = this.camera.worldToScreen(this.inspectedEntity.position);
+            this.infoTooltip.style.left = (screenPos.x + 20) + 'px';
+            this.infoTooltip.style.top = (screenPos.y - 30) + 'px';
+        }
+    }
+
     private draw() {
         this.renderer.clear();
-
-        // Draw Background
         this.drawBackground();
 
         const ctx = this.renderer.getContext();
+        for (const e of this.entities) e.draw(ctx, this.camera);
 
-        // Draw Entities
-        for (const e of this.entities) {
-            e.draw(ctx, this.camera);
-        }
-
-        // Draw follow line if following another fleet
         if (this.playerFleet.followTarget) {
             const playerPos = this.camera.worldToScreen(this.playerFleet.position);
             const targetPos = this.camera.worldToScreen(this.playerFleet.followTarget.position);
@@ -527,31 +478,21 @@ export class Game {
             ctx.moveTo(playerPos.x, playerPos.y);
             ctx.lineTo(targetPos.x, targetPos.y);
             ctx.stroke();
-            ctx.setLineDash([]);
             ctx.restore();
         }
 
-        // Debug UI
-        // ctx.fillStyle = 'white';
-        // ctx.font = '14px monospace';
-        // ctx.fillText(`Pos: ${Math.round(this.playerFleet.position.x)}, ${Math.round(this.playerFleet.position.y)}`, 10, 20);
+        this.updateTooltipPosition();
     }
 
     private drawBackground() {
         const ctx = this.renderer.getContext();
         const { width, height } = this.renderer.getDimensions();
-
-        // Draw the generated offscreen canvas
-        // We can implement simple parallax if we generate it slightly larger, but for now fixed
         ctx.drawImage(this.backgroundCanvas, 0, 0, width, height);
 
-        // Overlay Grid (fainter)
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
         ctx.lineWidth = 1;
 
-        // Grid Spacing
         const gridSize = 500;
-        // Find visible range
         const topLeft = this.camera.screenToWorld(new Vector2(0, 0));
         const botRight = this.camera.screenToWorld(new Vector2(width, height));
 
