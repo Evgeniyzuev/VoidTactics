@@ -229,23 +229,20 @@ export class Game {
             const npc = new Fleet(startX, startY, factionDef.color, false);
             npc.faction = factionDef.type;
 
-            // Strength Distribution Logic
+            // Strength Distribution Logic: Equal weight for (Same, Multiplied, Divided)
+            // Coefficients: 2, 4, 8 (Equal weight)
             const playerStrength = this.playerFleet.strength;
-            let baseS = playerStrength;
+            const coefficients = [2, 4, 8];
+            const coeff = coefficients[Math.floor(Math.random() * coefficients.length)];
 
-            const category = Math.random();
-            if (category < 0.33) {
-                // Similar
-            } else if (category < 0.66) {
-                // Stronger
-                let n = 1;
-                while (Math.random() < 0.5 && n < 8) n++;
-                baseS = playerStrength * Math.pow(2, n);
+            let baseS = playerStrength;
+            const randType = Math.random();
+            if (randType < 0.33) {
+                baseS = playerStrength;
+            } else if (randType < 0.66) {
+                baseS = playerStrength * coeff;
             } else {
-                // Weaker
-                let n = 1;
-                while (Math.random() < 0.5 && n < 8) n++;
-                baseS = playerStrength / Math.pow(2, n);
+                baseS = playerStrength / coeff;
             }
 
             // Apply +-30% variance
