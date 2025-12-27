@@ -7,6 +7,7 @@ import { Fleet } from '../entities/Fleet';
 import { Entity } from '../entities/Entity';
 import { SaveSystem } from './SaveSystem';
 import { UIManager } from './UIManager';
+import { ModalManager } from './ModalManager';
 
 export class Game {
     private lastTime: number = 0;
@@ -14,6 +15,7 @@ export class Game {
     private input: InputManager;
     private camera: Camera;
     private ui: UIManager;
+    private modal: ModalManager;
 
     // Entities
     private entities: Entity[] = [];
@@ -31,6 +33,10 @@ export class Game {
     private cameraFollow: boolean = true;
     private isDragging: boolean = false;
     private lastMousePos: Vector2 = new Vector2(0, 0);
+
+    // Fleet interaction
+    private selectedFleet: Fleet | null = null;
+    private contactDistance: number = 50; // Distance for contact dialog
 
     constructor(canvas: HTMLCanvasElement) {
         this.renderer = new Renderer(canvas);
@@ -51,6 +57,11 @@ export class Game {
             onMoveModeToggle: (enabled) => this.setMoveMode(enabled),
             onCameraToggle: (follow) => this.setCameraFollow(follow)
         });
+
+        // Setup Modal Manager
+        this.modal = new ModalManager();
+
+
 
         // Start loop
         requestAnimationFrame((t) => this.loop(t));
@@ -295,7 +306,18 @@ export class Game {
             this.camera.position = this.camera.position.add(diff.scale(lerpSpeed * dt));
         }
 
-        // 5. Auto-pause when player fleet stops
+        // 5. Check for contact with followed fleet
+        if (this.selectedFleet && this.playerFleet.followTarget === this.selectedFleet) {
+            const dist = Vector2.distance(this.playerFleet.position, this.selectedFleet.position);
+            if (dist <= this.contactDistance) {
+                // In contact range - show dialog
+                this.initiateContact(this.selectedFleet);
+                this.playerFleet.stopFollowing();
+                this.selectedFleet = null;
+            }
+        }
+
+        // 6. Auto-pause when player fleet stops
         const isMoving = this.playerFleet.velocity.mag() > 1;
         if (this.wasMovingLastFrame && !isMoving && !this.playerFleet.target) {
             // Just stopped and has no target
@@ -349,15 +371,16 @@ export class Game {
         // Create tooltip
         this.infoTooltip = document.createElement('div');
         this.infoTooltip.style.position = 'absolute';
-        this.infoTooltip.style.background = 'rgba(0, 0, 0, 0.8)';
+        this.infoTooltip.style.background = 'rgba(0, 0, 0, 0.9)';
         this.infoTooltip.style.color = 'white';
-        this.infoTooltip.style.padding = '10px 15px';
+        this.infoTooltip.style.padding = '12px 16px';
         this.infoTooltip.style.borderRadius = '8px';
-        this.infoTooltip.style.border = '1px solid rgba(255, 255, 255, 0.2)';
-        this.infoTooltip.style.pointerEvents = 'none';
+        this.infoTooltip.style.border = '1px solid rgba(255, 255, 255, 0.3)';
+        this.infoTooltip.style.pointerEvents = 'auto'; // Allow interaction with buttons
         this.infoTooltip.style.fontSize = '14px';
         this.infoTooltip.style.fontFamily = 'monospace';
         this.infoTooltip.style.zIndex = '1000';
+        this.infoTooltip.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.5)';
 
         // Get screen position
         const screenPos = this.camera.worldToScreen(entity.position);
@@ -377,6 +400,69 @@ export class Game {
             content = `<strong>${isPlayer ? 'Player Fleet' : 'NPC Fleet'}</strong><br/>`;
             content += `Speed: ${fleet.velocity.mag().toFixed(1)}<br/>`;
             content += `Pos: (${fleet.position.x.toFixed(0)}, ${fleet.position.y.toFixed(0)})`;
+
+            // Add buttons for NPC fleets
+            if (!isPlayer) {
+                const buttonContainer = document.createElement('div');
+                buttonContainer.style.marginTop = '10px';
+                buttonContainer.style.display = 'flex';
+                buttonContainer.style.gap = '8px';
+
+                const createButton = (text: string, color: string, callback: () => void) => {
+                    const btn = document.createElement('button');
+                    btn.textContent = text;
+                    btn.style.padding = '6px 12px';
+                    btn.style.border = 'none';
+                    btn.style.borderRadius = '4px';
+                    btn.style.background = color;
+                    btn.style.color = 'white';
+                    btn.style.fontSize = '12px';
+                    btn.style.cursor = 'pointer';
+                    btn.style.fontWeight = 'bold';
+                    btn.style.transition = 'transform 0.2s';
+                    btn.style.fontFamily = 'monospace';
+
+                    btn.addEventListener('mouseenter', () => {
+                        btn.style.transform = 'scale(1.05)';
+                    });
+
+                    btn.addEventListener('mouseleave', () => {
+                        btn.style.transform = 'scale(1)';
+                    });
+
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        callback();
+                    });
+
+                    return btn;
+                };
+
+                const approachBtn = createButton('🚀 Приближение', '#0088FF', () => {
+                    this.playerFleet.setFollowTarget(fleet);
+                    this.selectedFleet = fleet;
+                    if (this.infoTooltip) {
+                        this.infoTooltip.remove();
+                        this.infoTooltip = null;
+                    }
+                });
+
+                const contactBtn = createButton('📡 Контакт', '#00AA00', () => {
+                    this.initiateContact(fleet);
+                });
+
+                buttonContainer.appendChild(approachBtn);
+                buttonContainer.appendChild(contactBtn);
+
+                this.infoTooltip.innerHTML = content;
+                this.infoTooltip.appendChild(buttonContainer);
+
+                const uiLayer = document.getElementById('ui-layer');
+                if (uiLayer) {
+                    uiLayer.appendChild(this.infoTooltip);
+                }
+                return;
+            }
         }
 
         this.infoTooltip.innerHTML = content;
@@ -385,6 +471,34 @@ export class Game {
         if (uiLayer) {
             uiLayer.appendChild(this.infoTooltip);
         }
+    }
+
+    private initiateContact(fleet: Fleet) {
+        // Close tooltip if open
+        if (this.infoTooltip) {
+            this.infoTooltip.remove();
+            this.infoTooltip = null;
+        }
+
+        this.modal.showContactDialog(
+            () => {
+                // On Communicate
+                console.log('Establishing communication with fleet...');
+                // TODO: Implement communication system
+                alert('Связь установлена! (Функция в разработке)');
+            },
+            () => {
+                // On Attack
+                console.log('Initiating battle...');
+                this.modal.showBattleScreen(() => {
+                    console.log('Battle ended');
+                });
+            },
+            () => {
+                // On Cancel
+                console.log('Contact cancelled');
+            }
+        );
     }
 
     private draw() {
@@ -398,6 +512,23 @@ export class Game {
         // Draw Entities
         for (const e of this.entities) {
             e.draw(ctx, this.camera);
+        }
+
+        // Draw follow line if following another fleet
+        if (this.playerFleet.followTarget) {
+            const playerPos = this.camera.worldToScreen(this.playerFleet.position);
+            const targetPos = this.camera.worldToScreen(this.playerFleet.followTarget.position);
+
+            ctx.save();
+            ctx.strokeStyle = 'rgba(0, 200, 255, 0.5)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([10, 5]);
+            ctx.beginPath();
+            ctx.moveTo(playerPos.x, playerPos.y);
+            ctx.lineTo(targetPos.x, targetPos.y);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.restore();
         }
 
         // Debug UI

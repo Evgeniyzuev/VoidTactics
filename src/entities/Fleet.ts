@@ -5,6 +5,8 @@ import { Vector2 } from '../utils/Vector2';
 export class Fleet extends Entity {
     public velocity: Vector2 = new Vector2(0, 0);
     public target: Vector2 | null = null;
+    public followTarget: Fleet | null = null; // Fleet to follow
+    public followDistance: number = 100; // Distance to maintain when following
 
     private maxSpeed: number = 300;
     private acceleration: number = 200;
@@ -23,9 +25,34 @@ export class Fleet extends Entity {
 
     setTarget(pos: Vector2) {
         this.target = pos;
+        this.followTarget = null; // Clear follow mode when setting direct target
+    }
+
+    setFollowTarget(fleet: Fleet) {
+        this.followTarget = fleet;
+        this.target = null; // Will be set in update
+    }
+
+    stopFollowing() {
+        this.followTarget = null;
+        this.target = null;
     }
 
     update(dt: number) {
+        // If following another fleet, update target to their position
+        if (this.followTarget) {
+            const toTarget = this.followTarget.position.sub(this.position);
+            const dist = toTarget.mag();
+
+            // Maintain follow distance
+            if (dist > this.followDistance) {
+                const dir = toTarget.normalize();
+                this.target = this.followTarget.position.sub(dir.scale(this.followDistance));
+            } else {
+                this.target = null; // We're at the right distance
+            }
+        }
+
         if (this.target) {
             const toTarget = this.target.sub(this.position);
             const dist = toTarget.mag();
@@ -34,39 +61,7 @@ export class Fleet extends Entity {
                 this.target = null;
                 this.velocity = new Vector2(0, 0); // Snap stop
             } else {
-                // Simple arrival steering behavior
-                // If we are close, we should slow down
-                // v^2 = 2*a*d -> decel_dist = v^2 / (2*decel)
-                const currentSpeed = this.velocity.mag();
-                const decelDist = (currentSpeed * currentSpeed) / (2 * this.deceleration);
-
-                let desiredVelocity: Vector2;
-
-                if (dist < decelDist) {
-                    // Decelerate
-                    desiredVelocity = toTarget.normalize().scale(0); // We want to stop at target
-                    // Actually this is simpler logic: simple seek, but limit speed based on distance
-                    // But let's stick to standard Seek + Arrive for now
-                } else {
-                    // Accelerate
-                }
-
-                // Let's implement a standard "move towards" with inertia
                 const dir = toTarget.normalize();
-
-                // Are we needing to brake?
-                // Basic approach: Accelerate towards target. 
-                // If (velocity projected on target) > (speed allowed by braking distance), brake.
-
-                // Simplest implementation for "Spacey" feel:
-                // Always accelerate towards target, but apply "drag" if we are going to overshoot?
-                // No, let's just do: Accelerate in Direction.
-                // If close, we handle stopping separately or add drag.
-
-                // Better:
-                // desired = dir * maxSpeed.
-                // steering = desired - velocity.
-                // velocity += steering * dt.
 
                 const desired = dir.scale(this.maxSpeed);
                 // Arrive logic
@@ -77,8 +72,6 @@ export class Fleet extends Entity {
                 }
 
                 const steering = desired.sub(this.velocity);
-                // truncate steering
-                // (simplified: just lerp velocity for smoother feel, less rigid physics)
 
                 // Let's use direct acceleration for "Drift" feel
                 const steerForce = steering.scale(2.0 * dt); // 2.0 is responsiveness
