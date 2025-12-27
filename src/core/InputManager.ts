@@ -8,6 +8,9 @@ export class InputManager {
     private wheelDelta: number = 0;
     private lastPinchDistance: number = 0;
     private pinchDelta: number = 0;
+    private lastClickTime: number = 0;
+    private doubleClickThreshold: number = 300; // milliseconds
+    private isDoubleClickFlag: boolean = false;
 
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
@@ -19,6 +22,18 @@ export class InputManager {
         window.addEventListener('pointerdown', (e) => {
             this.isMouseDown = true;
             this.mousePos = new Vector2(e.clientX, e.clientY);
+
+            // Track click timing for double-click detection
+            const now = Date.now();
+            const timeSinceLastClick = now - this.lastClickTime;
+
+            if (timeSinceLastClick > 0 && timeSinceLastClick < this.doubleClickThreshold) {
+                this.isDoubleClickFlag = true;
+            } else {
+                this.isDoubleClickFlag = false;
+            }
+
+            this.lastClickTime = now;
         });
 
         window.addEventListener('pointermove', (e) => {
@@ -78,5 +93,11 @@ export class InputManager {
         const delta = this.pinchDelta;
         this.pinchDelta = 0; // Consume
         return delta;
+    }
+
+    public isDoubleClick(): boolean {
+        const flag = this.isDoubleClickFlag;
+        this.isDoubleClickFlag = false; // Consume the flag
+        return flag;
     }
 }

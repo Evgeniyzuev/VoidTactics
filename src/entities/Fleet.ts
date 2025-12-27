@@ -13,10 +13,12 @@ export class Fleet extends Entity {
 
     private rotation: number = 0;
     public color: string;
+    public isPlayer: boolean = false;
 
-    constructor(x: number, y: number, color: string = '#55CCFF') {
+    constructor(x: number, y: number, color: string = '#55CCFF', isPlayer: boolean = false) {
         super(x, y);
         this.color = color;
+        this.isPlayer = isPlayer;
     }
 
     setTarget(pos: Vector2) {
@@ -145,8 +147,8 @@ export class Fleet extends Entity {
 
         ctx.restore();
 
-        // Draw Target Marker (Bubble)
-        if (this.target) {
+        // Draw Target Marker (Bubble) - Only for Player
+        if (this.isPlayer && this.target) {
             const tPos = camera.worldToScreen(this.target);
             ctx.fillStyle = 'rgba(0, 255, 255, 0.2)';
             ctx.strokeStyle = 'rgba(0, 255, 255, 0.6)';

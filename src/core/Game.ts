@@ -166,13 +166,13 @@ export class Game {
             console.log('Loading Save Game...');
             // Load Player
             const pData = saveData.player;
-            this.playerFleet = new Fleet(pData.x, pData.y, pData.color);
+            this.playerFleet = new Fleet(pData.x, pData.y, pData.color, true);
             this.playerFleet.velocity = new Vector2(pData.vx, pData.vy);
             this.entities.push(this.playerFleet);
 
             // Load NPCs
             for (const nData of saveData.npcs) {
-                const npc = new Fleet(nData.x, nData.y, nData.color);
+                const npc = new Fleet(nData.x, nData.y, nData.color, false);
                 npc.velocity = new Vector2(nData.vx, nData.vy);
                 this.entities.push(npc);
                 this.npcFleets.push(npc);
@@ -180,16 +180,16 @@ export class Game {
         } else {
             console.log('Starting New Game...');
             // Player
-            this.playerFleet = new Fleet(500, 500, '#00AAFF'); // Player Blue
+            this.playerFleet = new Fleet(500, 500, '#00AAFF', true);
             this.entities.push(this.playerFleet);
 
             // NPC Fleets (Civilian Traffic)
             const npcColors = ['#FFA500', '#32CD32', '#9370DB', '#FF69B4', '#FFFF00'];
-            for (let i = 0; i < 5; i++) {
-                const startX = (Math.random() - 0.5) * 3000;
-                const startY = (Math.random() - 0.5) * 3000;
+            for (let i = 0; i < 20; i++) {
+                const startX = (Math.random() - 0.5) * 4000;
+                const startY = (Math.random() - 0.5) * 4000;
                 const color = npcColors[i % npcColors.length];
-                const npc = new Fleet(startX, startY, color);
+                const npc = new Fleet(startX, startY, color, false);
                 this.entities.push(npc);
                 this.npcFleets.push(npc);
             }
@@ -231,9 +231,10 @@ export class Game {
             } else {
                 // Normal click interactions
                 const worldTarget = this.camera.screenToWorld(clickPos);
+                const isDoubleClick = this.input.isDoubleClick();
 
-                if (this.moveMode) {
-                    // Movement Mode: Issue move command
+                if (this.moveMode || isDoubleClick) {
+                    // Movement Mode OR Double-click in inspect mode: Issue move command
                     this.playerFleet.setTarget(worldTarget);
 
                     // Resume if paused
@@ -241,7 +242,7 @@ export class Game {
                         this.togglePause();
                     }
                 } else {
-                    // Inspect Mode: Find clicked object and show info
+                    // Inspect Mode (single click): Find clicked object and show info
                     this.inspectObject(worldTarget);
                 }
             }
