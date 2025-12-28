@@ -519,7 +519,12 @@ export class Game {
                         if (this.playerFleet.followTarget instanceof Fleet) {
                             this.initiateContact(this.playerFleet.followTarget);
                         } else if (this.playerFleet.followTarget instanceof CelestialBody) {
-                            alert(`Прибытие к ${(this.playerFleet.followTarget as CelestialBody).name}`);
+                            const body = this.playerFleet.followTarget as CelestialBody;
+                            if (body.name === 'Terra') {
+                                this.showTerraUpgradeDialog();
+                            } else {
+                                alert(`Прибытие к ${body.name}`);
+                            }
                         }
                         this.playerFleet.stopFollowing();
                     }
@@ -847,6 +852,32 @@ export class Game {
             this.infoTooltip = null;
             this.inspectedEntity = null;
         }
+    }
+
+    private showTerraUpgradeDialog() {
+        console.log('Showing Terra upgrade dialog');
+
+        this.modal.showTerraUpgradeDialog(
+            this.playerFleet.strength,
+            this.playerFleet.money,
+            () => {
+                // Upgrade logic
+                if (this.playerFleet.money >= 100) {
+                    this.playerFleet.strength += 1;
+                    this.playerFleet.money -= 100;
+                    this.ui.updateMoney(this.playerFleet.money);
+                    console.log('Fleet upgraded to strength:', this.playerFleet.strength);
+                    // Update dialog with new values (keep it open)
+                    this.showTerraUpgradeDialog();
+                }
+            },
+            () => {
+                console.log('Terra upgrade cancelled');
+                // Close modal and unpause
+                this.modal.closeModal();
+                if (this.isPaused) this.togglePause();
+            }
+        );
     }
 
     private initiateContact(fleet: Fleet) {
