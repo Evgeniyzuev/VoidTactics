@@ -1,6 +1,6 @@
 import { Vector2 } from '../utils/Vector2';
 import { CelestialBody } from '../entities/CelestialBody';
-import { Fleet, type Faction } from '../entities/Fleet';
+import { Fleet } from '../entities/Fleet';
 import { Game } from './Game';
 
 export class AIController {
