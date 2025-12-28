@@ -7,8 +7,8 @@ This document describes the faction system in VoidTactics.
 | Faction | Color | Behavior | Stealth/Visibility |
 |---------|-------|----------|--------------------|
 | **Player** | Blue (#00AAFF) | Player-controlled | Always visible to self |
-| **Civilian** | Green (#32CD32) | Peaceful roaming, flees from threats | Always visible |
-| **Military** | Yellow (#FFFF00) | Protects civilians, hunts pirates/orcs | Always visible |
+| **Civilian** | Green (#32CD32) | **Peaceful Travelers**: Fly between planets with 2-6 second stops at each | Always visible |
+| **Military** | Yellow (#FFFF00) | **Defensive Guardians**: Coordinate group attacks on threats, join allies in combat, prioritize center defense | Always visible |
 | **Pirate** | Red (#FF4444) | Aggressive roaming, hunts weak targets | Always visible |
 | **Orc** | Purple (#9370DB) | Highly aggressive, fights almost everyone | Always visible |
 | **Raider** | Grey (#888888) | **Elite Aggressor**: Never flees, attacks larger fleets | **Hidden**: Info is `???` until contact distance |

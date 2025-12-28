@@ -24,6 +24,7 @@ export class Fleet extends Entity {
     public combatTimer: number = 0;
     public activeBattle: any = null; // Reference to ongoing Battle
     public decisionTimer: number = 0;
+    public civilianStopTimer: number = 0;
     public lastAcceleration: Vector2 = new Vector2(0, 0);
 
     // Abilities State
@@ -64,11 +65,19 @@ export class Fleet extends Entity {
 
     update(dt: number) {
         if (this.decisionTimer > 0) this.decisionTimer -= dt;
+        if (this.civilianStopTimer > 0) this.civilianStopTimer -= dt;
 
         if (this.stunTimer > 0) {
             this.stunTimer -= dt;
             this.velocity = this.velocity.scale(0.5); // Rapidly bleed velocity
             if (this.velocity.mag() < 1) this.velocity = new Vector2(0, 0);
+            this.position = this.position.add(this.velocity.scale(dt));
+            return;
+        }
+
+        // Civilian stop at planets
+        if (this.faction === 'civilian' && this.civilianStopTimer > 0) {
+            this.velocity = new Vector2(0, 0);
             this.position = this.position.add(this.velocity.scale(dt));
             return;
         }

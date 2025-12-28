@@ -59,9 +59,9 @@ export class AIController {
             if (npc.decisionTimer > 0) continue;
 
             let bestTarget: Fleet | null = null;
+            let bestTargetScore = -1;
             let closestThreat: Fleet | null = null;
             let minDistThreat = detectionRadius;
-            let minDistTarget = detectionRadius;
 
             // Scan all fleets (including player)
             const allFleets = [this.game.getPlayerFleet(), ...this.game.getNpcFleets()];
@@ -79,9 +79,9 @@ export class AIController {
                     // otherwise attack if up to 1.5x their strength (including weakened in combat)
                     const forceAttack = Math.random() < 0.2;
                     if (forceAttack || other.strength < npc.strength * 1.5) {
-                        if (dist < minDistTarget) {
-                            minDistTarget = dist;
+                        if (dist < detectionRadius) {
                             bestTarget = other;
+                            break; // Raiders take first valid target
                         }
                     }
                     continue; // Skip threat evaluation for raiders
@@ -104,11 +104,93 @@ export class AIController {
                             canTarget = false;
                         }
                     }
+
                     if (canTarget) {
-                        if (dist < minDistTarget) {
-                            minDistTarget = dist;
+                        // Military prioritization: distance + strength scoring
+                        let targetScore = 0;
+                        if (npc.faction === 'military') {
+                            // Distance score: closer is better (0-1)
+                            const distanceScore = 1 - (dist / detectionRadius);
+                            // Strength score: weaker is better, but allow stronger with support
+                            const strengthRatio = Math.min(other.strength / npc.strength, 2.0); // Cap at 2x
+                            const strengthScore = 1 / strengthRatio;
+                            // Center bonus: threats in center get priority
+                            const centerDist = npc.position.mag();
+                            const centerBonus = centerDist < 2000 ? 0.3 : 0;
+
+                            targetScore = distanceScore + strengthScore + centerBonus;
+                        } else {
+                            // Other factions: simple distance priority
+                            targetScore = 1 - (dist / detectionRadius);
+                        }
+
+                        if (targetScore > bestTargetScore) {
+                            bestTargetScore = targetScore;
                             bestTarget = other;
                         }
+                    }
+                }
+            }
+
+            // Military battle detection: scan for nearby battles and join allies
+            if (npc.faction === 'military' && !npc.activeBattle) {
+                const nearbyBattles = this.game.getBattles().filter(battle => {
+                    const battleCenter = this.calculateBattleCenter(battle);
+                    const distanceToBattle = Vector2.distance(npc.position, battleCenter);
+                    return distanceToBattle < detectionRadius * 1.5; // Extended detection for battles
+                });
+
+                for (const battle of nearbyBattles) {
+                    // Check if allies are in this battle
+                    const alliesInBattle = [...battle.sideA, ...battle.sideB].filter(fleet =>
+                        this.isAlly(npc, fleet)
+                    );
+
+                    if (alliesInBattle.length > 0) {
+                        // Join the battle on the ally side
+                        const allySide = battle.sideA.includes(alliesInBattle[0]) ? 'A' : 'B';
+                        battle.joinSide(npc, allySide);
+
+                        // Move toward the battle center
+                        const battleCenter = this.calculateBattleCenter(battle);
+                        const formationOffset = new Vector2(
+                            (Math.random() - 0.5) * 100,
+                            (Math.random() - 0.5) * 100
+                        );
+                        npc.setTarget(battleCenter.add(formationOffset));
+                        npc.decisionTimer = 1.0 + Math.random();
+                        break; // Join only one battle at a time
+                    }
+                }
+            }
+
+            // Military coordination: check if allies are already attacking nearby threats
+            if (npc.faction === 'military' && (!npc.target && !npc.followTarget)) {
+                // Look for military allies who are actively pursuing hostile targets
+                const attackingAllies = allFleets.filter(f =>
+                    f !== npc &&
+                    f.faction === 'military' &&
+                    Vector2.distance(npc.position, f.position) < 1000 &&
+                    f.followTarget instanceof Fleet &&
+                    this.isHostile(f, f.followTarget as Fleet)
+                );
+
+                if (attackingAllies.length > 0) {
+                    // Join the attack - coordinate with allies
+                    const ally = attackingAllies[Math.floor(Math.random() * attackingAllies.length)];
+                    if (ally.followTarget) {
+                        // Follow the same target with formation offset
+                        const formationOffset = new Vector2(
+                            (Math.random() - 0.5) * 200,
+                            (Math.random() - 0.5) * 200
+                        );
+                        npc.setFollowTarget(ally.followTarget, 'contact');
+                        // Override the target to add formation spacing
+                        if (npc.followTarget) {
+                            npc.target = ally.followTarget.position.clone().add(formationOffset);
+                        }
+                        npc.decisionTimer = 2.0 + Math.random();
+                        continue;
                     }
                 }
             }
@@ -121,10 +203,27 @@ export class AIController {
                 npc.state = 'flee';
                 npc.decisionTimer = 1.0 + Math.random(); // Reaction delay
             } else if (bestTarget) {
-                // Attack!
-                npc.setFollowTarget(bestTarget, 'contact');
-                npc.state = 'normal';
-                npc.decisionTimer = 0.5 + Math.random();
+                // Military coordination: check for support before attacking stronger enemies
+                let shouldAttack = true;
+                if (npc.faction === 'military' && bestTarget.strength > npc.strength) {
+                    const supportCount = allFleets.filter(f =>
+                        f !== npc &&
+                        (f.faction === 'military' || f.faction === 'civilian') &&
+                        Vector2.distance(npc.position, f.position) < 800
+                    ).length;
+                    shouldAttack = supportCount * 0.5 + npc.strength > bestTarget.strength;
+                }
+
+                if (shouldAttack) {
+                    // Attack!
+                    npc.setFollowTarget(bestTarget, 'contact');
+                    npc.state = 'normal';
+                    npc.decisionTimer = 0.5 + Math.random();
+                } else {
+                    // Not enough support, patrol instead
+                    npc.state = 'normal';
+                    npc.decisionTimer = 2.0;
+                }
             } else if (!npc.target && !npc.followTarget || npc.velocity.mag() < 5) {
                 // Idle roaming: Head to POIs more often
                 npc.state = 'normal';
@@ -132,7 +231,11 @@ export class AIController {
                     // Faction based weighting for POIs
                     let filteredPOIs = celestialBodies;
                     if (npc.faction === 'civilian' || npc.faction === 'military') {
-                        filteredPOIs = celestialBodies.filter(b => !b.name.includes('Asteroid') && !b.name.includes('Alpha'));
+                        // Military prefer central planets
+                        filteredPOIs = celestialBodies
+                            .filter(b => !b.name.includes('Asteroid') && !b.name.includes('Alpha'))
+                            .sort((a, b) => a.position.mag() - b.position.mag()) // Sort by distance from center
+                            .slice(0, 3); // Take closest 3
                     } else if (npc.faction === 'pirate' || npc.faction === 'orc') {
                         filteredPOIs = celestialBodies.filter(b => b.name.includes('Asteroid') || b.name.includes('Alpha') || b.isStar);
                     }
@@ -141,13 +244,16 @@ export class AIController {
                     const poi = filteredPOIs[Math.floor(Math.random() * filteredPOIs.length)];
                     const offset = new Vector2((Math.random() - 0.5) * 400, (Math.random() - 0.5) * 400);
                     npc.setTarget(poi.position.add(offset));
+                    if (npc.faction === 'civilian') {
+                        npc.civilianStopTimer = 2 + Math.random() * 4; // 2-6 seconds stop
+                    }
                     npc.decisionTimer = 5.0; // Long roams
                 }
             }
         }
     }
 
-    private isHostile(a: Fleet, b: Fleet): boolean {
+    public isHostile(a: Fleet, b: Fleet): boolean {
         if (a === b) return false;
         const f1 = a.faction;
         const f2 = b.faction;
@@ -186,7 +292,7 @@ export class AIController {
         return false;
     }
 
-    private isAlly(a: Fleet, b: Fleet): boolean {
+    public isAlly(a: Fleet, b: Fleet): boolean {
         if (a === b) return true;
         const f1 = a.faction;
         const f2 = b.faction;
@@ -199,5 +305,19 @@ export class AIController {
         if (f1 === 'civilian' && f2 === 'military') return true;
 
         return false;
+    }
+
+    private calculateBattleCenter(battle: any): Vector2 {
+        const allFleets = [...battle.sideA, ...battle.sideB];
+        if (allFleets.length === 0) return new Vector2(0, 0);
+
+        let totalX = 0;
+        let totalY = 0;
+        for (const fleet of allFleets) {
+            totalX += fleet.position.x;
+            totalY += fleet.position.y;
+        }
+
+        return new Vector2(totalX / allFleets.length, totalY / allFleets.length);
     }
 }
