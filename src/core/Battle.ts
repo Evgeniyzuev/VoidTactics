@@ -1,4 +1,5 @@
 import { Fleet } from '../entities/Fleet';
+import { Vector2 } from '../utils/Vector2';
 
 export class Battle {
     public sideA: Fleet[] = [];
@@ -64,5 +65,34 @@ export class Battle {
 
     contains(f: Fleet): boolean {
         return this.sideA.includes(f) || this.sideB.includes(f);
+    }
+
+    get position(): Vector2 {
+        const allFleets = [...this.sideA, ...this.sideB];
+        if (allFleets.length === 0) return new Vector2(0, 0);
+
+        let totalX = 0;
+        let totalY = 0;
+        for (const fleet of allFleets) {
+            totalX += fleet.position.x;
+            totalY += fleet.position.y;
+        }
+
+        return new Vector2(totalX / allFleets.length, totalY / allFleets.length);
+    }
+
+    get radius(): number {
+        const center = this.position;
+        const allFleets = [...this.sideA, ...this.sideB];
+        if (allFleets.length === 0) return 50;
+
+        let maxDist = 0;
+        for (const fleet of allFleets) {
+            const dist = Vector2.distance(center, fleet.position);
+            maxDist = Math.max(maxDist, dist);
+        }
+
+        // Add buffer for joining
+        return maxDist + 100;
     }
 }

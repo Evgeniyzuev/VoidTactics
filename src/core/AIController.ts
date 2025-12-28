@@ -132,12 +132,11 @@ export class AIController {
                 }
             }
 
-            // Military battle detection: scan for nearby battles and join allies
+            // Military battle detection: scan for nearby battles and approach/join allies
             if (npc.faction === 'military' && !npc.activeBattle) {
                 const nearbyBattles = this.game.getBattles().filter(battle => {
-                    const battleCenter = this.calculateBattleCenter(battle);
-                    const distanceToBattle = Vector2.distance(npc.position, battleCenter);
-                    return distanceToBattle < detectionRadius * 1.5; // Extended detection for battles
+                    const distanceToBattle = Vector2.distance(npc.position, battle.position);
+                    return distanceToBattle < detectionRadius * 2.0; // Extended detection for battles
                 });
 
                 for (const battle of nearbyBattles) {
@@ -147,19 +146,24 @@ export class AIController {
                     );
 
                     if (alliesInBattle.length > 0) {
-                        // Join the battle on the ally side
-                        const allySide = battle.sideA.includes(alliesInBattle[0]) ? 'A' : 'B';
-                        battle.joinSide(npc, allySide);
+                        const distanceToBattle = Vector2.distance(npc.position, battle.position);
 
-                        // Move toward the battle center
-                        const battleCenter = this.calculateBattleCenter(battle);
-                        const formationOffset = new Vector2(
-                            (Math.random() - 0.5) * 100,
-                            (Math.random() - 0.5) * 100
-                        );
-                        npc.setTarget(battleCenter.add(formationOffset));
-                        npc.decisionTimer = 1.0 + Math.random();
-                        break; // Join only one battle at a time
+                        if (distanceToBattle <= battle.radius) {
+                            // Within battle radius - join immediately
+                            const allySide = battle.sideA.includes(alliesInBattle[0]) ? 'A' : 'B';
+                            battle.joinSide(npc, allySide);
+                            npc.decisionTimer = 1.0 + Math.random();
+                            break;
+                        } else {
+                            // Outside battle radius - move toward battle center
+                            const formationOffset = new Vector2(
+                                (Math.random() - 0.5) * 100,
+                                (Math.random() - 0.5) * 100
+                            );
+                            npc.setTarget(battle.position.add(formationOffset));
+                            npc.decisionTimer = 2.0 + Math.random();
+                            break;
+                        }
                     }
                 }
             }
@@ -307,17 +311,5 @@ export class AIController {
         return false;
     }
 
-    private calculateBattleCenter(battle: any): Vector2 {
-        const allFleets = [...battle.sideA, ...battle.sideB];
-        if (allFleets.length === 0) return new Vector2(0, 0);
 
-        let totalX = 0;
-        let totalY = 0;
-        for (const fleet of allFleets) {
-            totalX += fleet.position.x;
-            totalY += fleet.position.y;
-        }
-
-        return new Vector2(totalX / allFleets.length, totalY / allFleets.length);
-    }
 }

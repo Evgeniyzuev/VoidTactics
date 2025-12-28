@@ -39,6 +39,7 @@ The AI behavior is implemented in `src/core/AIController.ts` (separated from Gam
     - **Raiders** can target fleets up to `1.5x` their strength and have a `20%` chance to ignore strength entirely and attack anyway.
     - **Opportunistic Targeting**: **Pirates**, **Orcs**, **Military**, and **Raiders** will target weakened enemies in ongoing battles if `other.strength < npc.strength * 0.6`.
 - **Chase Management**: NPCs give up pursuit if the target is escaping the system (position magnitude > 0.8 * system radius and moving outward), redirecting toward the system center instead of continuing futile chases.
+- **Battle Visualization**: Active battles are displayed as red dotted circles showing the battle radius. Military fleets approach battle centers before joining combat.
 - **Roaming**: Factions have preferred POIs.
     - Civilians/Military stay near planets.
     - Pirates/Orcs hang around Asteroids and Outpost Alpha.
@@ -49,9 +50,10 @@ The AI behavior is implemented in `src/core/AIController.ts` (separated from Gam
     - `src/entities/Fleet.ts`: Contains the `Faction` union type.
 2.  **State Management**:
     - `Fleet.faction`: A property in the `Fleet` class.
-3.  **Core Logic (`src/core/Game.ts`)**:
-    - `isHostile(a, b)`: Logic for determining enemies.
-    - `isAlly(a, b)`: Logic for determining friends.
-    - `processAI()`: The main decision loop.
+3.  **Core Logic**:
+    - `src/core/AIController.ts`: Main AI decision loop and behavior logic.
+    - `src/core/Battle.ts`: Battle management with position/radius calculation.
+    - `src/core/Game.ts`: Game loop, combat processing, and battle visualization.
+    - `isHostile(a, b)` & `isAlly(a, b)`: Relationship logic (moved to AIController).
     - `showTooltip()`: Handles the visibility rule (specifically for Raiders).
     - `spawnNPCs()`: Assigns faction types and colors when creating new fleets.

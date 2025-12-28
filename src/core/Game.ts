@@ -956,6 +956,21 @@ export class Game {
             }
         }
 
+        // Draw battle zones (red dotted circles)
+        for (const battle of this.battles) {
+            const battlePos = this.camera.worldToScreen(battle.position);
+            const battleRadius = battle.radius * this.camera.zoom;
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(battlePos.x, battlePos.y, battleRadius, 0, Math.PI * 2);
+            ctx.setLineDash([10 * this.camera.zoom, 10 * this.camera.zoom]);
+            ctx.strokeStyle = 'rgba(255, 0, 0, 0.6)'; // Red dotted line
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.restore();
+        }
+
         // Draw off-screen indicators
         const star = this.entities.find(e => e instanceof CelestialBody && (e as CelestialBody).isStar);
         if (star) {
