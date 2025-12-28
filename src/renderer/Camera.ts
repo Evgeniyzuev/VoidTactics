@@ -20,7 +20,9 @@ export class Camera {
     }
 
     public adjustZoom(delta: number) {
-        this.zoom += delta * 0.1;
+        // Multiplicative zoom for smoother feel
+        const factor = 1 + delta * 0.1;
+        this.zoom *= factor;
         this.zoom = Math.max(this.minZoom, Math.min(this.maxZoom, this.zoom));
     }
 

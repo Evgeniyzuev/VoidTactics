@@ -745,7 +745,9 @@ export class Game {
                         minDist = dist;
                     }
                 } else if (e instanceof Fleet) {
-                    if (dist <= 20) {
+                    // Interaction radius: at least 40 pixels on screen or 20 world units
+                    const interactionRadius = Math.max(20, 40 / this.camera.zoom);
+                    if (dist <= interactionRadius) {
                         closestEntity = e;
                         minDist = dist;
                     }

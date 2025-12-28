@@ -60,9 +60,9 @@ export class InputManager {
                 this.mousePos = pos;
             } else if (this.activePointers.size === 2) {
                 const dist = this.getPointersDistance();
-                if (this.initialPinchDistance > 0) {
-                    const delta = dist - this.initialPinchDistance;
-                    this.pinchDelta = Math.sign(delta) * 0.5; // Sensitivity
+                if (this.initialPinchDistance > 10) { // Avoid division by zero/tiny
+                    const ratio = dist / this.initialPinchDistance;
+                    this.pinchDelta = (ratio - 1) * 5.0; // Scaled for Camera.adjustZoom
                     this.initialPinchDistance = dist;
                 }
             }

@@ -8,9 +8,6 @@ export class UIManager {
     private playBtn!: HTMLButtonElement;
     private cameraFollowBtn!: HTMLButtonElement;
     private speedBtn!: HTMLButtonElement;
-    private speedGroup!: HTMLElement;
-    private speedBtns: HTMLButtonElement[] = [];
-    private speedExpanded: boolean = false;
     private currentSpeed: number = 1;
     private cameraFollow: boolean = true;
 
@@ -57,32 +54,42 @@ export class UIManager {
         const sep1 = document.createElement('div');
         sep1.className = 'separator';
 
-        // Speed Toggle Button (collapsed state)
+        // Speed Control Group
+        const speedContainer = document.createElement('div');
+        speedContainer.className = 'speed-control-group';
+        speedContainer.style.display = 'flex';
+        speedContainer.style.alignItems = 'center';
+        speedContainer.style.gap = '5px';
+
+        const minusBtn = document.createElement('button');
+        minusBtn.className = 'control-btn';
+        minusBtn.innerText = '−';
+        minusBtn.title = 'Decrease Speed (-10%)';
+        minusBtn.onclick = () => {
+            this.currentSpeed = Math.max(0.1, Math.round((this.currentSpeed - 0.1) * 10) / 10);
+            this.onSpeedChange(this.currentSpeed);
+            this.updateSpeedDisplay();
+        };
+
         this.speedBtn = document.createElement('button');
-        this.speedBtn.className = 'control-btn';
-        this.speedBtn.innerText = `${this.currentSpeed}x`;
-        this.speedBtn.title = 'Game Speed';
-        this.speedBtn.onclick = () => this.toggleSpeedExpansion();
+        this.speedBtn.className = 'control-btn speed-value';
+        this.speedBtn.innerText = `${this.currentSpeed.toFixed(1)}x`;
+        this.speedBtn.style.minWidth = '50px';
+        this.speedBtn.style.cursor = 'default';
 
-        // Speed Options Group (hidden by default)
-        this.speedGroup = document.createElement('div');
-        this.speedGroup.className = 'control-group speed-options';
-        this.speedGroup.style.display = 'none';
+        const plusBtn = document.createElement('button');
+        plusBtn.className = 'control-btn';
+        plusBtn.innerText = '+';
+        plusBtn.title = 'Increase Speed (+10%)';
+        plusBtn.onclick = () => {
+            this.currentSpeed = Math.min(10, Math.round((this.currentSpeed + 0.1) * 10) / 10);
+            this.onSpeedChange(this.currentSpeed);
+            this.updateSpeedDisplay();
+        };
 
-        const speeds = [0.25, 0.5, 1, 2, 4];
-        speeds.forEach(s => {
-            const btn = document.createElement('button');
-            btn.className = 'control-btn' + (s === 1 ? ' active' : '');
-            btn.innerText = s + 'x';
-            btn.onclick = () => {
-                this.currentSpeed = s;
-                this.onSpeedChange(s);
-                this.updateSpeedSelection(s);
-                this.toggleSpeedExpansion(); // Collapse after selection
-            };
-            this.speedBtns.push(btn);
-            this.speedGroup.appendChild(btn);
-        });
+        speedContainer.appendChild(minusBtn);
+        speedContainer.appendChild(this.speedBtn);
+        speedContainer.appendChild(plusBtn);
 
         const sep2 = document.createElement('div');
         sep2.className = 'separator';
@@ -96,8 +103,7 @@ export class UIManager {
 
         hud.appendChild(this.playBtn);
         hud.appendChild(sep1);
-        hud.appendChild(this.speedBtn);
-        hud.appendChild(this.speedGroup);
+        hud.appendChild(speedContainer);
         hud.appendChild(sep2);
         hud.appendChild(this.cameraFollowBtn);
         this.container.appendChild(hud);
@@ -249,23 +255,7 @@ export class UIManager {
         }
     }
 
-    public updateSpeedSelection(speed: number) {
-        this.speedBtns.forEach(btn => {
-            const val = parseFloat(btn.innerText);
-            if (val === speed) btn.classList.add('active');
-            else btn.classList.remove('active');
-        });
-    }
-
-    private toggleSpeedExpansion() {
-        this.speedExpanded = !this.speedExpanded;
-        if (this.speedExpanded) {
-            this.speedBtn.style.display = 'none';
-            this.speedGroup.style.display = 'flex';
-        } else {
-            this.speedBtn.style.display = 'block';
-            this.speedBtn.innerText = `${this.currentSpeed}x`;
-            this.speedGroup.style.display = 'none';
-        }
+    private updateSpeedDisplay() {
+        this.speedBtn.innerText = `${this.currentSpeed.toFixed(1)}x`;
     }
 }
