@@ -51,20 +51,19 @@ export class UIManager {
             this.onPlayPause();
         };
 
-        const sep1 = document.createElement('div');
-        sep1.className = 'separator';
-
         // Speed Control Group
         const speedContainer = document.createElement('div');
         speedContainer.className = 'speed-control-group';
         speedContainer.style.display = 'flex';
         speedContainer.style.alignItems = 'center';
-        speedContainer.style.gap = '5px';
+        speedContainer.style.gap = '2px';
 
         const minusBtn = document.createElement('button');
         minusBtn.className = 'control-btn';
         minusBtn.innerText = '−';
         minusBtn.title = 'Decrease Speed (-10%)';
+        minusBtn.style.padding = '4px 8px';
+        minusBtn.style.minWidth = '30px';
         minusBtn.onclick = () => {
             this.currentSpeed = Math.max(0.1, Math.round((this.currentSpeed - 0.1) * 10) / 10);
             this.onSpeedChange(this.currentSpeed);
@@ -74,13 +73,53 @@ export class UIManager {
         this.speedBtn = document.createElement('button');
         this.speedBtn.className = 'control-btn speed-value';
         this.speedBtn.innerText = `${this.currentSpeed.toFixed(1)}x`;
-        this.speedBtn.style.minWidth = '50px';
-        this.speedBtn.style.cursor = 'default';
+        this.speedBtn.style.minWidth = '45px';
+        this.speedBtn.style.padding = '4px 8px';
+        this.speedBtn.style.cursor = 'pointer';
+
+        let pressTimer: any;
+        let isLongPress = false;
+
+        this.speedBtn.onpointerdown = () => {
+            isLongPress = false;
+            pressTimer = setTimeout(() => {
+                isLongPress = true;
+                // Long click: increase
+                if (this.currentSpeed < 1.0) {
+                    this.currentSpeed = 1.0;
+                } else if (this.currentSpeed < 2.0) {
+                    this.currentSpeed = 2.0;
+                }
+                this.onSpeedChange(this.currentSpeed);
+                this.updateSpeedDisplay();
+            }, 500);
+        };
+
+        this.speedBtn.onpointerup = () => {
+            clearTimeout(pressTimer);
+            if (!isLongPress) {
+                // Short click: decrease
+                if (this.currentSpeed > 1.0) {
+                    this.currentSpeed = 1.0;
+                } else if (this.currentSpeed > 0.5) {
+                    this.currentSpeed = 0.5;
+                } else if (this.currentSpeed <= 0.5) {
+                    // Optional: loop or stay at min? 
+                    // User said "next value", let's keep it at 0.5 if already at min milestones
+                }
+                this.onSpeedChange(this.currentSpeed);
+                this.updateSpeedDisplay();
+            }
+        };
+
+        this.speedBtn.onpointerleave = () => clearTimeout(pressTimer);
 
         const plusBtn = document.createElement('button');
         plusBtn.className = 'control-btn';
         plusBtn.innerText = '+';
         plusBtn.title = 'Increase Speed (+10%)';
+        plusBtn.style.padding = '4px 8px';
+        plusBtn.style.minWidth = '30px';
         plusBtn.onclick = () => {
             this.currentSpeed = Math.min(10, Math.round((this.currentSpeed + 0.1) * 10) / 10);
             this.onSpeedChange(this.currentSpeed);
@@ -91,9 +130,6 @@ export class UIManager {
         speedContainer.appendChild(this.speedBtn);
         speedContainer.appendChild(plusBtn);
 
-        const sep2 = document.createElement('div');
-        sep2.className = 'separator';
-
         // Camera Follow Button
         this.cameraFollowBtn = document.createElement('button');
         this.cameraFollowBtn.className = 'control-btn active';
@@ -102,9 +138,7 @@ export class UIManager {
         this.cameraFollowBtn.onclick = () => this.toggleCameraFollow();
 
         hud.appendChild(this.playBtn);
-        hud.appendChild(sep1);
         hud.appendChild(speedContainer);
-        hud.appendChild(sep2);
         hud.appendChild(this.cameraFollowBtn);
         this.container.appendChild(hud);
 
@@ -116,16 +150,16 @@ export class UIManager {
         const panel = document.createElement('div');
         panel.id = 'ability-panel';
         panel.style.position = 'absolute';
-        panel.style.bottom = '20px';
+        panel.style.bottom = '10px';
         panel.style.left = '50%';
         panel.style.transform = 'translateX(-50%)';
         panel.style.zIndex = '50';
         panel.style.display = 'flex';
-        panel.style.gap = '15px';
-        panel.style.padding = '10px 20px';
+        panel.style.gap = '8px';
+        panel.style.padding = '6px 12px';
         panel.style.background = 'rgba(0, 0, 0, 0.6)';
         panel.style.backdropFilter = 'blur(10px)';
-        panel.style.borderRadius = '50px';
+        panel.style.borderRadius = '30px';
         panel.style.border = '1px solid rgba(255, 255, 255, 0.2)';
         panel.style.pointerEvents = 'auto';
 
@@ -138,13 +172,13 @@ export class UIManager {
         abilities.forEach(ability => {
             const btn = document.createElement('button');
             btn.className = 'ability-btn';
-            btn.style.width = '50px';
-            btn.style.height = '50px';
+            btn.style.width = '40px';
+            btn.style.height = '40px';
             btn.style.borderRadius = '50%';
             btn.style.border = '2px solid rgba(255, 255, 255, 0.1)';
             btn.style.background = 'rgba(20, 20, 25, 0.8)';
             btn.style.color = 'white';
-            btn.style.fontSize = '24px';
+            btn.style.fontSize = '20px';
             btn.style.cursor = 'pointer';
             btn.style.position = 'relative';
             btn.style.overflow = 'hidden';

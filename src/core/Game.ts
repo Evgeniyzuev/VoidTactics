@@ -1104,6 +1104,52 @@ export class Game {
             ctx.lineTo(p2.x, p2.y);
         }
         ctx.stroke();
+
+        // Draw System Boundary
+        const center = this.camera.worldToScreen(new Vector2(0, 0));
+        const radius = this.SYSTEM_RADIUS * this.camera.zoom;
+
+        // Optimization: Only draw if the boundary could be visible
+        const { width: w, height: h } = this.renderer.getDimensions();
+        const distFromCenter = Math.sqrt(Math.pow(center.x - w / 2, 2) + Math.pow(center.y - h / 2, 2));
+        if (distFromCenter < radius + Math.sqrt(w * w + h * h)) {
+            ctx.save();
+
+            // Outer glow / "Danger Zone"
+            ctx.beginPath();
+            ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255, 50, 50, 0.1)';
+            ctx.lineWidth = 20 * this.camera.zoom;
+            ctx.stroke();
+
+            // Main boundary line
+            ctx.beginPath();
+            ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+            ctx.setLineDash([20 * this.camera.zoom, 20 * this.camera.zoom]);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Internal markers/ticks
+            ctx.setLineDash([]);
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.05)';
+            ctx.lineWidth = 1;
+            const segments = 64;
+            const tickSize = 100 * this.camera.zoom;
+            for (let i = 0; i < segments; i++) {
+                const angle = (i / segments) * Math.PI * 2;
+                const x1 = center.x + Math.cos(angle) * (radius - tickSize);
+                const y1 = center.y + Math.sin(angle) * (radius - tickSize);
+                const x2 = center.x + Math.cos(angle) * radius;
+                const y2 = center.y + Math.sin(angle) * radius;
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+            }
+
+            ctx.restore();
+        }
     }
 
     private activateAbility(id: string) {
