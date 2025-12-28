@@ -57,7 +57,8 @@ export class Game {
             onPlayPause: () => this.togglePause(),
             onSpeedChange: (speed) => this.setTimeScale(speed),
             onCameraToggle: (follow) => this.setCameraFollow(follow),
-            onAbility: (id) => this.activateAbility(id)
+            onAbility: (id) => this.activateAbility(id),
+            onMenu: () => this.showMenu()
         });
 
         // Setup Modal Manager
@@ -96,6 +97,32 @@ export class Game {
         if (this.cameraFollow) {
             this.camera.position = this.playerFleet.position.clone();
         }
+    }
+
+    private showMenu() {
+        if (!this.isPaused) this.togglePause();
+        this.modal.showMainMenu({
+            onResume: () => {
+                if (this.isPaused) this.togglePause();
+            },
+            onNewGame: () => {
+                SaveSystem.clear();
+                location.reload();
+            },
+            onSaveFleet: () => {
+                SaveSystem.saveFleetSize(this.playerFleet.strength);
+                console.log('Fleet size saved:', this.playerFleet.strength);
+            },
+            onLoadFleet: () => {
+                const savedSize = SaveSystem.loadFleetSize();
+                if (savedSize !== null) {
+                    this.playerFleet.strength = savedSize;
+                    console.log('Fleet size loaded:', savedSize);
+                } else {
+                    console.log('No saved fleet size found');
+                }
+            }
+        });
     }
 
     private generateBackground(width: number, height: number) {
@@ -754,9 +781,8 @@ export class Game {
             if (eidx !== -1) this.entities.splice(eidx, 1);
 
             if (dead === this.playerFleet) {
-                alert('ВАШ ФЛОТ УНИЧТОЖЕН!');
-                SaveSystem.clear();
-                location.reload();
+                this.showMenu();
+                return; // Stop further processing after death
             }
         }
     }

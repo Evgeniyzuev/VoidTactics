@@ -4,6 +4,7 @@ export class UIManager {
     private onSpeedChange: (speed: number) => void;
     private onCameraToggle: (follow: boolean) => void;
     private onAbility: (ability: string) => void;
+    private onMenu: () => void;
 
     private playBtn!: HTMLButtonElement;
     private cameraFollowBtn!: HTMLButtonElement;
@@ -20,7 +21,8 @@ export class UIManager {
             onPlayPause: () => void,
             onSpeedChange: (speed: number) => void,
             onCameraToggle: (follow: boolean) => void,
-            onAbility: (ability: string) => void
+            onAbility: (ability: string) => void,
+            onMenu: () => void
         }
     ) {
         const el = document.getElementById(containerId);
@@ -30,6 +32,7 @@ export class UIManager {
         this.onSpeedChange = callbacks.onSpeedChange;
         this.onCameraToggle = callbacks.onCameraToggle;
         this.onAbility = callbacks.onAbility;
+        this.onMenu = callbacks.onMenu;
 
         this.render();
     }
@@ -41,6 +44,14 @@ export class UIManager {
         // Prevent clicks from propagating to game world
         hud.addEventListener('click', (e) => e.stopPropagation());
         hud.addEventListener('pointerdown', (e) => e.stopPropagation());
+
+        // Menu Button
+        const menuBtn = document.createElement('button');
+        menuBtn.className = 'control-btn';
+        menuBtn.innerText = '☰';
+        menuBtn.title = 'Game Menu';
+        menuBtn.style.marginLeft = '8px';
+        menuBtn.onclick = () => this.onMenu();
 
         // Play/Pause Button
         this.playBtn = document.createElement('button');
@@ -140,6 +151,7 @@ export class UIManager {
         hud.appendChild(this.playBtn);
         hud.appendChild(speedContainer);
         hud.appendChild(this.cameraFollowBtn);
+        hud.appendChild(menuBtn);
         this.container.appendChild(hud);
 
         // Ability Panel (Bottom Center)

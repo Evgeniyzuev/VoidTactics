@@ -176,6 +176,101 @@ export class ModalManager {
     }
 
     /**
+     * Show main menu
+     */
+    showMainMenu(callbacks: { onNewGame: () => void, onSaveFleet: () => void, onLoadFleet: () => void, onResume: () => void }) {
+        this.closeModal();
+
+        this.modalContainer = document.createElement('div');
+        this.modalContainer.style.position = 'fixed';
+        this.modalContainer.style.top = '0';
+        this.modalContainer.style.left = '0';
+        this.modalContainer.style.width = '100%';
+        this.modalContainer.style.height = '100%';
+        this.modalContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+        this.modalContainer.style.display = 'flex';
+        this.modalContainer.style.alignItems = 'center';
+        this.modalContainer.style.justifyContent = 'center';
+        this.modalContainer.style.zIndex = '10000';
+        this.modalContainer.style.backdropFilter = 'blur(5px)';
+
+        const menu = document.createElement('div');
+        menu.style.background = 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)';
+        menu.style.padding = '40px';
+        menu.style.borderRadius = '20px';
+        menu.style.border = '1px solid rgba(255, 255, 255, 0.1)';
+        menu.style.boxShadow = '0 20px 50px rgba(0, 0, 0, 0.5)';
+        menu.style.display = 'flex';
+        menu.style.flexDirection = 'column';
+        menu.style.gap = '15px';
+        menu.style.minWidth = '250px';
+
+        const title = document.createElement('h1');
+        title.textContent = 'VOID TACTICS';
+        title.style.margin = '0 0 20px 0';
+        title.style.textAlign = 'center';
+        title.style.color = '#00C8FF';
+        title.style.letterSpacing = '5px';
+        title.style.fontSize = '24px';
+        title.style.fontFamily = 'monospace';
+
+        const createMenuButton = (text: string, subtext: string, color: string, callback: () => void) => {
+            const btn = document.createElement('button');
+            btn.style.padding = '15px 25px';
+            btn.style.border = '1px solid rgba(255, 255, 255, 0.1)';
+            btn.style.borderRadius = '10px';
+            btn.style.background = 'rgba(255, 255, 255, 0.05)';
+            btn.style.color = 'white';
+            btn.style.cursor = 'pointer';
+            btn.style.transition = 'all 0.3s';
+            btn.style.display = 'flex';
+            btn.style.flexDirection = 'column';
+            btn.style.alignItems = 'center';
+            btn.style.gap = '5px';
+
+            const mainText = document.createElement('span');
+            mainText.textContent = text;
+            mainText.style.fontWeight = 'bold';
+            mainText.style.fontSize = '16px';
+
+            const sub = document.createElement('span');
+            sub.textContent = subtext;
+            sub.style.fontSize = '10px';
+            sub.style.opacity = '0.5';
+
+            btn.appendChild(mainText);
+            btn.appendChild(sub);
+
+            btn.onmouseenter = () => {
+                btn.style.background = 'rgba(255, 255, 255, 0.1)';
+                btn.style.borderColor = color;
+                btn.style.boxShadow = `0 0 20px ${color}40`;
+                btn.style.transform = 'translateY(-2px)';
+            };
+            btn.onmouseleave = () => {
+                btn.style.background = 'rgba(255, 255, 255, 0.05)';
+                btn.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+                btn.style.boxShadow = 'none';
+                btn.style.transform = 'translateY(0)';
+            };
+            btn.onclick = () => {
+                this.closeModal();
+                callback();
+            };
+            return btn;
+        };
+
+        menu.appendChild(title);
+        menu.appendChild(createMenuButton('CONTINUE', 'Back to battle', '#00C8FF', callbacks.onResume));
+        menu.appendChild(createMenuButton('NEW GAME', 'Reset all progress', '#FF4444', callbacks.onNewGame));
+        menu.appendChild(createMenuButton('SAVE FLEET', 'Store current fleet size', '#00FF88', callbacks.onSaveFleet));
+        menu.appendChild(createMenuButton('LOAD FLEET', 'Restore stored fleet size', '#FFCC00', callbacks.onLoadFleet));
+
+        this.modalContainer.appendChild(menu);
+        document.body.appendChild(this.modalContainer);
+    }
+
+    /**
      * Close any open modal
      */
     closeModal() {

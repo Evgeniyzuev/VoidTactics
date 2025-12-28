@@ -30,4 +30,13 @@ export class SaveSystem {
     static clear() {
         // No-op
     }
+
+    static saveFleetSize(size: number) {
+        localStorage.setItem('vt_fleet_size', size.toString());
+    }
+
+    static loadFleetSize(): number | null {
+        const val = localStorage.getItem('vt_fleet_size');
+        return val ? parseInt(val, 10) : null;
+    }
 }
