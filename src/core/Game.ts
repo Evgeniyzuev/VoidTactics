@@ -9,6 +9,7 @@ import { SaveSystem } from './SaveSystem';
 import { UIManager } from './UIManager';
 import { ModalManager } from './ModalManager';
 import { Battle } from './Battle';
+import { AIController } from './AIController';
 
 
 export class Game {
@@ -18,12 +19,19 @@ export class Game {
     private camera: Camera;
     private ui: UIManager;
     private modal: ModalManager;
+    private aiController: AIController;
 
     // Entities
     private entities: Entity[] = [];
     private playerFleet!: Fleet;
     private npcFleets: Fleet[] = [];
     private battles: Battle[] = [];
+
+    // Getters for AIController
+    public getEntities(): Entity[] { return this.entities; }
+    public getPlayerFleet(): Fleet { return this.playerFleet; }
+    public getNpcFleets(): Fleet[] { return this.npcFleets; }
+    public getSystemRadius(): number { return this.SYSTEM_RADIUS; }
 
     private backgroundCanvas: HTMLCanvasElement;
 
@@ -52,6 +60,9 @@ export class Game {
         this.generateBackground(width, height);
 
         this.initWorld();
+
+        // Initialize AI Controller
+        this.aiController = new AIController(this);
 
         // Setup UI
         this.ui = new UIManager('ui-layer', {
@@ -464,7 +475,7 @@ export class Game {
             }
         }
 
-        this.processAI();
+        this.aiController.processAI();
         this.processCombat(dt);
 
         // 4. Update Entities
@@ -566,117 +577,7 @@ export class Game {
         return false;
     }
 
-    private processAI() {
-        const detectionRadius = 1000;
-        const giveUpRadius = 2500;
-        const celestialBodies = this.entities.filter(e => e instanceof CelestialBody) as CelestialBody[];
 
-        for (const npc of this.npcFleets) {
-            if (npc.state === 'combat') continue;
-
-            // Give up chase/flee if too far or futility
-            if (npc.followTarget instanceof Fleet) {
-                const dist = Vector2.distance(npc.position, npc.followTarget.position);
-
-                // If it's a chase: Check if target is much faster or too far
-                const isChasing = this.isHostile(npc, npc.followTarget as Fleet);
-                if (isChasing) {
-                    const targetSpeed = (npc.followTarget as Fleet).velocity.mag();
-                    const myMaxSpeed = npc.maxSpeed * Math.pow(npc.sizeMultiplier, -0.2);
-
-                    if (dist > giveUpRadius || (targetSpeed > myMaxSpeed * 1.1 && dist > 800)) {
-                        npc.stopFollowing();
-                        // Head to random planet
-                        if (celestialBodies.length > 0) {
-                            const poi = celestialBodies[Math.floor(Math.random() * celestialBodies.length)];
-                            npc.setTarget(poi.position.add(new Vector2((Math.random() - 0.5) * 200, (Math.random() - 0.5) * 200)));
-                        }
-                        npc.decisionTimer = 2.0; // Don't re-target immediately
-                        continue;
-                    }
-                }
-            }
-
-            // Reaction Time: Only rethink if timer is zero
-            if (npc.decisionTimer > 0) continue;
-
-            let bestTarget: Fleet | null = null;
-            let closestThreat: Fleet | null = null;
-            let minDistThreat = detectionRadius;
-            let minDistTarget = detectionRadius;
-
-            // Scan all fleets (including player)
-            const allFleets = [this.playerFleet, ...this.npcFleets];
-            for (const other of allFleets) {
-                if (npc === other || other.state === 'combat' || other.isCloaked) continue;
-
-                const dist = Vector2.distance(npc.position, other.position);
-                if (dist > detectionRadius) continue;
-
-                const hostileAtoB = this.isHostile(npc, other);
-                const hostileBtoA = this.isHostile(other, npc);
-
-                if (npc.faction === 'raider' && hostileAtoB) {
-                    // Raiders are aggressive: 20% chance to attack regardless of strength, 
-                    // otherwise attack if up to 1.5x their strength (instead of 0.8x)
-                    const forceAttack = Math.random() < 0.2;
-                    if (forceAttack || other.strength < npc.strength * 1.5) {
-                        if (dist < minDistTarget) {
-                            minDistTarget = dist;
-                            bestTarget = other;
-                        }
-                    }
-                    continue; // Skip threat evaluation for raiders
-                }
-
-                if (hostileBtoA && other.strength > npc.strength * 1.2) {
-                    // Threat: He wants to kill me and is stronger
-                    if (dist < minDistThreat) {
-                        minDistThreat = dist;
-                        closestThreat = other;
-                    }
-                } else if (hostileAtoB && other.strength < npc.strength * 0.8) {
-                    // Target: I want to kill him and am stronger
-                    if (dist < minDistTarget) {
-                        minDistTarget = dist;
-                        bestTarget = other;
-                    }
-                }
-            }
-
-            // Decide action
-            if (closestThreat && npc.faction !== 'raider') {
-                // Flee! (Raiders never flee)
-                const runDir = npc.position.sub(closestThreat.position).normalize();
-                npc.setTarget(npc.position.add(runDir.scale(800)));
-                npc.state = 'flee';
-                npc.decisionTimer = 1.0 + Math.random(); // Reaction delay
-            } else if (bestTarget) {
-                // Attack!
-                npc.setFollowTarget(bestTarget, 'contact');
-                npc.state = 'normal';
-                npc.decisionTimer = 0.5 + Math.random();
-            } else if (!npc.target && !npc.followTarget || npc.velocity.mag() < 5) {
-                // Idle roaming: Head to POIs more often
-                npc.state = 'normal';
-                if (Math.random() < 0.01 && celestialBodies.length > 0) {
-                    // Faction based weighting for POIs
-                    let filteredPOIs = celestialBodies;
-                    if (npc.faction === 'civilian' || npc.faction === 'military') {
-                        filteredPOIs = celestialBodies.filter(b => !b.name.includes('Asteroid') && !b.name.includes('Alpha'));
-                    } else if (npc.faction === 'pirate' || npc.faction === 'orc') {
-                        filteredPOIs = celestialBodies.filter(b => b.name.includes('Asteroid') || b.name.includes('Alpha') || b.isStar);
-                    }
-                    if (filteredPOIs.length === 0) filteredPOIs = celestialBodies;
-
-                    const poi = filteredPOIs[Math.floor(Math.random() * filteredPOIs.length)];
-                    const offset = new Vector2((Math.random() - 0.5) * 400, (Math.random() - 0.5) * 400);
-                    npc.setTarget(poi.position.add(offset));
-                    npc.decisionTimer = 5.0; // Long roams
-                }
-            }
-        }
-    }
 
     private processCombat(dt: number) {
         const allFleets = [this.playerFleet, ...this.npcFleets];

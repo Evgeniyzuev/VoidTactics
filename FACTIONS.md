@@ -29,14 +29,16 @@ Relationships are defined in `src/core/Game.ts`:
     - **Military** and **Civilians** are always allies.
     - Factions of the same type (except Orcs/Raiders occasionally) are allies.
 
-## AI Implementation (`processAI`)
+## AI Implementation (`AIController`)
 
-The AI behavior is implemented in `src/core/Game.ts`:
+The AI behavior is implemented in `src/core/AIController.ts` (separated from Game.ts for better maintainability):
 
 - **Fleeing**: NPCs evaluate "closestThreat" (hostile and stronger). Most factions flee, but **Raiders** skip this check and never retreat.
 - **Targeting**: NPCs look for "bestTarget" (hostile and weaker).
     - Normal factions only target fleets where `other.strength < npc.strength * 0.8`.
     - **Raiders** can target fleets up to `1.5x` their strength and have a `20%` chance to ignore strength entirely and attack anyway.
+    - **Opportunistic Targeting**: **Pirates**, **Orcs**, **Military**, and **Raiders** will target weakened enemies in ongoing battles if `other.strength < npc.strength * 0.6`.
+- **Chase Management**: NPCs give up pursuit if the target is escaping the system (position magnitude > 0.8 * system radius and moving outward), redirecting toward the system center instead of continuing futile chases.
 - **Roaming**: Factions have preferred POIs.
     - Civilians/Military stay near planets.
     - Pirates/Orcs hang around Asteroids and Outpost Alpha.
