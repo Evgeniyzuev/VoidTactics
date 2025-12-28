@@ -147,10 +147,48 @@ export class Game {
         this.entities.push(star);
 
         // Planets
-        this.entities.push(new CelestialBody(800, 0, 40, '#00CED1', 'Terra'));
-        this.entities.push(new CelestialBody(860, 0, 10, '#AAAAAA', 'Luna'));
+        const terra = new CelestialBody(800, 0, 40, '#00CED1', 'Terra');
+        this.entities.push(terra);
+
+        const luna = new CelestialBody(860, 0, 10, '#AAAAAA', 'Luna');
+        luna.orbitParent = terra;
+        luna.orbitRadius = 60;
+        luna.orbitSpeed = 0.125; // Slowed down 4x (0.5 / 4)
+        this.entities.push(luna);
+
         this.entities.push(new CelestialBody(-1200, 400, 60, '#FF4500', 'Marsish'));
-        this.entities.push(new CelestialBody(400, -1500, 110, '#DEB887', 'Jupit'));
+
+        const jupiter = new CelestialBody(400, -1500, 110, '#DEB887', 'Jupiter');
+        this.entities.push(jupiter);
+
+        // Jupiter satellites
+        const moons = [
+            { name: 'Io', radius: 8, color: '#F0E68C', orbitRadius: 160, orbitSpeed: 0.2 }, // 0.8 / 4
+            { name: 'Europa', radius: 7, color: '#E0FFFF', orbitRadius: 220, orbitSpeed: 0.15 }, // 0.6 / 4
+            { name: 'Ganymede', radius: 12, color: '#D2B48C', orbitRadius: 300, orbitSpeed: 0.1 } // 0.4 / 4
+        ];
+
+        moons.forEach(m => {
+            const moon = new CelestialBody(0, 0, m.radius, m.color, m.name);
+            moon.orbitParent = jupiter;
+            moon.orbitRadius = m.orbitRadius;
+            moon.orbitSpeed = m.orbitSpeed;
+            moon.orbitAngle = Math.random() * Math.PI * 2;
+            this.entities.push(moon);
+        });
+
+        // Saturn
+        const saturn = new CelestialBody(-3000, -2000, 95, '#F4A460', 'Saturn');
+        saturn.rings = {
+            bands: [
+                { innerRadius: 110, outerRadius: 130, color: 'rgba(210, 180, 140, 0.4)' }, // Darker inner band
+                { innerRadius: 132, outerRadius: 155, color: 'rgba(245, 222, 179, 0.7)' }, // Lighter middle band
+                { innerRadius: 157, outerRadius: 165, color: 'rgba(210, 180, 140, 0.3)' }, // Very thin darker band
+                { innerRadius: 167, outerRadius: 185, color: 'rgba(245, 222, 179, 0.5)' }  // Outer band
+            ],
+            angle: Math.PI / 6
+        };
+        this.entities.push(saturn);
 
         // Asteroid Belt
         for (let i = 0; i < 20; i++) {
