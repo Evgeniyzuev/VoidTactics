@@ -91,12 +91,12 @@ export class Battle {
         if (sizeA === 0 || sizeB === 0) return; // No damage if one side empty
 
         // Damage to A: (sizeB^2 / sizeA) * 0.1 ±10%
-        const baseDamageA = ((sizeA + sizeB )* sizeB / sizeA) * 0.1;
+        const baseDamageA = ((sizeA + sizeB )* sizeB / sizeA) * 0.01;
         const varianceA = baseDamageA * 0.1 * (Math.random() * 2 - 1); // ±10%
         const damageA = Math.max(0, baseDamageA + varianceA);
 
         // Damage to B: (sizeA^2 / sizeB) * 0.1 ±10%
-        const baseDamageB = ((sizeA + sizeB ) * sizeA / sizeB) * 0.1;
+        const baseDamageB = ((sizeA + sizeB ) * sizeA / sizeB) * 0.01;
         const varianceB = baseDamageB * 0.1 * (Math.random() * 2 - 1);
         const damageB = Math.max(0, baseDamageB + varianceB);
 
