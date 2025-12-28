@@ -661,9 +661,11 @@ export class Game {
 
         // Money distribution if player survived (in winnerSide)
         if (winnerSide.includes(this.playerFleet)) {
-            // Money = total strength of defeated enemy side * 100
+            // Money = total strength of defeated enemy side * 100 * (player strength / total winner strength)
             const defeatedStrength = battle.sideA.includes(this.playerFleet) ? battle.initialSizeB : battle.initialSizeA;
-            const moneyEarned = defeatedStrength * 100;
+            const totalWinnerStrength = winnerSide.reduce((sum, f) => sum + f.strength, 0);
+            const playerShare = this.playerFleet.strength / totalWinnerStrength;
+            const moneyEarned = defeatedStrength * 100 * playerShare;
 
             // Player gets money directly
             this.playerFleet.money += Math.floor(moneyEarned);
