@@ -237,10 +237,11 @@ export class Game {
 
     private spawnNPCs(count: number, specificFaction?: Faction) {
         const factions: { type: Faction, color: string, weight: number }[] = [
-            { type: 'civilian', color: '#32CD32', weight: 0.5 }, // Green
+            { type: 'civilian', color: '#32CD32', weight: 0.45 }, // Green
             { type: 'pirate', color: '#FF4444', weight: 0.2 },   // Red
             { type: 'orc', color: '#9370DB', weight: 0.15 },    // Purple
-            { type: 'military', color: '#FFFF00', weight: 0.15 } // Yellow
+            { type: 'military', color: '#FFFF00', weight: 0.15 }, // Yellow
+            { type: 'raider', color: '#888888', weight: 0.05 }  // Grey
         ];
 
         for (let i = 0; i < count; i++) {
@@ -381,20 +382,22 @@ export class Game {
             if (eidx !== -1) this.entities.splice(eidx, 1);
         }
 
-        if (this.npcFleets.length < 29) {
+        if (this.npcFleets.length < 35) {
             // Count current factions
             const counts: Record<string, number> = {
                 civilian: 0,
                 pirate: 0,
                 orc: 0,
-                military: 0
+                military: 0,
+                raider: 0
             };
             for (const f of this.npcFleets) {
                 if (counts[f.faction] !== undefined) counts[f.faction]++;
             }
 
             // Target counts based on weights (Total 30 NPCs: Civ 15, Pirate 6, Orc 4, Military 4)
-            if (counts.civilian < 15) this.spawnNPCs(1, 'civilian');
+            if (counts.raider < 4) this.spawnNPCs(1, 'raider');
+            else if (counts.civilian < 15) this.spawnNPCs(1, 'civilian');
             else if (counts.pirate < 6) this.spawnNPCs(1, 'pirate');
             else if (counts.orc < 4) this.spawnNPCs(1, 'orc');
             else if (counts.military < 4) this.spawnNPCs(1, 'military');
@@ -485,6 +488,9 @@ export class Game {
         if (a === b) return false;
         const f1 = a.faction;
         const f2 = b.faction;
+
+        if ((f1 as string) === 'raider') return f2 !== 'raider';
+        if ((f2 as string) === 'raider') return f1 !== 'raider';
 
         if (f1 === 'player') {
             return f2 === 'pirate' || f2 === 'orc';
@@ -582,6 +588,19 @@ export class Game {
                 const hostileAtoB = this.isHostile(npc, other);
                 const hostileBtoA = this.isHostile(other, npc);
 
+                if (npc.faction === 'raider' && hostileAtoB) {
+                    // Raiders are aggressive: 20% chance to attack regardless of strength, 
+                    // otherwise attack if up to 1.5x their strength (instead of 0.8x)
+                    const forceAttack = Math.random() < 0.2;
+                    if (forceAttack || other.strength < npc.strength * 1.5) {
+                        if (dist < minDistTarget) {
+                            minDistTarget = dist;
+                            bestTarget = other;
+                        }
+                    }
+                    continue; // Skip threat evaluation for raiders
+                }
+
                 if (hostileBtoA && other.strength > npc.strength * 1.2) {
                     // Threat: He wants to kill me and is stronger
                     if (dist < minDistThreat) {
@@ -598,8 +617,8 @@ export class Game {
             }
 
             // Decide action
-            if (closestThreat) {
-                // Flee!
+            if (closestThreat && npc.faction !== 'raider') {
+                // Flee! (Raiders never flee)
                 const runDir = npc.position.sub(closestThreat.position).normalize();
                 npc.setTarget(npc.position.add(runDir.scale(800)));
                 npc.state = 'flee';
@@ -865,12 +884,24 @@ export class Game {
                 'civilian': 'Civilian',
                 'pirate': 'Pirate',
                 'orc': 'Orc',
-                'military': 'Military'
+                'military': 'Military',
+                'raider': 'Raider'
             };
-            info = `<strong>${factionNames[fleet.faction] || 'Unknown'}</strong><br/>`;
-            info += `Size: ${fleet.strength}<br/>`;
-            info += `Speed: ${fleet.velocity.mag().toFixed(1)}<br/>`;
-            info += `Pos: (${fleet.position.x.toFixed(0)}, ${fleet.position.y.toFixed(0)})`;
+
+            const dist = Vector2.distance(fleet.position, this.playerFleet.position);
+            const isUnknownRaider = fleet.faction === 'raider' && dist > this.contactDistance;
+
+            if (isUnknownRaider) {
+                info = `<strong>???</strong><br/>`;
+                info += `Size: ???<br/>`;
+                info += `Speed: ???<br/>`;
+                info += `Pos: ???`;
+            } else {
+                info = `<strong>${factionNames[fleet.faction] || 'Unknown'}</strong><br/>`;
+                info += `Size: ${fleet.strength}<br/>`;
+                info += `Speed: ${fleet.velocity.mag().toFixed(1)}<br/>`;
+                info += `Pos: (${fleet.position.x.toFixed(0)}, ${fleet.position.y.toFixed(0)})`;
+            }
 
             if (!isPlayer) {
                 showApproach = true;
