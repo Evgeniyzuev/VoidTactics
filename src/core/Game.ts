@@ -601,6 +601,21 @@ export class Game {
         const toRemove: Fleet[] = [];
         for (let i = this.battles.length - 1; i >= 0; i--) {
             const b = this.battles[i];
+
+            // Cleanup: remove dead or missing fleets from sides
+            b.sideA = b.sideA.filter(f => !toRemove.includes(f) && (f === this.playerFleet || this.npcFleets.includes(f)));
+            b.sideB = b.sideB.filter(f => !toRemove.includes(f) && (f === this.playerFleet || this.npcFleets.includes(f)));
+
+            if (b.sideA.length === 0 || b.sideB.length === 0) {
+                // Battle is effectively over because one side vanished
+                for (const f of [...b.sideA, ...b.sideB]) {
+                    f.state = 'normal';
+                    f.activeBattle = null;
+                }
+                this.battles.splice(i, 1);
+                continue;
+            }
+
             b.update(dt);
             if (b.timer <= 0) {
                 this.resolveBattleGroup(b, toRemove);
@@ -610,9 +625,12 @@ export class Game {
 
         // 2. Interaction check for new combats or joining
         for (let i = 0; i < allFleets.length; i++) {
+            const f1 = allFleets[i];
+            if (toRemove.includes(f1)) continue;
+
             for (let j = i + 1; j < allFleets.length; j++) {
-                const f1 = allFleets[i];
                 const f2 = allFleets[j];
+                if (toRemove.includes(f2)) continue;
 
                 if (f1.activeBattle && f1.activeBattle === f2.activeBattle) continue;
 
