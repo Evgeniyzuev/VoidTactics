@@ -857,6 +857,11 @@ export class Game {
     private showTerraUpgradeDialog() {
         console.log('Showing Terra upgrade dialog');
 
+        // Ensure game is paused while dialog is open
+        if (!this.isPaused) {
+            this.togglePause();
+        }
+
         this.modal.showTerraUpgradeDialog(
             this.playerFleet.strength,
             this.playerFleet.money,

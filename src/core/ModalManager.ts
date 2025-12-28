@@ -358,7 +358,7 @@ export class ModalManager {
             btn.addEventListener('click', () => {
                 if (!disabled) {
                     callback();
-                    this.closeModal();
+                    // Don't close modal here - let the callback decide
                 }
             });
 
@@ -367,7 +367,10 @@ export class ModalManager {
 
         const upgradeDisabled = currentMoney < 100;
         buttonContainer.appendChild(createButton('⬆️ Улучшить', '#00AA00', onUpgrade, upgradeDisabled));
-        buttonContainer.appendChild(createButton('❌ Отмена', '#666666', onCancel));
+        buttonContainer.appendChild(createButton('❌ Отмена', '#666666', () => {
+            onCancel();
+            this.closeModal();
+        }));
 
         dialog.appendChild(title);
         dialog.appendChild(message);
