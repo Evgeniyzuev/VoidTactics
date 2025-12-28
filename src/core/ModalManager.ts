@@ -6,6 +6,13 @@ export class ModalManager {
     }
 
     /**
+     * Check if a modal is currently open
+     */
+    isModalOpen(): boolean {
+        return this.modalContainer !== null;
+    }
+
+    /**
      * Show contact dialog when fleets are in contact range
      */
     showContactDialog(onCommunicate: () => void, onAttack: () => void, onCancel: () => void) {
@@ -317,7 +324,7 @@ export class ModalManager {
         info.style.whiteSpace = 'pre-line';
 
         const upgradeButton = document.createElement('button');
-        upgradeButton.textContent = 'Upgrade Fleet (+1 Strength) - $100';
+        upgradeButton.textContent = 'Upgrade Fleet (All Money)';
         upgradeButton.style.padding = '12px 24px';
         upgradeButton.style.border = 'none';
         upgradeButton.style.borderRadius = '6px';
@@ -330,13 +337,7 @@ export class ModalManager {
         upgradeButton.style.marginRight = '10px';
 
         upgradeButton.addEventListener('click', () => {
-            if (currentMoney >= 100) {
-                onUpgrade();
-                // Update dialog after upgrade
-                info.textContent = `Current Fleet Strength: ${currentStrength + 1}\nCurrent Money: $${currentMoney - 100}`;
-                upgradeButton.style.background = (currentMoney - 100) >= 100 ? '#00AA00' : '#666666';
-                upgradeButton.style.cursor = (currentMoney - 100) >= 100 ? 'pointer' : 'not-allowed';
-            }
+            onUpgrade();
         });
 
         const cancelButton = document.createElement('button');

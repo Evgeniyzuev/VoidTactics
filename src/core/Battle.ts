@@ -11,13 +11,16 @@ export class Battle {
     public dead: Fleet[] = [];
     public totalInitialStrength: number = 0;
     public totalDamageDealt: number = 0;
+    public damageDealtByPlayer: number = 0;
+    public playerFleet: Fleet | null = null;
 
-    constructor(f1: Fleet, f2: Fleet) {
+    constructor(f1: Fleet, f2: Fleet, player?: Fleet) {
         this.sideA.push(f1);
         this.sideB.push(f2);
         this.initialSizeA = f1.strength;
         this.initialSizeB = f2.strength;
         this.totalInitialStrength = f1.strength + f2.strength;
+        if (player) this.playerFleet = player;
         f1.activeBattle = this;
         f2.activeBattle = this;
         f1.state = 'combat';
@@ -82,13 +85,13 @@ export class Battle {
 
         if (sizeA === 0 || sizeB === 0) return; // No damage if one side empty
 
-        // Damage to A: (sizeB^2 / sizeA) * 0.2 ±10%
-        const baseDamageA = (sizeB * sizeB / sizeA) * 0.2;
+        // Damage to A: (sizeB^2 / sizeA) * 0.1 ±10%
+        const baseDamageA = (sizeB * sizeB / sizeA) * 0.1;
         const varianceA = baseDamageA * 0.1 * (Math.random() * 2 - 1); // ±10%
         const damageA = Math.max(0, baseDamageA + varianceA);
 
-        // Damage to B: (sizeA^2 / sizeB) * 0.2 ±10%
-        const baseDamageB = (sizeA * sizeA / sizeB) * 0.2;
+        // Damage to B: (sizeA^2 / sizeB) * 0.1 ±10%
+        const baseDamageB = (sizeA * sizeA / sizeB) * 0.1;
         const varianceB = baseDamageB * 0.1 * (Math.random() * 2 - 1);
         const damageB = Math.max(0, baseDamageB + varianceB);
 
@@ -100,6 +103,19 @@ export class Battle {
 
         // Accumulate total damage dealt
         this.totalDamageDealt += damageA + damageB;
+
+        // Accumulate damage dealt by player
+        if (this.playerFleet) {
+            if (this.sideA.includes(this.playerFleet)) {
+                // Player is in side A, damage dealt to B
+                const playerShare = this.playerFleet.strength / this.totalSizeA;
+                this.damageDealtByPlayer += playerShare * damageB;
+            } else if (this.sideB.includes(this.playerFleet)) {
+                // Player is in side B, damage dealt to A
+                const playerShare = this.playerFleet.strength / this.totalSizeB;
+                this.damageDealtByPlayer += playerShare * damageA;
+            }
+        }
 
         // Mark fleets with strength < 1 as dead
         for (const f of this.sideA) {

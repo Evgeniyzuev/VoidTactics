@@ -387,7 +387,7 @@ export class Game {
 
                 if (isDoubleClick) {
                     this.playerFleet.setTarget(worldTarget);
-                    if (this.isPaused) this.togglePause();
+                    if (this.isPaused && !this.modal.isModalOpen()) this.togglePause();
                     this.closeTooltip();
                 } else {
                     // Inspect even if we were manually guiding the ship
@@ -587,7 +587,7 @@ export class Game {
 
                     if (dist < triggerDist) {
                         if (!f1.activeBattle && !f2.activeBattle) {
-                            const b = new Battle(f1, f2);
+                            const b = new Battle(f1, f2, this.playerFleet);
                             this.battles.push(b);
                         } else if (f1.activeBattle && !f2.activeBattle) {
                             f1.activeBattle.addFleet(f2, f1);
@@ -661,16 +661,12 @@ export class Game {
 
         // Money distribution if player survived (in winnerSide)
         if (winnerSide.includes(this.playerFleet)) {
-            const moneyEarned = battle.totalDamageDealt * 100;
+            // Money = total strength of defeated enemy side * 100
+            const defeatedStrength = battle.sideA.includes(this.playerFleet) ? battle.initialSizeB : battle.initialSizeA;
+            const moneyEarned = defeatedStrength * 100;
 
-            // Distribute to winners proportionally (only player gets money)
-            const totalWinnerStrength = winnerSide.reduce((sum, f) => sum + f.strength, 0);
-            for (const winner of winnerSide) {
-                if (winner.isPlayer) {
-                    const share = winner.strength / totalWinnerStrength;
-                    winner.money += Math.floor(moneyEarned * share);
-                }
-            }
+            // Player gets money directly
+            this.playerFleet.money += Math.floor(moneyEarned);
 
             if (!this.isPaused) this.togglePause();
             console.log(`Battle resolved. Player won. Money earned: ${Math.floor(moneyEarned)}.`);
@@ -863,12 +859,13 @@ export class Game {
             this.playerFleet.money,
             () => {
                 // Upgrade logic
-                if (this.playerFleet.money >= 100) {
-                    this.playerFleet.strength += 1;
-                    this.playerFleet.money -= 100;
+                const upgradeAmount = Math.floor(this.playerFleet.money / 100);
+                if (upgradeAmount > 0) {
+                    this.playerFleet.strength += upgradeAmount;
+                    this.playerFleet.money -= upgradeAmount * 100;
                     this.ui.updateMoney(this.playerFleet.money);
-                    console.log('Fleet upgraded to strength:', this.playerFleet.strength);
-                    // Update dialog with new values (keep it open)
+                    console.log('Fleet upgraded by', upgradeAmount, 'to strength:', this.playerFleet.strength);
+                    // Update dialog with new values
                     this.showTerraUpgradeDialog();
                 }
             },
@@ -897,7 +894,7 @@ export class Game {
                 console.log('Initiating battle...');
                 // Use the new Battle system
                 if (!this.playerFleet.activeBattle && !fleet.activeBattle) {
-                    const b = new Battle(this.playerFleet, fleet);
+                    const b = new Battle(this.playerFleet, fleet, this.playerFleet);
                     this.battles.push(b);
                 } else if (this.playerFleet.activeBattle && !fleet.activeBattle) {
                     this.playerFleet.activeBattle.addFleet(fleet, this.playerFleet);
