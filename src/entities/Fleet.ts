@@ -18,6 +18,7 @@ export class Fleet extends Entity {
     public color: string;
     public isPlayer: boolean = false;
     public strength: number = 10;
+    public accumulatedDamage: number = 0;
     public sizeMultiplier: number = 1.0;
     public faction: Faction = 'civilian';
     public state: 'normal' | 'combat' | 'flee' = 'normal';

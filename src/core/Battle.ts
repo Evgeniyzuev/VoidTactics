@@ -27,6 +27,8 @@ export class Battle {
         f2.state = 'combat';
         f1.combatTimer = this.roundTimer;
         f2.combatTimer = this.roundTimer;
+        f1.accumulatedDamage = 0;
+        f2.accumulatedDamage = 0;
     }
 
     joinSide(fleet: Fleet, side: 'A' | 'B') {
@@ -39,6 +41,7 @@ export class Battle {
             fleet.activeBattle = this;
             fleet.state = 'combat';
             fleet.combatTimer = this.roundTimer;
+            fleet.accumulatedDamage = 0;
             this.roundTimer = Math.max(this.roundTimer, 2.0);
         }
     }
@@ -52,6 +55,7 @@ export class Battle {
                 fleet.activeBattle = this;
                 fleet.state = 'combat';
                 fleet.combatTimer = this.roundTimer;
+                fleet.accumulatedDamage = 0;
             }
         } else if (this.sideB.includes(against)) {
             if (!this.sideA.includes(fleet)) {
@@ -61,6 +65,7 @@ export class Battle {
                 fleet.activeBattle = this;
                 fleet.state = 'combat';
                 fleet.combatTimer = this.roundTimer;
+                fleet.accumulatedDamage = 0;
             }
         }
         this.roundTimer = Math.max(this.roundTimer, 2.0); // Reset/Extend timer
@@ -136,8 +141,15 @@ export class Battle {
 
         for (const fleet of fleets) {
             const share = fleet.strength / totalStrength;
-            const damage = Math.ceil(totalDamage * share);
-            fleet.strength = Math.max(0, fleet.strength - damage);
+            const damage = totalDamage * share;  // Fractional damage
+            fleet.accumulatedDamage += damage;
+
+            // Apply integer damage when accumulated >= 1
+            const integerDamage = Math.floor(fleet.accumulatedDamage);
+            if (integerDamage > 0) {
+                fleet.strength = Math.max(0, fleet.strength - integerDamage);
+                fleet.accumulatedDamage -= integerDamage;
+            }
         }
     }
 
