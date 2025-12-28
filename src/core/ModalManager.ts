@@ -275,7 +275,7 @@ export class ModalManager {
     }
 
     /**
-     * Show fleet upgrade dialog on Terra
+     * Show Terra upgrade dialog
      */
     showTerraUpgradeDialog(currentStrength: number, currentMoney: number, onUpgrade: () => void, onCancel: () => void) {
         this.closeModal();
@@ -304,77 +304,66 @@ export class ModalManager {
         dialog.style.minWidth = '300px';
 
         const title = document.createElement('h2');
-        title.textContent = '🚀 Улучшение флота на Терре';
+        title.textContent = '🌍 Terra Station';
         title.style.margin = '0 0 20px 0';
         title.style.fontSize = '24px';
         title.style.color = '#00C8FF';
 
-        const message = document.createElement('p');
-        message.textContent = `Текущая сила: ${currentStrength}\nСтоимость улучшения: 100$`;
-        message.style.margin = '0 0 30px 0';
-        message.style.fontSize = '14px';
-        message.style.lineHeight = '1.6';
-        message.style.whiteSpace = 'pre-line';
+        const info = document.createElement('p');
+        info.textContent = `Current Fleet Strength: ${currentStrength}\nCurrent Money: $${currentMoney}`;
+        info.style.margin = '0 0 30px 0';
+        info.style.fontSize = '14px';
+        info.style.lineHeight = '1.6';
+        info.style.whiteSpace = 'pre-line';
 
-        const moneyInfo = document.createElement('p');
-        moneyInfo.textContent = `Ваши деньги: ${currentMoney}$`;
-        moneyInfo.style.margin = '0 0 30px 0';
-        moneyInfo.style.fontSize = '14px';
-        moneyInfo.style.color = currentMoney >= 100 ? '#00FF88' : '#FF4444';
+        const upgradeButton = document.createElement('button');
+        upgradeButton.textContent = 'Upgrade Fleet (+1 Strength) - $100';
+        upgradeButton.style.padding = '12px 24px';
+        upgradeButton.style.border = 'none';
+        upgradeButton.style.borderRadius = '6px';
+        upgradeButton.style.background = currentMoney >= 100 ? '#00AA00' : '#666666';
+        upgradeButton.style.color = 'white';
+        upgradeButton.style.fontSize = '14px';
+        upgradeButton.style.fontWeight = 'bold';
+        upgradeButton.style.cursor = currentMoney >= 100 ? 'pointer' : 'not-allowed';
+        upgradeButton.style.fontFamily = 'monospace';
+        upgradeButton.style.marginRight = '10px';
+
+        upgradeButton.addEventListener('click', () => {
+            if (currentMoney >= 100) {
+                onUpgrade();
+                // Update dialog after upgrade
+                info.textContent = `Current Fleet Strength: ${currentStrength + 1}\nCurrent Money: $${currentMoney - 100}`;
+                upgradeButton.style.background = (currentMoney - 100) >= 100 ? '#00AA00' : '#666666';
+                upgradeButton.style.cursor = (currentMoney - 100) >= 100 ? 'pointer' : 'not-allowed';
+            }
+        });
+
+        const cancelButton = document.createElement('button');
+        cancelButton.textContent = 'Cancel';
+        cancelButton.style.padding = '12px 24px';
+        cancelButton.style.border = 'none';
+        cancelButton.style.borderRadius = '6px';
+        cancelButton.style.background = '#FF4444';
+        cancelButton.style.color = 'white';
+        cancelButton.style.fontSize = '14px';
+        cancelButton.style.fontWeight = 'bold';
+        cancelButton.style.cursor = 'pointer';
+        cancelButton.style.fontFamily = 'monospace';
+
+        cancelButton.addEventListener('click', () => {
+            onCancel();
+        });
 
         const buttonContainer = document.createElement('div');
         buttonContainer.style.display = 'flex';
-        buttonContainer.style.gap = '10px';
         buttonContainer.style.justifyContent = 'center';
-
-        const createButton = (text: string, bgColor: string, callback: () => void, disabled: boolean = false) => {
-            const btn = document.createElement('button');
-            btn.textContent = text;
-            btn.style.padding = '12px 24px';
-            btn.style.border = 'none';
-            btn.style.borderRadius = '6px';
-            btn.style.background = bgColor;
-            btn.style.color = 'white';
-            btn.style.fontSize = '14px';
-            btn.style.fontWeight = 'bold';
-            btn.style.cursor = disabled ? 'not-allowed' : 'pointer';
-            btn.style.opacity = disabled ? '0.5' : '1';
-            btn.style.transition = 'transform 0.2s, box-shadow 0.2s';
-            btn.style.fontFamily = 'monospace';
-            btn.disabled = disabled;
-
-            if (!disabled) {
-                btn.addEventListener('mouseenter', () => {
-                    btn.style.transform = 'scale(1.05)';
-                    btn.style.boxShadow = `0 4px 12px ${bgColor}80`;
-                });
-
-                btn.addEventListener('mouseleave', () => {
-                    btn.style.transform = 'scale(1)';
-                    btn.style.boxShadow = 'none';
-                });
-            }
-
-            btn.addEventListener('click', () => {
-                if (!disabled) {
-                    callback();
-                    // Don't close modal here - let the callback decide
-                }
-            });
-
-            return btn;
-        };
-
-        const upgradeDisabled = currentMoney < 100;
-        buttonContainer.appendChild(createButton('⬆️ Улучшить', '#00AA00', onUpgrade, upgradeDisabled));
-        buttonContainer.appendChild(createButton('❌ Отмена', '#666666', () => {
-            onCancel();
-            this.closeModal();
-        }));
+        buttonContainer.style.gap = '10px';
+        buttonContainer.appendChild(upgradeButton);
+        buttonContainer.appendChild(cancelButton);
 
         dialog.appendChild(title);
-        dialog.appendChild(message);
-        dialog.appendChild(moneyInfo);
+        dialog.appendChild(info);
         dialog.appendChild(buttonContainer);
         this.modalContainer.appendChild(dialog);
         document.body.appendChild(this.modalContainer);

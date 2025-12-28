@@ -10,6 +10,7 @@ export class Battle {
     public initialSizeB: number = 0;
     public dead: Fleet[] = [];
     public totalInitialStrength: number = 0;
+    public totalDamageDealt: number = 0;
 
     constructor(f1: Fleet, f2: Fleet) {
         this.sideA.push(f1);
@@ -96,6 +97,9 @@ export class Battle {
 
         // Distribute to sideB fleets proportionally
         this.distributeDamage(this.sideB, damageB);
+
+        // Accumulate total damage dealt
+        this.totalDamageDealt += damageA + damageB;
 
         // Mark fleets with strength < 1 as dead
         for (const f of this.sideA) {

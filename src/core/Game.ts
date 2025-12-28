@@ -647,7 +647,6 @@ export class Game {
 
     private resolveBattleGroup(battle: Battle, toRemove: Fleet[]) {
         const winnerSide = battle.sideA.filter(f => !battle.dead.includes(f));
-        const loserSide = battle.sideB.filter(f => !battle.dead.includes(f));
 
         // Reset winner states
         for (const winner of winnerSide) {
@@ -660,11 +659,9 @@ export class Game {
             toRemove.push(dead);
         }
 
-        // Money distribution if player involved
-        const playerInvolved = winnerSide.includes(this.playerFleet) || loserSide.includes(this.playerFleet);
-        if (playerInvolved) {
-            const totalLost = battle.totalInitialStrength - (battle.totalSizeA + battle.totalSizeB);
-            const moneyEarned = totalLost * 100;
+        // Money distribution if player survived (in winnerSide)
+        if (winnerSide.includes(this.playerFleet)) {
+            const moneyEarned = battle.totalDamageDealt * 100;
 
             // Distribute to winners proportionally (only player gets money)
             const totalWinnerStrength = winnerSide.reduce((sum, f) => sum + f.strength, 0);
@@ -676,8 +673,7 @@ export class Game {
             }
 
             if (!this.isPaused) this.togglePause();
-            const playerWon = winnerSide.includes(this.playerFleet);
-            console.log(`Battle resolved. Player ${playerWon ? 'won' : 'lost'}. Money earned: ${Math.floor(moneyEarned)}.`);
+            console.log(`Battle resolved. Player won. Money earned: ${Math.floor(moneyEarned)}.`);
         }
 
         console.log(`Battle Resolved: Winners: ${winnerSide.length}, Losers: ${battle.dead.length}.`);
