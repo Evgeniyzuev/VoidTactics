@@ -265,8 +265,19 @@ export class Fleet extends Entity {
         const shipRadius = baseRadius * this.sizeMultiplier;
         ctx.arc(0, 0, shipRadius, 0, Math.PI * 2);
 
+        // Calculate highlight relative to the sun (0,0)
+        const toSun = new Vector2(-this.position.x, -this.position.y);
+        const angleToSun = Math.atan2(toSun.y, toSun.x);
+        // Ship is already rotated by (this.rotation + Math.PI / 2)
+        const currentRotation = this.rotation + Math.PI / 2;
+        const relAngle = angleToSun - currentRotation;
+
+        const hOffset = shipRadius * 0.4;
+        const hX = Math.cos(relAngle) * hOffset;
+        const hY = Math.sin(relAngle) * hOffset;
+
         // Fill with Gradient for "Bubble" effect
-        const grad = ctx.createRadialGradient(-baseRadius * 0.25 * this.sizeMultiplier, -baseRadius * 0.25 * this.sizeMultiplier, baseRadius * 0.12 * this.sizeMultiplier, 0, 0, shipRadius);
+        const grad = ctx.createRadialGradient(hX, hY, shipRadius * 0.1, 0, 0, shipRadius);
         grad.addColorStop(0, '#FFFFFF'); // Highlight
         grad.addColorStop(0.5, this.color);
         grad.addColorStop(1, '#000033'); // Darker edge

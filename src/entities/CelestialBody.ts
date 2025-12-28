@@ -78,15 +78,26 @@ export class CelestialBody extends Entity {
             ctx.translate(screenPos.x, screenPos.y);
             ctx.rotate(angleToSun); // Rotate so X-axis points to sun
 
-            // Shadow is on the back side (away from sun)
-            // Draw a semi-circle or crescent for shadow
-            ctx.fillStyle = 'rgba(0,0,0,0.75)';
-            ctx.beginPath();
-            // The shadow covers the "back" half
-            ctx.arc(0, 0, this.radius * camera.zoom, Math.PI * 0.5, Math.PI * 1.5);
-            ctx.fill();
+            const r = this.radius * camera.zoom;
 
-            // Soften the terminator line? (Optional optimization)
+            // Draw Shadow with curved terminator
+            // We use an elliptical arc for the terminator to give a 3D spherical feel
+            ctx.beginPath();
+            // Outer semi-circle (dark side)
+            ctx.arc(0, 0, r, Math.PI * 0.5, Math.PI * 1.5);
+            // Curved terminator bulging into the dark side (making shadow cover < 50% for "from sun" look)
+            // Or bulging into light side for crescent. 
+            // The user wants "slightly from sun side", so shadow should be a bit smaller than 50%.
+            ctx.ellipse(0, 0, r * 0.3, r, 0, Math.PI * 1.5, Math.PI * 0.5, true);
+
+            // Use a gradient for the shadow to soften the transition
+            const shadowGrad = ctx.createLinearGradient(-r, 0, r * 0.4, 0);
+            shadowGrad.addColorStop(0, 'rgba(0,0,0,0.8)');
+            shadowGrad.addColorStop(0.8, 'rgba(0,0,0,0.7)');
+            shadowGrad.addColorStop(1, 'rgba(0,0,0,0.1)'); // Soft edge at terminator
+
+            ctx.fillStyle = shadowGrad;
+            ctx.fill();
 
             ctx.restore();
         }

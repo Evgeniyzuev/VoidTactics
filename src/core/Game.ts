@@ -294,7 +294,6 @@ export class Game {
                 }
             }
         } else {
-            const wasSteering = this.playerFleet.manualSteerTarget !== null;
             this.playerFleet.manualSteerTarget = null;
 
             if (this.isDragging) {
@@ -306,8 +305,8 @@ export class Game {
                     this.playerFleet.setTarget(worldTarget);
                     if (this.isPaused) this.togglePause();
                     this.closeTooltip();
-                } else if (!wasSteering) {
-                    // Inspect only if we weren't manually guiding the ship
+                } else {
+                    // Inspect even if we were manually guiding the ship
                     this.inspectObject(worldTarget);
                 }
             }
