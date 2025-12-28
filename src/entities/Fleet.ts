@@ -36,6 +36,7 @@ export class Fleet extends Entity {
     public isCloaked: boolean = false;
     public isBubbled: boolean = false; // Set by external bubbles
     public stunTimer: number = 0;
+    public money: number = 0; // Only for player
 
     constructor(x: number, y: number, color: string = '#55CCFF', isPlayer: boolean = false) {
         super(x, y);
@@ -64,6 +65,10 @@ export class Fleet extends Entity {
     }
 
     update(dt: number) {
+        // Sanitize position and velocity to prevent NaN errors
+        if (!isFinite(this.position.x) || !isFinite(this.position.y)) this.position = new Vector2(0, 0);
+        if (!isFinite(this.velocity.x) || !isFinite(this.velocity.y)) this.velocity = new Vector2(0, 0);
+
         if (this.decisionTimer > 0) this.decisionTimer -= dt;
         if (this.civilianStopTimer > 0) this.civilianStopTimer -= dt;
 
@@ -220,7 +225,8 @@ export class Fleet extends Entity {
                 let responsiveness = 1.2 / Math.sqrt(this.sizeMultiplier);
                 if (this.abilities.afterburner.active) responsiveness *= 1.5;
 
-                const steerForce = steering.scale(responsiveness * dt);
+                let steerForce = steering.scale(responsiveness * dt);
+                if (!isFinite(steerForce.x) || !isFinite(steerForce.y)) steerForce = new Vector2(0, 0);
                 this.velocity = this.velocity.add(steerForce);
                 this.lastAcceleration = steerForce.scale(1 / dt);
             }
@@ -233,10 +239,14 @@ export class Fleet extends Entity {
         // Apply Velocity
         this.position = this.position.add(this.velocity.scale(dt));
 
+        // Final sanitization to prevent NaN errors
+        if (!isFinite(this.position.x) || !isFinite(this.position.y)) this.position = new Vector2(0, 0);
+        if (!isFinite(this.velocity.x) || !isFinite(this.velocity.y)) this.velocity = new Vector2(0, 0);
+
         // Update Rotation (Smooth turn towards velocity)
         if (this.velocity.mag() > 1) {
             const desiredAngle = Math.atan2(this.velocity.y, this.velocity.x);
-            // Simple approach: Set rotation directly for now. 
+            // Simple approach: Set rotation directly for now.
             // Better: Lerp rotation. But instant is fine for this style.
             this.rotation = desiredAngle;
         }

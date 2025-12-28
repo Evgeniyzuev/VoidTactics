@@ -168,12 +168,24 @@ export class UIManager {
         panel.style.zIndex = '50';
         panel.style.display = 'flex';
         panel.style.gap = '8px';
+        panel.style.alignItems = 'center';
         panel.style.padding = '6px 12px';
         panel.style.background = 'rgba(0, 0, 0, 0.6)';
         panel.style.backdropFilter = 'blur(10px)';
         panel.style.borderRadius = '30px';
         panel.style.border = '1px solid rgba(255, 255, 255, 0.2)';
         panel.style.pointerEvents = 'auto';
+
+        // Money display
+        const moneyDisplay = document.createElement('div');
+        moneyDisplay.id = 'money-display';
+        moneyDisplay.style.color = '#FFD700';
+        moneyDisplay.style.fontSize = '16px';
+        moneyDisplay.style.fontWeight = 'bold';
+        moneyDisplay.style.fontFamily = 'monospace';
+        moneyDisplay.style.marginRight = '10px';
+        moneyDisplay.textContent = '$: 0';
+        panel.appendChild(moneyDisplay);
 
         const abilities = [
             { id: 'afterburner', icon: '🚀', color: '#FF4400', title: 'Afterburner (Boost Speed)' },
@@ -303,5 +315,12 @@ export class UIManager {
 
     private updateSpeedDisplay() {
         this.speedBtn.innerText = `${this.currentSpeed.toFixed(1)}x`;
+    }
+
+    public updateMoney(money: number) {
+        const moneyDisplay = document.getElementById('money-display');
+        if (moneyDisplay) {
+            moneyDisplay.textContent = `$: ${money}`;
+        }
     }
 }

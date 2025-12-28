@@ -113,7 +113,7 @@ export class Game {
     }
 
     private showMenu() {
-        if (!this.isPaused && !this.isGameOver) this.togglePause();
+        if (!this.isPaused) this.togglePause();
         this.modal.showMainMenu({
             onResume: () => {
                 if (this.isPaused && !this.isGameOver) this.togglePause();
@@ -270,6 +270,7 @@ export class Game {
     }
 
     private spawnNPCs(count: number, specificFaction?: Faction) {
+
         const factions: { type: Faction, color: string, weight: number }[] = [
             { type: 'civilian', color: '#32CD32', weight: 0.45 }, // Green
             { type: 'pirate', color: '#FF4444', weight: 0.2 },   // Red
@@ -321,6 +322,16 @@ export class Game {
             // Apply +-30% variance
             const variance = 0.7 + Math.random() * 0.6;
             npc.strength = Math.max(1, Math.round(baseS * variance));
+
+            // Give initial target to roam
+            const celestialBodies = this.entities.filter(e => e instanceof CelestialBody) as CelestialBody[];
+            if (celestialBodies.length > 0) {
+                const poi = celestialBodies[Math.floor(Math.random() * celestialBodies.length)];
+                const offset = new Vector2((Math.random() - 0.5) * 400, (Math.random() - 0.5) * 400);
+                npc.setTarget(poi.position.add(offset));
+            } else {
+                npc.setTarget(new Vector2((Math.random() - 0.5) * 1000, (Math.random() - 0.5) * 1000));
+            }
 
             this.entities.push(npc);
             this.npcFleets.push(npc);
@@ -389,6 +400,7 @@ export class Game {
         if (!this.isPaused) {
             this.update(dt * this.timeScale);
             this.ui.updateAbilities(this.playerFleet);
+            this.ui.updateMoney(this.playerFleet.money);
         }
         this.draw();
 
@@ -536,22 +548,8 @@ export class Game {
         for (let i = this.battles.length - 1; i >= 0; i--) {
             const b = this.battles[i];
 
-            // Cleanup: remove dead or missing fleets from sides
-            b.sideA = b.sideA.filter(f => !toRemove.includes(f) && (f === this.playerFleet || this.npcFleets.includes(f)));
-            b.sideB = b.sideB.filter(f => !toRemove.includes(f) && (f === this.playerFleet || this.npcFleets.includes(f)));
-
-            if (b.sideA.length === 0 || b.sideB.length === 0) {
-                // Battle is effectively over because one side vanished
-                for (const f of [...b.sideA, ...b.sideB]) {
-                    f.state = 'normal';
-                    f.activeBattle = null;
-                }
-                this.battles.splice(i, 1);
-                continue;
-            }
-
             b.update(dt);
-            if (b.timer <= 0) {
+            if (b.finished) {
                 this.resolveBattleGroup(b, toRemove);
                 this.battles.splice(i, 1);
             }
@@ -643,46 +641,41 @@ export class Game {
 
 
     private resolveBattleGroup(battle: Battle, toRemove: Fleet[]) {
-        const sA = battle.totalSizeA * (0.8 + Math.random() * 0.4);
-        const sB = battle.totalSizeB * (0.8 + Math.random() * 0.4);
+        const winnerSide = battle.sideA.filter(f => !battle.dead.includes(f));
+        const loserSide = battle.sideB.filter(f => !battle.dead.includes(f));
 
-        const winnerSide = sA > sB ? battle.sideA : battle.sideB;
-        const loserSide = sA > sB ? battle.sideB : battle.sideA;
-        const winS = sA > sB ? sA : sB;
-        const loseS = sA > sB ? sB : sA;
-
-        const totalWinBase = winnerSide.reduce((sum, f) => sum + f.strength, 0);
-
-        // Damage/Gain calculations based on total side strengths
-        const totalDamage = (loseS / winS) * (loseS * 0.3);
-        const totalGain = loseS * 0.6;
-
-        // Distribute proportionally to each winner's size
+        // Reset winner states
         for (const winner of winnerSide) {
-            const share = winner.strength / totalWinBase;
-            const damage = totalDamage * share;
-            const gain = totalGain * share;
-
-            winner.strength = Math.max(1, Math.round(winner.strength - damage + gain));
             winner.state = 'normal';
             winner.activeBattle = null;
         }
 
-        // Losers are removed
-        for (const loser of loserSide) {
-            toRemove.push(loser);
-            loser.activeBattle = null;
+        // Remove dead fleets
+        for (const dead of battle.dead) {
+            toRemove.push(dead);
         }
 
-        // Pause if player was involved
+        // Money distribution if player involved
         const playerInvolved = winnerSide.includes(this.playerFleet) || loserSide.includes(this.playerFleet);
         if (playerInvolved) {
+            const totalLost = battle.totalInitialStrength - (battle.totalSizeA + battle.totalSizeB);
+            const moneyEarned = totalLost * 100;
+
+            // Distribute to winners proportionally (only player gets money)
+            const totalWinnerStrength = winnerSide.reduce((sum, f) => sum + f.strength, 0);
+            for (const winner of winnerSide) {
+                if (winner.isPlayer) {
+                    const share = winner.strength / totalWinnerStrength;
+                    winner.money += Math.floor(moneyEarned * share);
+                }
+            }
+
             if (!this.isPaused) this.togglePause();
             const playerWon = winnerSide.includes(this.playerFleet);
-            console.log(`Battle group resolved. Player ${playerWon ? 'won' : 'lost'}.`);
+            console.log(`Battle resolved. Player ${playerWon ? 'won' : 'lost'}. Money earned: ${Math.floor(moneyEarned)}.`);
         }
 
-        console.log(`Battle Resolved: ${sA.toFixed(0)} vs ${sB.toFixed(0)}. ${sA > sB ? 'Side A' : 'Side B'} wins.`);
+        console.log(`Battle Resolved: Winners: ${winnerSide.length}, Losers: ${battle.dead.length}.`);
     }
 
 
