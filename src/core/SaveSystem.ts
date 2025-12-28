@@ -28,7 +28,7 @@ export class SaveSystem {
     }
 
     static clear() {
-        // No-op
+        localStorage.removeItem('vt_fleet_size');
     }
 
     static saveFleetSize(size: number) {

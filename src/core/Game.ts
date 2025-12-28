@@ -35,6 +35,7 @@ export class Game {
     private cameraFollow: boolean = true;
     private isDragging: boolean = false;
     private lastMousePos: Vector2 = new Vector2(0, 0);
+    private isGameOver: boolean = false;
 
     // Fleet interaction
     private contactDistance: number = 50; // Distance for contact dialog
@@ -100,29 +101,27 @@ export class Game {
     }
 
     private showMenu() {
-        if (!this.isPaused) this.togglePause();
+        if (!this.isPaused && !this.isGameOver) this.togglePause();
         this.modal.showMainMenu({
             onResume: () => {
-                if (this.isPaused) this.togglePause();
+                if (this.isPaused && !this.isGameOver) this.togglePause();
             },
             onNewGame: () => {
-                SaveSystem.clear();
-                location.reload();
+                // Starting a completely fresh game (strength 10)
+                // Persistence in localStorage stays until manually overwritten or cleared if explicitly desired
+                this.initWorld(10);
             },
             onSaveFleet: () => {
+                if (this.isGameOver) return;
                 SaveSystem.saveFleetSize(this.playerFleet.strength);
                 console.log('Fleet size saved:', this.playerFleet.strength);
             },
             onLoadFleet: () => {
+                // Load saved size and start new world with it
                 const savedSize = SaveSystem.loadFleetSize();
-                if (savedSize !== null) {
-                    this.playerFleet.strength = savedSize;
-                    console.log('Fleet size loaded:', savedSize);
-                } else {
-                    console.log('No saved fleet size found');
-                }
+                this.initWorld(savedSize || 10);
             }
-        });
+        }, this.isGameOver);
     }
 
     private generateBackground(width: number, height: number) {
@@ -168,7 +167,18 @@ export class Game {
         }
     }
 
-    private initWorld() {
+    private initWorld(forcedStrength?: number) {
+        // Clear existing state
+        this.entities = [];
+        this.npcFleets = [];
+        this.battles = [];
+        this.isGameOver = false;
+
+        // Unpause if paused
+        if (this.isPaused) {
+            this.togglePause();
+        }
+
         // Star
         const star = new CelestialBody(0, 0, 150, '#FFD700', 'Sol', true);
         this.entities.push(star);
@@ -229,37 +239,22 @@ export class Game {
 
         this.entities.push(new CelestialBody(-600, -600, 20, '#FF00FF', 'Outpost Alpha'));
 
-        const saveData = SaveSystem.load();
+        // Player Fleet Initialization
+        // Priority: forcedStrength (from menu buttons) > savedSize (from persistence) > default (10)
+        const savedSize = SaveSystem.loadFleetSize();
+        const startStrength = forcedStrength !== undefined ? forcedStrength : (savedSize || 10);
 
-        if (saveData) {
-            console.log('Loading Save Game...');
-            const pData = saveData.player;
-            this.playerFleet = new Fleet(pData.x, pData.y, pData.color, true);
-            this.playerFleet.velocity = new Vector2(pData.vx, pData.vy);
-            this.playerFleet.strength = pData.strength || 10;
-            this.playerFleet.faction = 'player';
-            this.entities.push(this.playerFleet);
+        console.log('Initializing world...', `Strength: ${startStrength}`);
 
-            if (saveData.npcs && saveData.npcs.length > 0) {
-                for (const nData of saveData.npcs) {
-                    const npc = new Fleet(nData.x, nData.y, nData.color, false);
-                    npc.velocity = new Vector2(nData.vx, nData.vy);
-                    npc.strength = nData.strength || 10;
-                    npc.faction = nData.faction as any || 'civilian';
-                    this.entities.push(npc);
-                    this.npcFleets.push(npc);
-                }
-            } else {
-                this.spawnNPCs(30);
-            }
-        } else {
-            console.log('Starting New Game...');
-            this.playerFleet = new Fleet(500, 500, '#00AAFF', true);
-            this.playerFleet.strength = 10;
-            this.playerFleet.faction = 'player';
-            this.entities.push(this.playerFleet);
-            this.spawnNPCs(30);
-        }
+        this.playerFleet = new Fleet(500, 500, '#00AAFF', true);
+        this.playerFleet.strength = startStrength;
+        this.playerFleet.faction = 'player';
+        this.entities.push(this.playerFleet);
+
+        this.spawnNPCs(30);
+
+        // Reset camera position
+        this.camera.position = this.playerFleet.position.clone();
     }
 
     private spawnNPCs(count: number, specificFaction?: Faction) {
@@ -781,7 +776,10 @@ export class Game {
             if (eidx !== -1) this.entities.splice(eidx, 1);
 
             if (dead === this.playerFleet) {
-                this.showMenu();
+                if (!this.isGameOver) {
+                    this.isGameOver = true;
+                    this.showMenu();
+                }
                 return; // Stop further processing after death
             }
         }
