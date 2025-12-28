@@ -479,20 +479,26 @@ export class Game {
 
         // Handle proximity triggers for follow modes
         if (this.playerFleet.followTarget) {
-            const dist = Vector2.distance(this.playerFleet.position, this.playerFleet.followTarget.position);
+            // Check if follow target still exists
+            if (!this.entities.includes(this.playerFleet.followTarget)) {
+                console.log('Follow target no longer exists, stopping follow');
+                this.playerFleet.stopFollowing();
+            } else {
+                const dist = Vector2.distance(this.playerFleet.position, this.playerFleet.followTarget.position);
 
-            if (this.playerFleet.followMode === 'contact') {
-                const triggerDist = this.playerFleet.followTarget instanceof CelestialBody ?
-                    (this.playerFleet.followTarget as CelestialBody).radius + 10 :
-                    this.contactDistance;
+                if (this.playerFleet.followMode === 'contact') {
+                    const triggerDist = this.playerFleet.followTarget instanceof CelestialBody ?
+                        (this.playerFleet.followTarget as CelestialBody).radius + 10 :
+                        this.contactDistance;
 
-                if (dist <= triggerDist) {
-                    if (this.playerFleet.followTarget instanceof Fleet) {
-                        this.initiateContact(this.playerFleet.followTarget);
-                    } else if (this.playerFleet.followTarget instanceof CelestialBody) {
-                        alert(`Прибытие к ${(this.playerFleet.followTarget as CelestialBody).name}`);
+                    if (dist <= triggerDist) {
+                        if (this.playerFleet.followTarget instanceof Fleet) {
+                            this.initiateContact(this.playerFleet.followTarget);
+                        } else if (this.playerFleet.followTarget instanceof CelestialBody) {
+                            alert(`Прибытие к ${(this.playerFleet.followTarget as CelestialBody).name}`);
+                        }
+                        this.playerFleet.stopFollowing();
                     }
-                    this.playerFleet.stopFollowing();
                 }
             }
         }
