@@ -575,7 +575,6 @@ export class Game {
                 const r2 = 8 * f2.sizeMultiplier;
 
                 const baseTriggerDist = 4 * Math.max(r1, r2);
-                const joinDist = 200; // Much larger radius for allies to notice and join
 
                 const dist = Vector2.distance(f1.position, f2.position);
 
