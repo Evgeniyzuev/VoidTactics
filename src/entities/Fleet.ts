@@ -27,6 +27,7 @@ export class Fleet extends Entity {
     public decisionTimer: number = 0;
     public civilianStopTimer: number = 0;
     public lastAcceleration: Vector2 = new Vector2(0, 0);
+    public currentTarget: Fleet | null = null; // Current attack target
 
     // Abilities State
     public abilities = {
@@ -339,6 +340,22 @@ export class Fleet extends Entity {
         }
 
         ctx.restore();
+
+        // Draw Attack Line - If attacking
+        if (this.currentTarget && !this.currentTarget.isCloaked) {
+            const targetScreenPos = camera.worldToScreen(this.currentTarget.position);
+            const myScreenPos = camera.worldToScreen(this.position);
+
+            // Flickering alpha for attack line
+            const flicker = 0.5 + 0.5 * Math.sin(Date.now() * 0.01); // Simple flicker
+            ctx.strokeStyle = `rgba(255, 0, 0, ${flicker})`;
+            ctx.lineWidth = 2;
+
+            ctx.beginPath();
+            ctx.moveTo(myScreenPos.x, myScreenPos.y);
+            ctx.lineTo(targetScreenPos.x, targetScreenPos.y);
+            ctx.stroke();
+        }
 
         // Draw Target Marker (Bubble) - Only for Player
         if (this.isPlayer && this.target) {

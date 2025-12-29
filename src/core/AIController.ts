@@ -132,72 +132,7 @@ export class AIController {
                 }
             }
 
-            // Military battle detection: scan for nearby battles and approach/join allies
-            if (npc.faction === 'military' && !npc.activeBattle) {
-                const nearbyBattles = this.game.getBattles().filter(battle => {
-                    const distanceToBattle = Vector2.distance(npc.position, battle.position);
-                    return distanceToBattle < detectionRadius * 2.0; // Extended detection for battles
-                });
 
-                for (const battle of nearbyBattles) {
-                    // Check if allies are in this battle
-                    const alliesInBattle = [...battle.sideA, ...battle.sideB].filter(fleet =>
-                        this.isAlly(npc, fleet)
-                    );
-
-                    if (alliesInBattle.length > 0) {
-                        const distanceToBattle = Vector2.distance(npc.position, battle.position);
-
-                        if (distanceToBattle <= battle.radius) {
-                            // Within battle radius - join immediately
-                            const allySide = battle.sideA.includes(alliesInBattle[0]) ? 'A' : 'B';
-                            battle.joinSide(npc, allySide);
-                            npc.decisionTimer = 1.0 + Math.random();
-                            break;
-                        } else {
-                            // Outside battle radius - move toward battle center
-                            const formationOffset = new Vector2(
-                                (Math.random() - 0.5) * 100,
-                                (Math.random() - 0.5) * 100
-                            );
-                            npc.setTarget(battle.position.add(formationOffset));
-                            npc.decisionTimer = 2.0 + Math.random();
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // Military coordination: check if allies are already attacking nearby threats
-            if (npc.faction === 'military' && (!npc.target && !npc.followTarget)) {
-                // Look for military allies who are actively pursuing hostile targets
-                const attackingAllies = allFleets.filter(f =>
-                    f !== npc &&
-                    f.faction === 'military' &&
-                    Vector2.distance(npc.position, f.position) < 1000 &&
-                    f.followTarget instanceof Fleet &&
-                    this.isHostile(f, f.followTarget as Fleet)
-                );
-
-                if (attackingAllies.length > 0) {
-                    // Join the attack - coordinate with allies
-                    const ally = attackingAllies[Math.floor(Math.random() * attackingAllies.length)];
-                    if (ally.followTarget) {
-                        // Follow the same target with formation offset
-                        const formationOffset = new Vector2(
-                            (Math.random() - 0.5) * 200,
-                            (Math.random() - 0.5) * 200
-                        );
-                        npc.setFollowTarget(ally.followTarget, 'contact');
-                        // Override the target to add formation spacing
-                        if (npc.followTarget) {
-                            npc.target = ally.followTarget.position.clone().add(formationOffset);
-                        }
-                        npc.decisionTimer = 2.0 + Math.random();
-                        continue;
-                    }
-                }
-            }
 
             // Decide action
             if (closestThreat && npc.faction !== 'raider') {
@@ -270,10 +205,8 @@ export class AIController {
         }
         if (f1 === 'civilian') {
             // Hostile to anyone who is attacking them or their allies
-            if (b.activeBattle) {
-                const bat = b.activeBattle;
-                const otherSide = bat.sideA.includes(b) ? bat.sideB : bat.sideA;
-                return otherSide.some((ally: Fleet) => this.isAlly(a, ally));
+            if (b.activeBattle && b.currentTarget) {
+                return this.isAlly(a, b.currentTarget);
             }
             return false;
         }
@@ -285,10 +218,8 @@ export class AIController {
         if (f1 === 'military') {
             if (f2 === 'pirate' || f2 === 'orc') return true;
             // Hostile to anyone attacking allies
-            if (b.activeBattle) {
-                const bat = b.activeBattle;
-                const otherSide = bat.sideA.includes(b) ? bat.sideB : bat.sideA;
-                return otherSide.some((ally: Fleet) => this.isAlly(a, ally));
+            if (b.activeBattle && b.currentTarget) {
+                return this.isAlly(a, b.currentTarget);
             }
             return false;
         }

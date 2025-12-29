@@ -283,7 +283,7 @@ export class Game {
             // Pick faction
             let factionDef = factions[0];
             if (specificFaction) {
-                factionDef = factions.find(f => f.type === specificFaction) || factions[0];
+            factionDef = factions.find((f: { type: Faction, color: string, weight: number }) => f.type === specificFaction) || factions[0];
             } else {
                 let rand = Math.random();
                 for (const f of factions) {
@@ -417,7 +417,7 @@ export class Game {
         // 1. Maintain Population & Bounds Check
         const toRemoveBounds: Fleet[] = [];
         for (const f of this.npcFleets) {
-            if (f.position.mag() > this.SYSTEM_RADIUS) {
+            if (f.position.mag() > this.SYSTEM_RADIUS || f.strength <= 0) {
                 toRemoveBounds.push(f);
             }
         }
@@ -579,48 +579,15 @@ export class Game {
 
                 const dist = Vector2.distance(f1.position, f2.position);
 
-                // 1. Check for starting NEW combat or joining as ENEMY
+                // Only start NEW 1v1 combat if both are not in battle
                 if (this.aiController.isHostile(f1, f2) || this.aiController.isHostile(f2, f1)) {
                     let triggerDist = baseTriggerDist;
                     if (f1.followTarget === f2) triggerDist = 4 * r1;
                     else if (f2.followTarget === f1) triggerDist = 4 * r2;
 
-                    if (dist < triggerDist) {
-                        if (!f1.activeBattle && !f2.activeBattle) {
-                            const b = new Battle(f1, f2, this.playerFleet);
-                            this.battles.push(b);
-                        } else if (f1.activeBattle && !f2.activeBattle) {
-                            f1.activeBattle.addFleet(f2, f1);
-                        } else if (!f1.activeBattle && f2.activeBattle) {
-                            f2.activeBattle.addFleet(f1, f2);
-                        }
-                    }
-                }
-
-                // 2. Check for joining as ALLY
-                if (this.aiController.isAlly(f1, f2) && dist < joinDist) {
-                    let ally: Fleet | null = null;
-                    let helper: Fleet | null = null;
-
-                    if (f1.activeBattle && !f2.activeBattle) { ally = f1; helper = f2; }
-                    else if (!f1.activeBattle && f2.activeBattle) { ally = f2; helper = f1; }
-
-                    if (ally && helper) {
-                        const battle = ally.activeBattle!;
-                        const allySide = battle.sideA.includes(ally) ? 'A' : 'B';
-                        const ownStr = (allySide === 'A' ? battle.totalSizeA : battle.totalSizeB) + helper.strength;
-                        const enemyStr = (allySide === 'A' ? battle.totalSizeB : battle.totalSizeA);
-
-                        let shouldJoin = false;
-                        if (helper.faction === 'military' || helper.faction === 'orc') {
-                            shouldJoin = true;
-                        } else if (helper.faction === 'pirate' || helper.faction === 'civilian') {
-                            shouldJoin = ownStr > enemyStr;
-                        }
-
-                        if (shouldJoin) {
-                            battle.joinSide(helper, allySide);
-                        }
+                    if (dist < triggerDist && !f1.activeBattle && !f2.activeBattle) {
+                        const b = new Battle(f1, f2, this.playerFleet);
+                        this.battles.push(b);
                     }
                 }
 
@@ -646,12 +613,13 @@ export class Game {
 
 
     private resolveBattleGroup(battle: Battle, toRemove: Fleet[]) {
-        const winnerSide = battle.sideA.filter(f => !battle.dead.includes(f));
+        const winners = battle.fleets.filter((f: Fleet) => !battle.dead.includes(f));
 
         // Reset winner states
-        for (const winner of winnerSide) {
+        for (const winner of winners) {
             winner.state = 'normal';
             winner.activeBattle = null;
+            winner.currentTarget = null;
         }
 
         // Remove dead fleets
@@ -659,22 +627,13 @@ export class Game {
             toRemove.push(dead);
         }
 
-        // Money distribution if player survived (in winnerSide)
-        if (winnerSide.includes(this.playerFleet)) {
-            // Money = total strength of defeated enemy side * 100 * (player strength / total winner strength)
-            const defeatedStrength = battle.sideA.includes(this.playerFleet) ? battle.initialSizeB : battle.initialSizeA;
-            const totalWinnerStrength = winnerSide.reduce((sum, f) => sum + f.strength, 0);
-            const playerShare = this.playerFleet.strength / totalWinnerStrength;
-            const moneyEarned = defeatedStrength * 100 * playerShare;
-
-            // Player gets money directly
-            this.playerFleet.money += Math.floor(moneyEarned);
-
+        // Money is now awarded per damage in real-time
+        if (winners.includes(this.playerFleet)) {
             if (!this.isPaused) this.togglePause();
-            console.log(`Battle resolved. Player won. Money earned: ${Math.floor(moneyEarned)}.`);
+            console.log(`Battle resolved. Player won. Total damage dealt: ${battle.damageDealtByPlayer}.`);
         }
 
-        console.log(`Battle Resolved: Winners: ${winnerSide.length}, Losers: ${battle.dead.length}.`);
+        console.log(`Battle Resolved: Winners: ${winners.length}, Losers: ${battle.dead.length}.`);
     }
 
 
