@@ -106,22 +106,54 @@ export class AIController {
                     }
 
                     if (canTarget) {
-                        // Military prioritization: distance + strength scoring
-                        let targetScore = 0;
+                        // Calculate size score: optimal 0.5x own size, falls off for larger/smaller
+                        const sizeRatio = other.sizeMultiplier / npc.sizeMultiplier;
+                        let sizeScore = 0;
+                        if (sizeRatio >= 0.1 && sizeRatio <= 0.9) {
+                            // Optimal at 0.5, falls off outside
+                            sizeScore = 1 / (1 + Math.abs(sizeRatio - 0.5) * 2);
+                        } else {
+                            // Too small or too large: very low priority, only for raiders/military
+                            sizeScore = (npc.faction === 'military' || npc.faction === 'raider') ? 0.1 : 0.01;
+                        }
+
+                        // Combat bonus: big plus if target is already in battle
+                        const combatBonus = other.state === 'combat' ? 2.0 : 0;
+
+                        // Movement score: approaching/stationary is plus, fleeing is minus
+                        let movementScore = 0;
+                        const velMag = other.velocity.mag();
+                        if (velMag < 5) {
+                            // Stationary: plus
+                            movementScore = 1.0;
+                        } else {
+                            // Direction towards NPC
+                            const toNpc = npc.position.sub(other.position).normalize();
+                            const dotProduct = toNpc.dot(other.velocity.normalize());
+                            if (dotProduct > 0) {
+                                // Approaching: plus, better if faster
+                                movementScore = 0.5 + dotProduct * 0.5;
+                            } else {
+                                // Fleeing: minus
+                                movementScore = -0.5 + dotProduct * 0.5; // dotProduct negative, so this is negative
+                            }
+                        }
+
+                        // Proximity coefficient: 1 at close, 0 at max range
+                        const proximityCoefficient = 1 - (dist / detectionRadius);
+
+                        // Strength score: weaker is better
+                        const strengthRatio = Math.min(other.strength / npc.strength, 2.0);
+                        const strengthScore = 1 / strengthRatio;
+
+                        // Total score
+                        let targetScore = proximityCoefficient * (combatBonus + sizeScore + movementScore + strengthScore);
+
+                        // Center bonus for military
                         if (npc.faction === 'military') {
-                            // Distance score: closer is better (0-1)
-                            const distanceScore = 1 - (dist / detectionRadius);
-                            // Strength score: weaker is better, but allow stronger with support
-                            const strengthRatio = Math.min(other.strength / npc.strength, 2.0); // Cap at 2x
-                            const strengthScore = 1 / strengthRatio;
-                            // Center bonus: threats in center get priority
                             const centerDist = npc.position.mag();
                             const centerBonus = centerDist < 2000 ? 0.3 : 0;
-
-                            targetScore = distanceScore + strengthScore + centerBonus;
-                        } else {
-                            // Other factions: simple distance priority
-                            targetScore = 1 - (dist / detectionRadius);
+                            targetScore += centerBonus;
                         }
 
                         if (targetScore > bestTargetScore) {
