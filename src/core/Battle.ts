@@ -50,9 +50,14 @@ export class Battle {
     }
 
     private assignTargets() {
-        // Each fleet chooses the closest enemy as target
+        // Each fleet chooses the closest enemy as target, but doesn't switch if already engaged
         for (const fleet of this.fleets) {
             if (this.dead.includes(fleet)) continue;
+
+            // If already attacking a living target, don't switch
+            if (fleet.currentTarget && !this.dead.includes(fleet.currentTarget)) continue;
+
+            // Otherwise, find closest enemy
             let closest: Fleet | null = null;
             let minDist = Infinity;
             for (const other of this.fleets) {
@@ -79,7 +84,7 @@ export class Battle {
             if (this.dead.includes(fleet) || !fleet.currentTarget || this.dead.includes(fleet.currentTarget)) continue;
 
             // Damage proportional to attacker's current strength (0.1 per strength point)
-            const damage = fleet.strength * 0.03;
+            const damage = fleet.strength * 0.05;
             fleet.currentTarget.accumulatedDamage += damage;
 
             // Apply integer damage
