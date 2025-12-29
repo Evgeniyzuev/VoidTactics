@@ -29,7 +29,7 @@ export class Battle {
 
             // Player gets money per integer damage dealt
             if (this.fleet1.isPlayer) {
-                this.fleet1.money = Math.floor(this.fleet1.money + integerDamage1);
+                this.fleet1.money = Math.floor(this.fleet1.money + integerDamage1*100);
             }
         }
 
@@ -45,7 +45,7 @@ export class Battle {
 
             // Player gets money per integer damage dealt
             if (this.fleet2.isPlayer) {
-                this.fleet2.money = Math.floor(this.fleet2.money + integerDamage2);
+                this.fleet2.money = Math.floor(this.fleet2.money + integerDamage2*100);
             }
         }
 
