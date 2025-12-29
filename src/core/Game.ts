@@ -99,7 +99,7 @@ export class Game {
     }
 
     private setTimeScale(scale: number) {
-        this.timeScale = scale;
+        this.timeScale = scale*0.5;
     }
 
     private setCameraFollow(follow: boolean) {
