@@ -84,7 +84,7 @@ export class Battle {
             if (this.dead.includes(fleet) || !fleet.currentTarget || this.dead.includes(fleet.currentTarget)) continue;
 
             // Damage proportional to attacker's current strength (0.1 per strength point)
-            const damage = fleet.strength * 0.05;
+            const damage = fleet.strength * 0.01;
             fleet.currentTarget.accumulatedDamage += damage;
 
             // Apply integer damage
