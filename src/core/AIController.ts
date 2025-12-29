@@ -229,6 +229,9 @@ export class AIController {
         const f1 = a.faction;
         const f2 = b.faction;
 
+        // Player and military are not hostile to each other
+        if ((f1 === 'player' && f2 === 'military') || (f1 === 'military' && f2 === 'player')) return false;
+
         if ((f1 as string) === 'raider') return f2 !== 'raider';
         if ((f2 as string) === 'raider') return f1 !== 'raider';
 

@@ -19,16 +19,34 @@ export class Battle {
     update(dt: number) {
         // Fleet1 attacks Fleet2
         const damage1 = this.fleet1.strength * 0.01 * 10 * dt;
-        this.fleet2.strength = Math.max(0, this.fleet2.strength - damage1);
-        if (this.fleet1.isPlayer) {
-            this.fleet1.money += damage1;
+        this.fleet2.accumulatedDamage += damage1;
+
+        // Apply integer damage
+        const integerDamage1 = Math.floor(this.fleet2.accumulatedDamage);
+        if (integerDamage1 > 0) {
+            this.fleet2.strength = Math.max(0, this.fleet2.strength - integerDamage1);
+            this.fleet2.accumulatedDamage -= integerDamage1;
+
+            // Player gets money per integer damage dealt
+            if (this.fleet1.isPlayer) {
+                this.fleet1.money += integerDamage1;
+            }
         }
 
         // Fleet2 attacks Fleet1 (automatic response)
         const damage2 = this.fleet2.strength * 0.01 * 10 * dt;
-        this.fleet1.strength = Math.max(0, this.fleet1.strength - damage2);
-        if (this.fleet2.isPlayer) {
-            this.fleet2.money += damage2;
+        this.fleet1.accumulatedDamage += damage2;
+
+        // Apply integer damage
+        const integerDamage2 = Math.floor(this.fleet1.accumulatedDamage);
+        if (integerDamage2 > 0) {
+            this.fleet1.strength = Math.max(0, this.fleet1.strength - integerDamage2);
+            this.fleet1.accumulatedDamage -= integerDamage2;
+
+            // Player gets money per integer damage dealt
+            if (this.fleet2.isPlayer) {
+                this.fleet2.money += integerDamage2;
+            }
         }
 
         // Check if battle finished
