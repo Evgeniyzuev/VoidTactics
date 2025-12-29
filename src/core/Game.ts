@@ -585,7 +585,7 @@ export class Game {
                     else if (f2.followTarget === f1) triggerDist = 4 * r2;
 
                     if (dist < triggerDist && !f1.activeBattle && !f2.activeBattle) {
-                        const b = new Battle(f1, f2, this.playerFleet);
+                        const b = new Battle(f1, f2);
                         this.battles.push(b);
                     }
                 }
@@ -612,7 +612,9 @@ export class Game {
 
 
     private resolveBattleGroup(battle: Battle, toRemove: Fleet[]) {
-        const winners = battle.fleets.filter((f: Fleet) => !battle.dead.includes(f));
+        const winners: Fleet[] = [];
+        if (battle.fleet1.strength > 0) winners.push(battle.fleet1);
+        if (battle.fleet2.strength > 0) winners.push(battle.fleet2);
 
         // Reset winner states
         for (const winner of winners) {
@@ -622,17 +624,20 @@ export class Game {
         }
 
         // Remove dead fleets
-        for (const dead of battle.dead) {
-            toRemove.push(dead);
+        const dead: Fleet[] = [];
+        if (battle.fleet1.strength <= 0) dead.push(battle.fleet1);
+        if (battle.fleet2.strength <= 0) dead.push(battle.fleet2);
+        for (const d of dead) {
+            toRemove.push(d);
         }
 
         // Money is now awarded per damage in real-time
         if (winners.includes(this.playerFleet)) {
             if (!this.isPaused) this.togglePause();
-            console.log(`Battle resolved. Player won. Total damage dealt: ${battle.damageDealtByPlayer}.`);
+            console.log(`Battle resolved. Player won.`);
         }
 
-        console.log(`Battle Resolved: Winners: ${winners.length}, Losers: ${battle.dead.length}.`);
+        console.log(`Battle Resolved: Winners: ${winners.length}, Losers: ${dead.length}.`);
     }
 
 
@@ -854,12 +859,10 @@ export class Game {
                 console.log('Initiating battle...');
                 // Use the new Battle system
                 if (!this.playerFleet.activeBattle && !fleet.activeBattle) {
-                    const b = new Battle(this.playerFleet, fleet, this.playerFleet);
+                    const b = new Battle(this.playerFleet, fleet);
                     this.battles.push(b);
-                } else if (this.playerFleet.activeBattle && !fleet.activeBattle) {
-                    this.playerFleet.activeBattle.addFleet(fleet, this.playerFleet);
-                } else if (!this.playerFleet.activeBattle && fleet.activeBattle) {
-                    fleet.activeBattle.addFleet(this.playerFleet, fleet);
+                } else {
+                    console.log('Cannot initiate battle - one fleet is already in combat');
                 }
 
                 if (this.isPaused) this.togglePause();
