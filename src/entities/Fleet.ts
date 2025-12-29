@@ -89,15 +89,17 @@ export class Fleet extends Entity {
             return;
         }
 
-        // Tick abilities
-        for (const key in this.abilities) {
-            const a = (this.abilities as any)[key];
-            if (a.cooldown > 0) a.cooldown -= dt;
-            if (a.active) {
-                a.timer -= dt;
-                if (a.timer <= 0) {
-                    a.active = false;
-                    if (key === 'cloak') this.isCloaked = false;
+        // Tick abilities (only for NPCs, player abilities are toggled)
+        if (!this.isPlayer) {
+            for (const key in this.abilities) {
+                const a = (this.abilities as any)[key];
+                if (a.cooldown > 0) a.cooldown -= dt;
+                if (a.active) {
+                    a.timer -= dt;
+                    if (a.timer <= 0) {
+                        a.active = false;
+                        if (key === 'cloak') this.isCloaked = false;
+                    }
                 }
             }
         }

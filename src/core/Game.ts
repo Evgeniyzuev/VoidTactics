@@ -1100,24 +1100,15 @@ export class Game {
 
     private activateAbility(id: string) {
         const a = (this.playerFleet.abilities as any)[id];
-        if (!a || a.cooldown > 0 || a.active) return;
+        if (!a) return;
 
-        a.active = true;
-        a.timer = a.duration;
-        a.cooldown = a.cdMax;
+        // Toggle ability on/off for player (no timers/cooldowns)
+        a.active = !a.active;
 
-        if (id === 'cloak') this.playerFleet.isCloaked = true;
-        if (id === 'bubble') {
-            const bubbleRadius = 8 * this.playerFleet.sizeMultiplier * 25;
-            const allFleets = [this.playerFleet, ...this.npcFleets];
-            for (const other of allFleets) {
-                if (other === this.playerFleet) continue;
-                if (Vector2.distance(this.playerFleet.position, other.position) < bubbleRadius) {
-                    other.stunTimer = 1.0;
-                }
-            }
+        if (id === 'cloak') {
+            this.playerFleet.isCloaked = a.active;
         }
 
-        console.log(`Ability activated: ${id}`);
+        console.log(`Ability ${a.active ? 'activated' : 'deactivated'}: ${id}`);
     }
 }

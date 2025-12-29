@@ -266,16 +266,23 @@ export class UIManager {
             const overlay = this.abilityCooldowns[key];
 
             if (btn && overlay) {
-                // Update cooldown overlay
-                if (a.cooldown > 0) {
-                    const perc = (a.cooldown / a.cdMax) * 100;
-                    overlay.style.height = `${perc}%`;
-                    btn.style.opacity = '0.5';
-                    btn.style.cursor = 'not-allowed';
-                } else {
+                // For player abilities, no cooldown overlays (they toggle)
+                if (fleet.isPlayer) {
                     overlay.style.height = '0%';
                     btn.style.opacity = '1.0';
                     btn.style.cursor = 'pointer';
+                } else {
+                    // Update cooldown overlay for NPCs
+                    if (a.cooldown > 0) {
+                        const perc = (a.cooldown / a.cdMax) * 100;
+                        overlay.style.height = `${perc}%`;
+                        btn.style.opacity = '0.5';
+                        btn.style.cursor = 'not-allowed';
+                    } else {
+                        overlay.style.height = '0%';
+                        btn.style.opacity = '1.0';
+                        btn.style.cursor = 'pointer';
+                    }
                 }
 
                 // Visual active state
