@@ -627,7 +627,6 @@ export class Game {
 
         // Money is now awarded per damage in real-time
         if (winners.includes(this.playerFleet)) {
-            if (!this.isPaused) this.togglePause();
             console.log(`Attack resolved. Player won.`);
         }
 
@@ -837,42 +836,7 @@ export class Game {
         );
     }
 
-    private initiateContact(fleet: Fleet) {
-        this.closeTooltip();
-        if (!this.isPaused) this.togglePause();
 
-        console.log(`Initiating contact with fleet at ${fleet.position.x}, ${fleet.position.y}`);
-
-        this.modal.showContactDialog(
-            () => {
-                console.log('Establishing communication with fleet...');
-                alert('Связь установлена! (Функция в разработке)');
-                if (this.isPaused) this.togglePause();
-            },
-            () => {
-                console.log('Initiating attack...');
-                // Use the new Attack system
-                if (!this.playerFleet.currentTarget && !fleet.currentTarget) {
-                    const a = new Attack(this.playerFleet, fleet, this);
-                    this.attacks.push(a);
-                    // Auto-follow the target
-                    this.playerFleet.setFollowTarget(fleet, 'contact');
-                } else {
-                    console.log('Cannot initiate attack - one fleet is already attacking');
-                }
-
-                if (this.isPaused) this.togglePause();
-
-                this.modal.showBattleScreen(() => {
-                    console.log('Attack animation ended');
-                });
-            },
-            () => {
-                console.log('Contact cancelled');
-                if (this.isPaused) this.togglePause();
-            }
-        );
-    }
 
     private updateTooltipPosition() {
         if (this.infoTooltip && this.inspectedEntity) {
