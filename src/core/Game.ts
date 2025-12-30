@@ -3,7 +3,7 @@ import { Renderer } from '../renderer/Renderer';
 import { Camera } from '../renderer/Camera';
 import { Vector2 } from '../utils/Vector2';
 import { CelestialBody } from '../entities/CelestialBody';
-import { Fleet, type Faction } from '../entities/Fleet';
+import { Fleet } from '../entities/Fleet';
 import { Entity } from '../entities/Entity';
 import { BubbleZone } from '../entities/BubbleZone';
 import { WarpGate } from '../entities/WarpGate';
@@ -192,7 +192,7 @@ export class Game {
         }
     }
 
-    private initWorld(forcedStrength?: number, systemId?: number) {
+    private initWorld(forcedStrength?: number, systemId?: number, spawnNearGate?: Vector2) {
         // Set current system
         this.currentSystemId = systemId || 1;
 
@@ -220,7 +220,20 @@ export class Game {
 
         console.log('Initializing player fleet...', `Strength: ${startStrength}`);
 
-        this.playerFleet = new Fleet(500, 500, '#00AAFF', true);
+        // Determine spawn position: near gate if provided, otherwise default (500, 500)
+        let spawnX = 500;
+        let spawnY = 500;
+
+        if (spawnNearGate) {
+            // Spawn near the arrival gate with some offset
+            const offsetDistance = 150; // Distance from gate
+            const angle = Math.random() * Math.PI * 2; // Random direction
+            spawnX = spawnNearGate.x + Math.cos(angle) * offsetDistance;
+            spawnY = spawnNearGate.y + Math.sin(angle) * offsetDistance;
+            console.log(`Spawning player near gate at (${spawnX.toFixed(0)}, ${spawnY.toFixed(0)})`);
+        }
+
+        this.playerFleet = new Fleet(spawnX, spawnY, '#00AAFF', true);
         this.playerFleet.strength = startStrength;
         this.playerFleet.faction = 'player';
         this.entities.push(this.playerFleet);
@@ -241,74 +254,7 @@ export class Game {
 
 
 
-    private spawnNPCs(count: number, specificFaction?: Faction) {
 
-        const factions: { type: Faction, color: string, weight: number }[] = [
-            { type: 'civilian', color: '#32CD32', weight: 0.45 }, // Green
-            { type: 'pirate', color: '#FF4444', weight: 0.2 },   // Red
-            { type: 'orc', color: '#9370DB', weight: 0.15 },    // Purple
-            { type: 'military', color: '#FFFF00', weight: 0.15 }, // Yellow
-            { type: 'raider', color: '#888888', weight: 0.05 }  // Grey
-        ];
-
-        for (let i = 0; i < count; i++) {
-            // Pick faction
-            let factionDef = factions[0];
-            if (specificFaction) {
-            factionDef = factions.find((f: { type: Faction, color: string, weight: number }) => f.type === specificFaction) || factions[0];
-            } else {
-                let rand = Math.random();
-                for (const f of factions) {
-                    if (rand < f.weight) {
-                        factionDef = f;
-                        break;
-                    }
-                    rand -= f.weight;
-                }
-            }
-
-            const angle = Math.random() * Math.PI * 2;
-            const distance = 1000 + Math.random() * 3000;
-            const startX = Math.cos(angle) * distance;
-            const startY = Math.sin(angle) * distance;
-
-            const npc = new Fleet(startX, startY, factionDef.color, false);
-            npc.faction = factionDef.type;
-
-            // Strength Distribution Logic: Equal weight for (Same, Multiplied, Divided)
-            // Coefficients: 2, 4, 8 (Equal weight)
-            const playerStrength = this.playerFleet.strength;
-            const coefficients = [2, 4, 8];
-            const coeff = coefficients[Math.floor(Math.random() * coefficients.length)];
-
-            let baseS = playerStrength;
-            const randType = Math.random();
-            if (randType < 0.33) {
-                baseS = playerStrength;
-            } else if (randType < 0.66) {
-                baseS = playerStrength * coeff;
-            } else {
-                baseS = playerStrength / coeff;
-            }
-
-            // Apply +-30% variance
-            const variance = 0.7 + Math.random() * 0.6;
-            npc.strength = Math.max(1, Math.round(baseS * variance));
-
-            // Give initial target to roam
-            const celestialBodies = this.entities.filter(e => e instanceof CelestialBody) as CelestialBody[];
-            if (celestialBodies.length > 0) {
-                const poi = celestialBodies[Math.floor(Math.random() * celestialBodies.length)];
-                const offset = new Vector2((Math.random() - 0.5) * 400, (Math.random() - 0.5) * 400);
-                npc.setTarget(poi.position.add(offset));
-            } else {
-                npc.setTarget(new Vector2((Math.random() - 0.5) * 1000, (Math.random() - 0.5) * 1000));
-            }
-
-            this.entities.push(npc);
-            this.npcFleets.push(npc);
-        }
-    }
 
     private loop(timestamp: number) {
         const dt = (timestamp - this.lastTime) / 1000;
@@ -1105,8 +1051,21 @@ export class Game {
         const playerStrength = this.playerFleet.strength;
         const playerMoney = this.playerFleet.money;
 
+        // Find the arrival gate position in the target system
+        // (gates that lead back to the current system)
+        const targetSystemEntities = this.systemManager.getSystemEntities(targetSystemId);
+        const arrivalGate = targetSystemEntities.find(entity =>
+            entity instanceof WarpGate && (entity as WarpGate).targetSystemId === this.currentSystemId
+        ) as WarpGate;
+
+        let spawnNearGate: Vector2 | undefined;
+        if (arrivalGate) {
+            spawnNearGate = arrivalGate.position;
+            console.log(`Will spawn near arrival gate at (${spawnNearGate.x.toFixed(0)}, ${spawnNearGate.y.toFixed(0)})`);
+        }
+
         // Initialize the new system
-        this.initWorld(playerStrength, targetSystemId);
+        this.initWorld(playerStrength, targetSystemId, spawnNearGate);
 
         // Restore player fleet state
         this.playerFleet.strength = playerStrength;
