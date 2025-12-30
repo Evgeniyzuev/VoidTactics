@@ -1,3 +1,5 @@
+import { formatNumber } from '../utils/NumberFormatter';
+
 export class ModalManager {
     private modalContainer: HTMLDivElement | null = null;
 
@@ -381,7 +383,7 @@ export class ModalManager {
         title.style.color = '#00C8FF';
 
         const info = document.createElement('p');
-        info.textContent = `Current Fleet Strength: ${currentStrength}\nCurrent Money: $${currentMoney}`;
+        info.textContent = `Current Fleet Strength: ${formatNumber(currentStrength)}\nCurrent Money: $${formatNumber(currentMoney)}`;
         info.style.margin = '0 0 30px 0';
         info.style.fontSize = '14px';
         info.style.lineHeight = '1.6';

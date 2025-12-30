@@ -1,3 +1,5 @@
+import { formatNumber } from '../utils/NumberFormatter';
+
 export class UIManager {
     private container: HTMLElement;
     private onPlayPause: () => void;
@@ -176,6 +178,17 @@ export class UIManager {
         panel.style.border = '1px solid rgba(255, 255, 255, 0.2)';
         panel.style.pointerEvents = 'auto';
 
+        // Strength display
+        const strengthDisplay = document.createElement('div');
+        strengthDisplay.id = 'strength-display';
+        strengthDisplay.style.color = '#FFFFFF';
+        strengthDisplay.style.fontSize = '16px';
+        strengthDisplay.style.fontWeight = 'bold';
+        strengthDisplay.style.fontFamily = 'monospace';
+        strengthDisplay.style.marginRight = '10px';
+        strengthDisplay.textContent = '💪: 10';
+        panel.appendChild(strengthDisplay);
+
         // Money display
         const moneyDisplay = document.createElement('div');
         moneyDisplay.id = 'money-display';
@@ -319,7 +332,14 @@ export class UIManager {
     public updateMoney(money: number) {
         const moneyDisplay = document.getElementById('money-display');
         if (moneyDisplay) {
-            moneyDisplay.textContent = `$: ${money}`;
+            moneyDisplay.textContent = `$: ${formatNumber(money)}`;
+        }
+    }
+
+    public updateStrength(strength: number) {
+        const strengthDisplay = document.getElementById('strength-display');
+        if (strengthDisplay) {
+            strengthDisplay.textContent = `💪: ${formatNumber(strength)}`;
         }
     }
 }

@@ -13,6 +13,7 @@ import { ModalManager } from './ModalManager';
 import { Attack } from './Attack';
 import { AIController } from './AIController';
 import { SystemManager } from './SystemManager';
+import { formatNumber } from '../utils/NumberFormatter';
 
 
 export class Game {
@@ -364,6 +365,7 @@ export class Game {
             this.update(dt * this.timeScale);
             this.ui.updateAbilities(this.playerFleet);
             this.ui.updateMoney(this.playerFleet.money);
+            this.ui.updateStrength(this.playerFleet.strength);
         }
         this.draw();
 
@@ -705,7 +707,7 @@ export class Game {
                 info += `Pos: ???`;
             } else {
                 info = `<strong>${factionNames[fleet.faction] || 'Unknown'}</strong><br/>`;
-                info += `Size: ${fleet.strength}<br/>`;
+                info += `Size: ${formatNumber(fleet.strength)}<br/>`;
                 info += `Speed: ${fleet.velocity.mag().toFixed(1)}<br/>`;
                 info += `Pos: (${fleet.position.x.toFixed(0)}, ${fleet.position.y.toFixed(0)})`;
             }
