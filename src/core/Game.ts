@@ -12,6 +12,7 @@ import { UIManager } from './UIManager';
 import { ModalManager } from './ModalManager';
 import { Attack } from './Attack';
 import { AIController } from './AIController';
+import { SystemManager } from './SystemManager';
 
 
 export class Game {
@@ -55,6 +56,7 @@ export class Game {
 
     // System management
     private currentSystemId: number = 1; // Current star system (1 = Sol, 2 = Alpha Centauri, etc.)
+    private systemManager: SystemManager;
 
     constructor(canvas: HTMLCanvasElement) {
         this.renderer = new Renderer(canvas);
@@ -65,6 +67,9 @@ export class Game {
 
         this.backgroundCanvas = document.createElement('canvas');
         this.generateBackground(width, height);
+
+        // Initialize System Manager
+        this.systemManager = new SystemManager();
 
         this.initWorld();
 
@@ -203,15 +208,8 @@ export class Game {
 
         console.log(`Initializing System ${this.currentSystemId}...`);
 
-        if (this.currentSystemId === 1) {
-            this.initSolSystem();
-        } else if (this.currentSystemId === 2) {
-            this.initAlphaCentauriSystem();
-        } else {
-            // Default to Sol system for unknown systems
-            this.currentSystemId = 1;
-            this.initSolSystem();
-        }
+        // Load system entities from SystemManager
+        this.entities = this.systemManager.getSystemEntities(this.currentSystemId);
 
         // Player Fleet Initialization
         // Priority: forcedStrength (from menu buttons) > savedSize (from persistence) > default (10)
@@ -231,117 +229,7 @@ export class Game {
         this.camera.position = this.playerFleet.position.clone();
     }
 
-    private initSolSystem() {
-        // Star
-        const star = new CelestialBody(0, 0, 150, '#FFD700', 'Sol', true);
-        this.entities.push(star);
 
-        // Planets
-        const terra = new CelestialBody(800, 0, 40, '#00CED1', 'Terra');
-        this.entities.push(terra);
-
-        const luna = new CelestialBody(860, 0, 10, '#AAAAAA', 'Luna');
-        luna.orbitParent = terra;
-        luna.orbitRadius = 60;
-        luna.orbitSpeed = 0.125;
-        this.entities.push(luna);
-
-        this.entities.push(new CelestialBody(-1200, 400, 60, '#FF4500', 'Marsish'));
-
-        const jupiter = new CelestialBody(400, -1500, 110, '#DEB887', 'Jupiter');
-        this.entities.push(jupiter);
-
-        // Jupiter satellites
-        const moons = [
-            { name: 'Io', radius: 8, color: '#F0E68C', orbitRadius: 160, orbitSpeed: 0.2 },
-            { name: 'Europa', radius: 7, color: '#E0FFFF', orbitRadius: 220, orbitSpeed: 0.15 },
-            { name: 'Ganymede', radius: 12, color: '#D2B48C', orbitRadius: 300, orbitSpeed: 0.1 }
-        ];
-
-        moons.forEach(m => {
-            const moon = new CelestialBody(0, 0, m.radius, m.color, m.name);
-            moon.orbitParent = jupiter;
-            moon.orbitRadius = m.orbitRadius;
-            moon.orbitSpeed = m.orbitSpeed;
-            moon.orbitAngle = Math.random() * Math.PI * 2;
-            this.entities.push(moon);
-        });
-
-        // Saturn
-        const saturn = new CelestialBody(-3000, -2000, 95, '#F4A460', 'Saturn');
-        saturn.rings = {
-            bands: [
-                { innerRadius: 110, outerRadius: 130, color: 'rgba(210, 180, 140, 0.4)' },
-                { innerRadius: 132, outerRadius: 155, color: 'rgba(245, 222, 179, 0.7)' },
-                { innerRadius: 157, outerRadius: 165, color: 'rgba(210, 180, 140, 0.3)' },
-                { innerRadius: 167, outerRadius: 185, color: 'rgba(245, 222, 179, 0.5)' }
-            ],
-            angle: Math.PI / 6
-        };
-        this.entities.push(saturn);
-
-        // Asteroid Belt
-        for (let i = 0; i < 20; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const dist = 2000 + Math.random() * 500;
-            const x = Math.cos(angle) * dist;
-            const y = Math.sin(angle) * dist;
-            const size = 5 + Math.random() * 15;
-            this.entities.push(new CelestialBody(x, y, size, '#888888', 'Asteroid'));
-        }
-
-        this.entities.push(new CelestialBody(-600, -600, 20, '#FF00FF', 'Outpost Alpha'));
-
-        // Warp Gate to Alpha Centauri
-        const warpGate = new WarpGate(3500, 2500, 2, 'Gate to Alpha Centauri');
-        this.entities.push(warpGate);
-    }
-
-    private initAlphaCentauriSystem() {
-        // Star (binary system - Alpha Centauri A)
-        const starA = new CelestialBody(0, 0, 140, '#FFA500', 'Alpha Centauri A', true);
-        this.entities.push(starA);
-
-        // Companion star (Alpha Centauri B)
-        const starB = new CelestialBody(300, 200, 120, '#FF8C00', 'Alpha Centauri B', true);
-        this.entities.push(starB);
-
-        // Planets
-        const proximaB = new CelestialBody(600, 100, 35, '#8B4513', 'Proxima b');
-        this.entities.push(proximaB);
-
-        const centauriPrime = new CelestialBody(-800, -300, 45, '#4169E1', 'Centauri Prime');
-        this.entities.push(centauriPrime);
-
-        // Moons for Centauri Prime
-        const lunaPrime = new CelestialBody(-820, -280, 12, '#C0C0C0', 'Luna Prime');
-        lunaPrime.orbitParent = centauriPrime;
-        lunaPrime.orbitRadius = 40;
-        lunaPrime.orbitSpeed = 0.15;
-        this.entities.push(lunaPrime);
-
-        // Gas giant
-        const centauriGas = new CelestialBody(1200, -800, 100, '#9370DB', 'Centauri Gas');
-        this.entities.push(centauriGas);
-
-        // Asteroid field
-        for (let i = 0; i < 25; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const dist = 1800 + Math.random() * 600;
-            const x = Math.cos(angle) * dist;
-            const y = Math.sin(angle) * dist;
-            const size = 4 + Math.random() * 12;
-            this.entities.push(new CelestialBody(x, y, size, '#696969', 'Asteroid'));
-        }
-
-        // Mining outposts
-        this.entities.push(new CelestialBody(-400, 800, 18, '#FF1493', 'Mining Outpost Zeta'));
-        this.entities.push(new CelestialBody(1500, 600, 22, '#32CD32', 'Research Station Beta'));
-
-        // Warp Gate back to Sol
-        const warpGate = new WarpGate(-3500, -2500, 1, 'Gate to Sol System');
-        this.entities.push(warpGate);
-    }
 
     private spawnNPCs(count: number, specificFaction?: Faction) {
 
@@ -502,26 +390,18 @@ export class Game {
             if (eidx !== -1) this.entities.splice(eidx, 1);
         }
 
-        if (this.npcFleets.length < 35) {
-            // Count current factions
-            const counts: Record<string, number> = {
-                civilian: 0,
-                pirate: 0,
-                orc: 0,
-                military: 0,
-                raider: 0
-            };
-            for (const f of this.npcFleets) {
-                if (counts[f.faction] !== undefined) counts[f.faction]++;
-            }
+        // Update spawn timers for timed spawning systems
+        this.systemManager.updateSpawnTimers(this.currentSystemId, dt);
 
-            // Target counts based on weights (Total 30 NPCs: Civ 15, Pirate 6, Orc 4, Military 4)
-            if (counts.raider < 4) this.spawnNPCs(1, 'raider');
-            else if (counts.civilian < 15) this.spawnNPCs(1, 'civilian');
-            else if (counts.pirate < 6) this.spawnNPCs(1, 'pirate');
-            else if (counts.orc < 4) this.spawnNPCs(1, 'orc');
-            else if (counts.military < 4) this.spawnNPCs(1, 'military');
-            else this.spawnNPCs(1); // Normal weighted spawn
+        // Check if we should spawn more fleets
+        if (this.systemManager.shouldSpawnMoreFleets(this.currentSystemId, this.npcFleets)) {
+            const newFleets = this.systemManager.spawnFleetsForSystem(this.currentSystemId, this.playerFleet.strength);
+            // Add new fleets to entities and npcFleets
+            for (const fleet of newFleets) {
+                this.entities.push(fleet);
+                this.npcFleets.push(fleet);
+            }
+            console.log(`Spawned ${newFleets.length} new fleets in System ${this.currentSystemId}`);
         }
 
         // 2. Update Fleet Scaling based on Player Strength
