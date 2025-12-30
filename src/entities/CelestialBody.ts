@@ -25,6 +25,11 @@ export class CelestialBody extends Entity {
     public orbitSpeed: number = 0;
     public orbitAngle: number = 0;
 
+    // Liberation properties
+    public isLiberated: boolean = false;
+    public pulsing: boolean = false;
+    public rewardCollected: boolean = false;
+
     constructor(
         x: number,
         y: number,
@@ -122,6 +127,41 @@ export class CelestialBody extends Entity {
         if (this.rings) {
             this.drawRings(ctx, camera, screenPos, false);
         }
+
+        // 6. Liberation pulsing effect
+        if (this.pulsing && this.isLiberated) {
+            const time = Date.now() * 0.005; // Slow pulse
+            const pulseIntensity = 0.5 + 0.5 * Math.sin(time);
+            const pulseRadius = r * (1.2 + 0.3 * pulseIntensity);
+
+            // Pulsing glow
+            const glowGrad = ctx.createRadialGradient(
+                screenPos.x, screenPos.y, r * 0.8,
+                screenPos.x, screenPos.y, pulseRadius
+            );
+            glowGrad.addColorStop(0, `rgba(0, 255, 0, ${0.3 * pulseIntensity})`);
+            glowGrad.addColorStop(1, 'rgba(0, 255, 0, 0)');
+
+            ctx.fillStyle = glowGrad;
+            ctx.beginPath();
+            ctx.arc(screenPos.x, screenPos.y, pulseRadius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Energy particles
+            const particleCount = 6;
+            for (let i = 0; i < particleCount; i++) {
+                const angle = (i / particleCount) * Math.PI * 2 + time;
+                const dist = r * (1.5 + 0.5 * Math.sin(time * 2 + i));
+                const px = screenPos.x + Math.cos(angle) * dist;
+                const py = screenPos.y + Math.sin(angle) * dist;
+                const particleSize = 2 + Math.sin(time * 3 + i) * 1;
+
+                ctx.fillStyle = `rgba(0, 255, 0, ${0.8 * pulseIntensity})`;
+                ctx.beginPath();
+                ctx.arc(px, py, particleSize, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
     }
 
     private drawRings(ctx: CanvasRenderingContext2D, camera: Camera, screenPos: Vector2, back: boolean) {
@@ -154,4 +194,3 @@ export class CelestialBody extends Entity {
         ctx.restore();
     }
 }
-

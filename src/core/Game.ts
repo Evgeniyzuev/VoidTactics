@@ -361,6 +361,22 @@ export class Game {
             console.log(`Spawned ${newFleets.length} new fleets in System ${this.currentSystemId}`);
         }
 
+        // Check for system liberation (Alpha Centauri)
+        if (this.currentSystemId === 2) {
+            const raiderCount = this.npcFleets.filter(fleet => fleet.faction === 'raider').length;
+            if (raiderCount === 0) {
+                // Find Centauri Prime and liberate it
+                const centauriPrime = this.entities.find(entity =>
+                    entity instanceof CelestialBody && (entity as CelestialBody).name === 'Centauri Prime'
+                ) as CelestialBody;
+                if (centauriPrime && !centauriPrime.isLiberated) {
+                    centauriPrime.isLiberated = true;
+                    centauriPrime.pulsing = true;
+                    console.log('Alpha Centauri system liberated! Centauri Prime is now pulsing.');
+                }
+            }
+        }
+
         // 2. Update Fleet Scaling based on Player Strength
         const playerStrength = this.playerFleet.strength;
         for (const entity of this.entities) {
@@ -434,6 +450,8 @@ export class Game {
                 const body = this.playerFleet.followTarget as CelestialBody;
                 if (body.name === 'Terra') {
                     this.showTerraUpgradeDialog();
+                } else if (body.name === 'Centauri Prime' && body.isLiberated && !body.rewardCollected) {
+                    this.showLiberationRewardDialog(body);
                 } else {
                     this.showArrivalDialog(body.name);
                 }
@@ -630,6 +648,12 @@ export class Game {
             info = `<strong>${body.name}</strong><br/>`;
             info += body.isStar ? '⭐ Star<br/>' : '🌍 Planet<br/>';
             info += `Radius: ${body.radius.toFixed(0)}`;
+            if (body.isLiberated) {
+                info += '<br/>🎉 <span style="color: #00FF00;">Liberated!</span>';
+                if (!body.rewardCollected) {
+                    info += '<br/>💰 Reward available';
+                }
+            }
             showApproach = true;
             if (!body.isStar && body.name !== 'Asteroid') showDock = true;
         } else if (entity instanceof WarpGate) {
@@ -825,6 +849,35 @@ export class Game {
             this.modal.closeModal();
             if (this.isPaused) this.togglePause();
         });
+    }
+
+    private showLiberationRewardDialog(body: CelestialBody) {
+        console.log('Showing liberation reward dialog for', body.name);
+
+        // Ensure game is paused while dialog is open
+        if (!this.isPaused) {
+            this.togglePause();
+        }
+
+        this.modal.showLiberationRewardDialog(
+            () => {
+                // Collect reward
+                this.playerFleet.strength += 100;
+                this.playerFleet.money += 5000;
+                body.rewardCollected = true;
+                body.pulsing = false; // Stop pulsing after collection
+                this.ui.updateMoney(this.playerFleet.money);
+                this.ui.updateStrength(this.playerFleet.strength);
+                console.log('Liberation reward collected: +100 strength, +$5000');
+                this.modal.closeModal();
+                if (this.isPaused) this.togglePause();
+            },
+            () => {
+                console.log('Liberation reward declined');
+                this.modal.closeModal();
+                if (this.isPaused) this.togglePause();
+            }
+        );
     }
 
 

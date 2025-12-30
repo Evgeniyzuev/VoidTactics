@@ -348,6 +348,105 @@ export class ModalManager {
     }
 
     /**
+     * Show liberation reward dialog
+     */
+    showLiberationRewardDialog(onCollect: () => void, onCancel: () => void) {
+        this.closeModal();
+
+        this.modalContainer = document.createElement('div');
+        this.modalContainer.style.position = 'fixed';
+        this.modalContainer.style.top = '0';
+        this.modalContainer.style.left = '0';
+        this.modalContainer.style.width = '100%';
+        this.modalContainer.style.height = '100%';
+        this.modalContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+        this.modalContainer.style.display = 'flex';
+        this.modalContainer.style.alignItems = 'center';
+        this.modalContainer.style.justifyContent = 'center';
+        this.modalContainer.style.zIndex = '10000';
+
+        const dialog = document.createElement('div');
+        dialog.style.background = 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)';
+        dialog.style.padding = '30px';
+        dialog.style.borderRadius = '12px';
+        dialog.style.border = '2px solid rgba(0, 255, 0, 0.5)';
+        dialog.style.boxShadow = '0 8px 32px rgba(0, 255, 0, 0.3)';
+        dialog.style.color = 'white';
+        dialog.style.fontFamily = 'monospace';
+        dialog.style.textAlign = 'center';
+        dialog.style.minWidth = '300px';
+
+        const title = document.createElement('h2');
+        title.textContent = '🎉 Освобождение системы!';
+        title.style.margin = '0 0 20px 0';
+        title.style.fontSize = '24px';
+        title.style.color = '#00FF00';
+
+        const message = document.createElement('p');
+        message.textContent = 'Поздравляем! Вы освободили систему Альфа Центавра от рейдеров. Центральная планета благодарит вас и предлагает награду:';
+        message.style.margin = '0 0 20px 0';
+        message.style.fontSize = '14px';
+        message.style.lineHeight = '1.6';
+
+        const reward = document.createElement('p');
+        reward.textContent = '+100 💪 Сила флота\n+$5,000 💰 Деньги';
+        reward.style.margin = '0 0 30px 0';
+        reward.style.fontSize = '16px';
+        reward.style.fontWeight = 'bold';
+        reward.style.color = '#FFD700';
+        reward.style.whiteSpace = 'pre-line';
+
+        const collectButton = document.createElement('button');
+        collectButton.textContent = '🎁 Получить награду';
+        collectButton.style.padding = '12px 24px';
+        collectButton.style.border = 'none';
+        collectButton.style.borderRadius = '6px';
+        collectButton.style.background = '#00AA00';
+        collectButton.style.color = 'white';
+        collectButton.style.fontSize = '14px';
+        collectButton.style.fontWeight = 'bold';
+        collectButton.style.cursor = 'pointer';
+        collectButton.style.fontFamily = 'monospace';
+        collectButton.style.marginRight = '10px';
+
+        collectButton.addEventListener('click', () => {
+            onCollect();
+            this.closeModal();
+        });
+
+        const cancelButton = document.createElement('button');
+        cancelButton.textContent = '❌ Отказаться';
+        cancelButton.style.padding = '12px 24px';
+        cancelButton.style.border = 'none';
+        cancelButton.style.borderRadius = '6px';
+        cancelButton.style.background = '#666666';
+        cancelButton.style.color = 'white';
+        cancelButton.style.fontSize = '14px';
+        cancelButton.style.fontWeight = 'bold';
+        cancelButton.style.cursor = 'pointer';
+        cancelButton.style.fontFamily = 'monospace';
+
+        cancelButton.addEventListener('click', () => {
+            onCancel();
+            this.closeModal();
+        });
+
+        const buttonContainer = document.createElement('div');
+        buttonContainer.style.display = 'flex';
+        buttonContainer.style.justifyContent = 'center';
+        buttonContainer.style.gap = '10px';
+        buttonContainer.appendChild(collectButton);
+        buttonContainer.appendChild(cancelButton);
+
+        dialog.appendChild(title);
+        dialog.appendChild(message);
+        dialog.appendChild(reward);
+        dialog.appendChild(buttonContainer);
+        this.modalContainer.appendChild(dialog);
+        document.body.appendChild(this.modalContainer);
+    }
+
+    /**
      * Show Terra upgrade dialog
      */
     showTerraUpgradeDialog(currentStrength: number, currentMoney: number, onUpgrade: () => void, onCancel: () => void) {
