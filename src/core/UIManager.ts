@@ -227,8 +227,8 @@ export class UIManager {
             overlay.style.left = '0';
             overlay.style.width = '100%';
             overlay.style.height = '0%';
-            overlay.style.background = 'rgba(0,0,0,0.5)';
-            overlay.style.transition = 'height 0.1s linear';
+            overlay.style.background = 'rgba(100,200,255,0.8)';
+            overlay.style.transition = 'height 0s';
 
             const timerText = document.createElement('div');
             timerText.style.position = 'absolute';
@@ -267,7 +267,7 @@ export class UIManager {
 
             if (btn && overlay) {
                 if (a.cooldown > 0) {
-                    const perc = (a.cooldown / a.cdMax) * 100;
+                    const perc = (1 - a.cooldown / a.cdMax) * 100;
                     overlay.style.height = `${perc}%`;
                     btn.style.opacity = '0.5';
                     btn.style.cursor = 'not-allowed';

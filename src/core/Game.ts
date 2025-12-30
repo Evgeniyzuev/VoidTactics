@@ -186,6 +186,7 @@ export class Game {
         this.entities = [];
         this.npcFleets = [];
         this.attacks = [];
+        this.bubbleZones = [];
         this.isGameOver = false;
 
         // Unpause if paused
@@ -1074,13 +1075,22 @@ export class Game {
             return;
         }
 
-        // Toggle ability on/off for player (no timers/cooldowns)
-        a.active = !a.active;
-
-        if (id === 'cloak') {
-            this.playerFleet.isCloaked = a.active;
+        // For other abilities: activate if not on cooldown and not active
+        if (a.cooldown <= 0 && !a.active) {
+            a.active = true;
+            a.timer = a.duration; // Start duration timer
+            if (id === 'cloak') {
+                this.playerFleet.isCloaked = true;
+            }
+            console.log(`Ability activated: ${id}`);
+        } else if (a.active) {
+            // Allow manual deactivation
+            a.active = false;
+            a.timer = 0;
+            if (id === 'cloak') {
+                this.playerFleet.isCloaked = false;
+            }
+            console.log(`Ability deactivated: ${id}`);
         }
-
-        console.log(`Ability ${a.active ? 'activated' : 'deactivated'}: ${id}`);
     }
 }
