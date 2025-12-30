@@ -47,7 +47,7 @@ export class Game {
     private isGameOver: boolean = false;
 
     // Fleet interaction
-    private contactDistance: number = 50; // Distance for contact dialog
+    private contactDistance: number = 100; // Distance for contact dialog
     private inspectedEntity: Entity | null = null; // Entity being inspected for tooltip
 
     constructor(canvas: HTMLCanvasElement) {
