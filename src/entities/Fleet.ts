@@ -138,6 +138,17 @@ export class Fleet extends Entity {
                 this.velocity = this.velocity.normalize().scale(maxVel);
             }
         }
+
+        // Combat speed limit: if under attack, speed cannot exceed 90% of base max
+        if (this.currentTarget) {
+            const baseMaxSpeed = this.maxSpeed * Math.pow(this.sizeMultiplier, -0.2);
+            const combatSpeedCap = baseMaxSpeed * 0.9;
+            currentMaxSpeed = Math.min(currentMaxSpeed, combatSpeedCap);
+            // Instantly slow down velocity if it's faster than combat speed cap
+            if (this.velocity.mag() > combatSpeedCap) {
+                this.velocity = this.velocity.normalize().scale(combatSpeedCap);
+            }
+        }
         this.isBubbled = false; // Reset for next frame
 
         // If following another entity, update target to an intercept point
