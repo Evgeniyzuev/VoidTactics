@@ -473,15 +473,15 @@ export class Game {
                             (this.playerFleet.followTarget as WarpGate).radius + 10 :
                             this.contactDistance;
 
-                    if (dist <= triggerDist) {
-                        if (this.playerFleet.followTarget instanceof CelestialBody) {
-                            const body = this.playerFleet.followTarget as CelestialBody;
-                            if (body.name === 'Terra') {
-                                this.showTerraUpgradeDialog();
-                            } else {
-                                alert(`Прибытие к ${body.name}`);
-                            }
-                            this.playerFleet.stopFollowing();
+        if (dist <= triggerDist) {
+            if (this.playerFleet.followTarget instanceof CelestialBody) {
+                const body = this.playerFleet.followTarget as CelestialBody;
+                if (body.name === 'Terra') {
+                    this.showTerraUpgradeDialog();
+                } else {
+                    this.showArrivalDialog(body.name);
+                }
+                this.playerFleet.stopFollowing();
                         } else if (this.playerFleet.followTarget instanceof WarpGate) {
                             const gate = this.playerFleet.followTarget as WarpGate;
                             this.warpToSystem(gate.targetSystemId);
@@ -854,6 +854,21 @@ export class Game {
                 if (this.isPaused) this.togglePause();
             }
         );
+    }
+
+    private showArrivalDialog(name: string) {
+        console.log('Showing arrival dialog for', name);
+
+        // Ensure game is paused while dialog is open
+        if (!this.isPaused) {
+            this.togglePause();
+        }
+
+        this.modal.showArrivalDialog(name, () => {
+            console.log('Arrival dialog cancelled');
+            this.modal.closeModal();
+            if (this.isPaused) this.togglePause();
+        });
     }
 
 
