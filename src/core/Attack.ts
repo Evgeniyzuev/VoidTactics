@@ -15,11 +15,6 @@ export class Attack {
         // Set attack states
         attacker.currentTarget = target;
         attacker.state = 'combat';
-
-        // NPC creates bubble if attacker is stronger than target
-        if (!attacker.isPlayer && attacker.strength > target.strength) {
-            this.createBubbleForAttacker();
-        }
     }
 
     private createBubbleForAttacker() {
@@ -56,6 +51,15 @@ export class Attack {
             // Player gets money per integer damage dealt
             if (this.attacker.isPlayer) {
                 this.attacker.money = Math.floor(this.attacker.money + integerDamage * 50);
+            }
+
+            // NPC deploys bubble if conditions met
+            if (!this.attacker.isPlayer &&
+                this.attacker.abilities.bubble.cooldown <= 0 &&
+                dist < 80 &&
+                !this.attacker.isBubbled) {
+                this.createBubbleForAttacker();
+                this.attacker.abilities.bubble.cooldown = this.attacker.abilities.bubble.cdMax;
             }
 
             // Target responds if not attacking anyone
