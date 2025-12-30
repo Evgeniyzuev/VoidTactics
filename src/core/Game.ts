@@ -36,6 +36,7 @@ export class Game {
     public getPlayerFleet(): Fleet { return this.playerFleet; }
     public getNpcFleets(): Fleet[] { return this.npcFleets; }
     public getAttacks(): Attack[] { return this.attacks; }
+    public getBubbleZones(): BubbleZone[] { return this.bubbleZones; }
     public getSystemRadius(): number { return this.SYSTEM_RADIUS; }
 
     private backgroundCanvas: HTMLCanvasElement;
