@@ -33,7 +33,7 @@ export class Fleet extends Entity {
     public abilities = {
         afterburner: { active: false, timer: 0, cooldown: 0, duration: 3, cdMax: 10 },
         cloak: { active: false, timer: 0, cooldown: 0, duration: 2, cdMax: 10 },
-        bubble: { active: false, timer: 0, cooldown: 0, duration: 5, cdMax: 20 }
+        bubble: { active: false, timer: 0, cooldown: 0, duration: 10, cdMax: 20 }
     };
     public isCloaked: boolean = false;
     public isBubbled: boolean = false; // Set by external bubbles
@@ -89,17 +89,15 @@ export class Fleet extends Entity {
             return;
         }
 
-        // Tick abilities (only for NPCs, player abilities are toggled)
-        if (!this.isPlayer) {
-            for (const key in this.abilities) {
-                const a = (this.abilities as any)[key];
-                if (a.cooldown > 0) a.cooldown -= dt;
-                if (a.active) {
-                    a.timer -= dt;
-                    if (a.timer <= 0) {
-                        a.active = false;
-                        if (key === 'cloak') this.isCloaked = false;
-                    }
+        // Tick abilities
+        for (const key in this.abilities) {
+            const a = (this.abilities as any)[key];
+            if (a.cooldown > 0) a.cooldown -= dt;
+            if (a.active) {
+                a.timer -= dt;
+                if (a.timer <= 0) {
+                    a.active = false;
+                    if (key === 'cloak') this.isCloaked = false;
                 }
             }
         }
@@ -133,8 +131,12 @@ export class Fleet extends Entity {
 
         // External bubble effect
         if (this.isBubbled) {
-            this.velocity = this.velocity.scale(0.8); // Drag
-            currentMaxSpeed *= 0.2;
+            currentMaxSpeed *= 0.1;
+            // Instantly slow down velocity if it's faster than new max speed
+            const maxVel = currentMaxSpeed;
+            if (this.velocity.mag() > maxVel) {
+                this.velocity = this.velocity.normalize().scale(maxVel);
+            }
         }
         this.isBubbled = false; // Reset for next frame
 
@@ -267,20 +269,6 @@ export class Fleet extends Entity {
         }
 
         ctx.rotate(this.rotation + Math.PI / 2); // +90deg because drawing points up
-
-        // Draw Bubble effect
-        if (this.abilities.bubble.active) {
-            ctx.save();
-            ctx.beginPath();
-            const bubbleRadiusScreen = 8 * this.sizeMultiplier * 25 * camera.zoom;
-            ctx.arc(0, 0, bubbleRadiusScreen, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(100, 200, 255, 0.15)';
-            ctx.fill();
-            ctx.strokeStyle = 'rgba(100, 200, 255, 0.5)';
-            ctx.setLineDash([5, 5]);
-            ctx.stroke();
-            ctx.restore();
-        }
 
         // Draw Ship (Perfect Warp Bubble)
         ctx.beginPath();

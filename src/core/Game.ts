@@ -5,6 +5,7 @@ import { Vector2 } from '../utils/Vector2';
 import { CelestialBody } from '../entities/CelestialBody';
 import { Fleet, type Faction } from '../entities/Fleet';
 import { Entity } from '../entities/Entity';
+import { BubbleZone } from '../entities/BubbleZone';
 import { SaveSystem } from './SaveSystem';
 import { UIManager } from './UIManager';
 import { ModalManager } from './ModalManager';
@@ -26,6 +27,7 @@ export class Game {
     private playerFleet!: Fleet;
     private npcFleets: Fleet[] = [];
     private attacks: Attack[] = [];
+    private bubbleZones: BubbleZone[] = [];
 
     // Getters for AIController
     public getEntities(): Entity[] { return this.entities; }
@@ -475,15 +477,16 @@ export class Game {
         // 3. AI & Combat & Abilities
         const allFleets = [this.playerFleet, ...this.npcFleets];
 
-        // Bubble Field Effect
-        for (const f of allFleets) {
-            if (f.abilities.bubble.active) {
-                const bubbleRadius = 8 * f.sizeMultiplier * 25; // Match visual radius
-                for (const other of allFleets) {
-                    if (f === other) continue;
-                    if (Vector2.distance(f.position, other.position) < bubbleRadius) {
-                        other.isBubbled = true;
-                    }
+        // Update BubbleZones
+        for (let i = this.bubbleZones.length - 1; i >= 0; i--) {
+            const bubble = this.bubbleZones[i];
+            if (bubble.update(dt)) {
+                // Bubble expired, remove it
+                this.bubbleZones.splice(i, 1);
+            } else {
+                // Apply bubble effect to fleets
+                for (const fleet of allFleets) {
+                    bubble.applyEffect(fleet);
                 }
             }
         }
@@ -853,6 +856,11 @@ export class Game {
         const ctx = this.renderer.getContext();
         for (const e of this.entities) e.draw(ctx, this.camera);
 
+        // Draw BubbleZones
+        for (const bubble of this.bubbleZones) {
+            bubble.draw(ctx, this.camera);
+        }
+
         const allFleets = [this.playerFleet, ...this.npcFleets];
         for (const fleet of allFleets) {
             if (fleet.followTarget && (fleet === this.playerFleet || fleet.followTarget === this.playerFleet ||
@@ -1051,6 +1059,20 @@ export class Game {
     private activateAbility(id: string) {
         const a = (this.playerFleet.abilities as any)[id];
         if (!a) return;
+
+        if (id === 'bubble') {
+            // Special handling for bubble: create zone if not on cooldown
+            if (a.cooldown <= 0) {
+                const radius = 8 * this.playerFleet.sizeMultiplier * 25; // Match visual radius from old code
+                const bubbleZone = new BubbleZone(this.playerFleet.position.x, this.playerFleet.position.y, radius);
+                this.bubbleZones.push(bubbleZone);
+                a.cooldown = a.cdMax; // Start cooldown
+                console.log('Bubble zone created');
+            } else {
+                console.log('Bubble on cooldown');
+            }
+            return;
+        }
 
         // Toggle ability on/off for player (no timers/cooldowns)
         a.active = !a.active;
