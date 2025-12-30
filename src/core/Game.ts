@@ -516,17 +516,16 @@ export class Game {
                         this.contactDistance;
 
                     if (dist <= triggerDist) {
-                        if (this.playerFleet.followTarget instanceof Fleet) {
-                            this.initiateContact(this.playerFleet.followTarget);
-                        } else if (this.playerFleet.followTarget instanceof CelestialBody) {
+                        if (this.playerFleet.followTarget instanceof CelestialBody) {
                             const body = this.playerFleet.followTarget as CelestialBody;
                             if (body.name === 'Terra') {
                                 this.showTerraUpgradeDialog();
                             } else {
                                 alert(`Прибытие к ${body.name}`);
                             }
+                            this.playerFleet.stopFollowing();
                         }
-                        this.playerFleet.stopFollowing();
+                        // For fleets in contact mode, keep following (don't initiate contact or stop)
                     }
                 }
             }
@@ -856,6 +855,8 @@ export class Game {
                 if (!this.playerFleet.currentTarget && !fleet.currentTarget) {
                     const a = new Attack(this.playerFleet, fleet, this);
                     this.attacks.push(a);
+                    // Auto-follow the target
+                    this.playerFleet.setFollowTarget(fleet, 'contact');
                 } else {
                     console.log('Cannot initiate attack - one fleet is already attacking');
                 }
