@@ -10,7 +10,7 @@ export class BubbleZone extends Entity {
     public timeElapsed: number = 0;
     public isDeployed: boolean = false;
 
-    constructor(x: number, y: number, radius: number, duration: number = 10, deployTime: number = 0.2) {
+    constructor(x: number, y: number, radius: number, duration: number = 8, deployTime: number = 0.2) {
         super(x, y);
         this.radius = radius;
         this.duration = duration;

@@ -33,7 +33,7 @@ export class Fleet extends Entity {
     public abilities = {
         afterburner: { active: false, timer: 0, cooldown: 0, duration: 10, cdMax: 10 },
         cloak: { active: false, timer: 0, cooldown: 0, duration: 10, cdMax: 10 },
-        bubble: { active: false, timer: 0, cooldown: 0, duration: 10, cdMax: 20 }
+        bubble: { active: false, timer: 0, cooldown: 0, duration: 10, cdMax: 16 }
     };
     public isCloaked: boolean = false;
     public isBubbled: boolean = false; // Set by external bubbles
