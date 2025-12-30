@@ -16,7 +16,6 @@ export class AIController {
         const celestialBodies = this.game.getEntities().filter(e => e instanceof CelestialBody) as CelestialBody[];
 
         for (const npc of this.game.getNpcFleets()) {
-            if (npc.currentTarget) continue;
 
             // Give up chase/flee if too far or futility
             if (npc.followTarget instanceof Fleet) {
@@ -65,6 +64,16 @@ export class AIController {
 
             // Scan all fleets (including player)
             const allFleets = [this.game.getPlayerFleet(), ...this.game.getNpcFleets()];
+
+            // Count nearby civilians for civilian behavior
+            let nearbyCivilians = 0;
+            if (npc.faction === 'civilian') {
+                for (const other of allFleets) {
+                    if (other !== npc && other.faction === 'civilian' && Vector2.distance(npc.position, other.position) < 300) {
+                        nearbyCivilians++;
+                    }
+                }
+            }
             for (const other of allFleets) {
                 if (npc === other || other.isCloaked) continue;
 
@@ -95,13 +104,21 @@ export class AIController {
                     }
                 } else if (hostileAtoB) {
                     // Target: I want to kill him
-                    let canTarget = other.strength < npc.strength * 0.8;
+                    let canTarget = false;
+                    if (npc.faction === 'military') {
+                        canTarget = other.strength < npc.strength * 1.2;
+                    } else if (npc.faction === 'civilian') {
+                        canTarget = other.strength < npc.strength * 0.8;
+                        if (nearbyCivilians > 2) {
+                            canTarget = other.strength < npc.strength * 1.0; // Attack if not much stronger when in group
+                        }
+                    } else {
+                        canTarget = other.strength < npc.strength * 0.8;
+                    }
                     if (other.currentTarget) {
                         // Opportunistic: attack weakened enemies in attack
                         if (['pirate', 'orc', 'military'].includes(npc.faction) && other.strength < npc.strength * 0.6) {
                             canTarget = true;
-                        } else {
-                            canTarget = false;
                         }
                     }
 
@@ -146,8 +163,14 @@ export class AIController {
                         const strengthRatio = Math.min(other.strength / npc.strength, 2.0);
                         const strengthScore = 1 / strengthRatio;
 
+                        // Current target bonus: big plus if this is already my target
+                        const currentTargetBonus = (other === npc.currentTarget) ? 1.0 : 0;
+
+                        // Proximity bonus for military: prioritize closest
+                        const proximityBonus = (npc.faction === 'military') ? proximityCoefficient * 2.0 : 0;
+
                         // Total score
-                        let targetScore = proximityCoefficient * (combatBonus + sizeScore + movementScore + strengthScore);
+                        let targetScore = proximityCoefficient * (combatBonus + sizeScore + movementScore + strengthScore + currentTargetBonus) + proximityBonus;
 
                         // Center bonus for military
                         if (npc.faction === 'military') {

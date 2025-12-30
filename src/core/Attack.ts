@@ -43,7 +43,7 @@ export class Attack {
 
             // Player gets money per integer damage dealt
             if (this.attacker.isPlayer) {
-                this.attacker.money = Math.floor(this.attacker.money + integerDamage * 100);
+                this.attacker.money = Math.floor(this.attacker.money + integerDamage * 50);
             }
 
             // Target responds if not attacking anyone
