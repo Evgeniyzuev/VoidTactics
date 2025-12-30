@@ -528,8 +528,11 @@ export class Game {
                                 alert(`Прибытие к ${body.name}`);
                             }
                             this.playerFleet.stopFollowing();
+                        } else if (this.playerFleet.followTarget instanceof Fleet) {
+                            this.initiateContact(this.playerFleet.followTarget);
+                            // Change to approach mode after contact
+                            this.playerFleet.followMode = 'approach';
                         }
-                        // For fleets in contact mode, keep following (don't initiate contact or stop)
                     }
                 }
             }
@@ -806,6 +809,47 @@ export class Game {
             this.infoTooltip = null;
             this.inspectedEntity = null;
         }
+    }
+
+    private initiateContact(fleet: Fleet) {
+        this.closeTooltip();
+
+        // Ensure game is paused while dialog is open
+        if (!this.isPaused) {
+            this.togglePause();
+        }
+
+        console.log(`Initiating contact with fleet at ${fleet.position.x}, ${fleet.position.y}`);
+
+        this.modal.showContactDialog(
+            () => {
+                console.log('Establishing communication with fleet...');
+                console.log('Связь установлена! (Функция в разработке)');
+                this.modal.closeModal();
+                if (this.isPaused) this.togglePause();
+            },
+            () => {
+                console.log('Initiating attack...');
+                // Use the new Attack system
+                if (!this.playerFleet.currentTarget && !fleet.currentTarget) {
+                    const a = new Attack(this.playerFleet, fleet, this);
+                    this.attacks.push(a);
+                    // Auto-follow the target
+                    this.playerFleet.setFollowTarget(fleet, 'contact');
+                } else {
+                    console.log('Cannot initiate attack - one fleet is already attacking');
+                }
+
+                this.modal.showBattleScreen(() => {});
+                this.modal.closeModal();
+                if (this.isPaused) this.togglePause();
+            },
+            () => {
+                console.log('Contact cancelled');
+                this.modal.closeModal();
+                if (this.isPaused) this.togglePause();
+            }
+        );
     }
 
     private showTerraUpgradeDialog() {
