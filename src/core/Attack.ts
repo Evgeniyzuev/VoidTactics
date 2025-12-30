@@ -57,7 +57,8 @@ export class Attack {
             if (!this.attacker.isPlayer &&
                 this.attacker.abilities.bubble.cooldown <= 0 &&
                 dist < 80 &&
-                !this.attacker.isBubbled) {
+                !this.attacker.isBubbled &&
+                this.attacker.strength > this.target.strength) {
                 this.createBubbleForAttacker();
                 this.attacker.abilities.bubble.cooldown = this.attacker.abilities.bubble.cdMax;
             }
