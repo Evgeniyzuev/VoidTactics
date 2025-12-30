@@ -6,6 +6,7 @@ import { CelestialBody } from '../entities/CelestialBody';
 import { Fleet, type Faction } from '../entities/Fleet';
 import { Entity } from '../entities/Entity';
 import { BubbleZone } from '../entities/BubbleZone';
+import { WarpGate } from '../entities/WarpGate';
 import { SaveSystem } from './SaveSystem';
 import { UIManager } from './UIManager';
 import { ModalManager } from './ModalManager';
@@ -51,6 +52,9 @@ export class Game {
     // Fleet interaction
     private contactDistance: number = 100; // Distance for contact dialog
     private inspectedEntity: Entity | null = null; // Entity being inspected for tooltip
+
+    // System management
+    private currentSystemId: number = 1; // Current star system (1 = Sol, 2 = Alpha Centauri, etc.)
 
     constructor(canvas: HTMLCanvasElement) {
         this.renderer = new Renderer(canvas);
@@ -181,7 +185,10 @@ export class Game {
         }
     }
 
-    private initWorld(forcedStrength?: number) {
+    private initWorld(forcedStrength?: number, systemId?: number) {
+        // Set current system
+        this.currentSystemId = systemId || 1;
+
         // Clear existing state
         this.entities = [];
         this.npcFleets = [];
@@ -194,6 +201,37 @@ export class Game {
             this.togglePause();
         }
 
+        console.log(`Initializing System ${this.currentSystemId}...`);
+
+        if (this.currentSystemId === 1) {
+            this.initSolSystem();
+        } else if (this.currentSystemId === 2) {
+            this.initAlphaCentauriSystem();
+        } else {
+            // Default to Sol system for unknown systems
+            this.currentSystemId = 1;
+            this.initSolSystem();
+        }
+
+        // Player Fleet Initialization
+        // Priority: forcedStrength (from menu buttons) > savedSize (from persistence) > default (10)
+        const savedSize = SaveSystem.loadFleetSize();
+        const startStrength = forcedStrength !== undefined ? forcedStrength : (savedSize || 10);
+
+        console.log('Initializing player fleet...', `Strength: ${startStrength}`);
+
+        this.playerFleet = new Fleet(500, 500, '#00AAFF', true);
+        this.playerFleet.strength = startStrength;
+        this.playerFleet.faction = 'player';
+        this.entities.push(this.playerFleet);
+
+        this.spawnNPCs(30);
+
+        // Reset camera position
+        this.camera.position = this.playerFleet.position.clone();
+    }
+
+    private initSolSystem() {
         // Star
         const star = new CelestialBody(0, 0, 150, '#FFD700', 'Sol', true);
         this.entities.push(star);
@@ -205,7 +243,7 @@ export class Game {
         const luna = new CelestialBody(860, 0, 10, '#AAAAAA', 'Luna');
         luna.orbitParent = terra;
         luna.orbitRadius = 60;
-        luna.orbitSpeed = 0.125; // Slowed down 4x (0.5 / 4)
+        luna.orbitSpeed = 0.125;
         this.entities.push(luna);
 
         this.entities.push(new CelestialBody(-1200, 400, 60, '#FF4500', 'Marsish'));
@@ -215,9 +253,9 @@ export class Game {
 
         // Jupiter satellites
         const moons = [
-            { name: 'Io', radius: 8, color: '#F0E68C', orbitRadius: 160, orbitSpeed: 0.2 }, // 0.8 / 4
-            { name: 'Europa', radius: 7, color: '#E0FFFF', orbitRadius: 220, orbitSpeed: 0.15 }, // 0.6 / 4
-            { name: 'Ganymede', radius: 12, color: '#D2B48C', orbitRadius: 300, orbitSpeed: 0.1 } // 0.4 / 4
+            { name: 'Io', radius: 8, color: '#F0E68C', orbitRadius: 160, orbitSpeed: 0.2 },
+            { name: 'Europa', radius: 7, color: '#E0FFFF', orbitRadius: 220, orbitSpeed: 0.15 },
+            { name: 'Ganymede', radius: 12, color: '#D2B48C', orbitRadius: 300, orbitSpeed: 0.1 }
         ];
 
         moons.forEach(m => {
@@ -233,10 +271,10 @@ export class Game {
         const saturn = new CelestialBody(-3000, -2000, 95, '#F4A460', 'Saturn');
         saturn.rings = {
             bands: [
-                { innerRadius: 110, outerRadius: 130, color: 'rgba(210, 180, 140, 0.4)' }, // Darker inner band
-                { innerRadius: 132, outerRadius: 155, color: 'rgba(245, 222, 179, 0.7)' }, // Lighter middle band
-                { innerRadius: 157, outerRadius: 165, color: 'rgba(210, 180, 140, 0.3)' }, // Very thin darker band
-                { innerRadius: 167, outerRadius: 185, color: 'rgba(245, 222, 179, 0.5)' }  // Outer band
+                { innerRadius: 110, outerRadius: 130, color: 'rgba(210, 180, 140, 0.4)' },
+                { innerRadius: 132, outerRadius: 155, color: 'rgba(245, 222, 179, 0.7)' },
+                { innerRadius: 157, outerRadius: 165, color: 'rgba(210, 180, 140, 0.3)' },
+                { innerRadius: 167, outerRadius: 185, color: 'rgba(245, 222, 179, 0.5)' }
             ],
             angle: Math.PI / 6
         };
@@ -254,22 +292,55 @@ export class Game {
 
         this.entities.push(new CelestialBody(-600, -600, 20, '#FF00FF', 'Outpost Alpha'));
 
-        // Player Fleet Initialization
-        // Priority: forcedStrength (from menu buttons) > savedSize (from persistence) > default (10)
-        const savedSize = SaveSystem.loadFleetSize();
-        const startStrength = forcedStrength !== undefined ? forcedStrength : (savedSize || 10);
+        // Warp Gate to Alpha Centauri
+        const warpGate = new WarpGate(3500, 2500, 2, 'Gate to Alpha Centauri');
+        this.entities.push(warpGate);
+    }
 
-        console.log('Initializing world...', `Strength: ${startStrength}`);
+    private initAlphaCentauriSystem() {
+        // Star (binary system - Alpha Centauri A)
+        const starA = new CelestialBody(0, 0, 140, '#FFA500', 'Alpha Centauri A', true);
+        this.entities.push(starA);
 
-        this.playerFleet = new Fleet(500, 500, '#00AAFF', true);
-        this.playerFleet.strength = startStrength;
-        this.playerFleet.faction = 'player';
-        this.entities.push(this.playerFleet);
+        // Companion star (Alpha Centauri B)
+        const starB = new CelestialBody(300, 200, 120, '#FF8C00', 'Alpha Centauri B', true);
+        this.entities.push(starB);
 
-        this.spawnNPCs(30);
+        // Planets
+        const proximaB = new CelestialBody(600, 100, 35, '#8B4513', 'Proxima b');
+        this.entities.push(proximaB);
 
-        // Reset camera position
-        this.camera.position = this.playerFleet.position.clone();
+        const centauriPrime = new CelestialBody(-800, -300, 45, '#4169E1', 'Centauri Prime');
+        this.entities.push(centauriPrime);
+
+        // Moons for Centauri Prime
+        const lunaPrime = new CelestialBody(-820, -280, 12, '#C0C0C0', 'Luna Prime');
+        lunaPrime.orbitParent = centauriPrime;
+        lunaPrime.orbitRadius = 40;
+        lunaPrime.orbitSpeed = 0.15;
+        this.entities.push(lunaPrime);
+
+        // Gas giant
+        const centauriGas = new CelestialBody(1200, -800, 100, '#9370DB', 'Centauri Gas');
+        this.entities.push(centauriGas);
+
+        // Asteroid field
+        for (let i = 0; i < 25; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 1800 + Math.random() * 600;
+            const x = Math.cos(angle) * dist;
+            const y = Math.sin(angle) * dist;
+            const size = 4 + Math.random() * 12;
+            this.entities.push(new CelestialBody(x, y, size, '#696969', 'Asteroid'));
+        }
+
+        // Mining outposts
+        this.entities.push(new CelestialBody(-400, 800, 18, '#FF1493', 'Mining Outpost Zeta'));
+        this.entities.push(new CelestialBody(1500, 600, 22, '#32CD32', 'Research Station Beta'));
+
+        // Warp Gate back to Sol
+        const warpGate = new WarpGate(-3500, -2500, 1, 'Gate to Sol System');
+        this.entities.push(warpGate);
     }
 
     private spawnNPCs(count: number, specificFaction?: Faction) {
@@ -517,7 +588,9 @@ export class Game {
                 if (this.playerFleet.followMode === 'contact') {
                     const triggerDist = this.playerFleet.followTarget instanceof CelestialBody ?
                         (this.playerFleet.followTarget as CelestialBody).radius + 10 :
-                        this.contactDistance;
+                        this.playerFleet.followTarget instanceof WarpGate ?
+                            (this.playerFleet.followTarget as WarpGate).radius + 10 :
+                            this.contactDistance;
 
                     if (dist <= triggerDist) {
                         if (this.playerFleet.followTarget instanceof CelestialBody) {
@@ -527,6 +600,10 @@ export class Game {
                             } else {
                                 alert(`Прибытие к ${body.name}`);
                             }
+                            this.playerFleet.stopFollowing();
+                        } else if (this.playerFleet.followTarget instanceof WarpGate) {
+                            const gate = this.playerFleet.followTarget as WarpGate;
+                            this.warpToSystem(gate.targetSystemId);
                             this.playerFleet.stopFollowing();
                         } else if (this.playerFleet.followTarget instanceof Fleet) {
                             this.initiateContact(this.playerFleet.followTarget);
@@ -660,6 +737,13 @@ export class Game {
                         closestEntity = e;
                         minDist = dist;
                     }
+                } else if (e instanceof WarpGate) {
+                    // Warp gates have larger interaction radius
+                    const interactionRadius = Math.max(30, 60 / this.camera.zoom);
+                    if (dist <= interactionRadius) {
+                        closestEntity = e;
+                        minDist = dist;
+                    }
                 }
             }
         }
@@ -711,6 +795,13 @@ export class Game {
             info += `Radius: ${body.radius.toFixed(0)}`;
             showApproach = true;
             if (!body.isStar && body.name !== 'Asteroid') showDock = true;
+        } else if (entity instanceof WarpGate) {
+            const gate = entity as WarpGate;
+            info = `<strong>${gate.name}</strong><br/>`;
+            info += '🌀 Warp Gate<br/>';
+            info += `Destination: System ${gate.targetSystemId}`;
+            showApproach = true;
+            showContact = true; // Warp gates use contact for warping
         } else if (entity instanceof Fleet) {
             const fleet = entity as Fleet;
             const isPlayer = fleet === this.playerFleet;
@@ -1099,6 +1190,26 @@ export class Game {
 
             ctx.restore();
         }
+    }
+
+    private warpToSystem(targetSystemId: number) {
+        console.log(`Warping from System ${this.currentSystemId} to System ${targetSystemId}...`);
+
+        // Store player fleet state before transition
+        const playerStrength = this.playerFleet.strength;
+        const playerMoney = this.playerFleet.money;
+
+        // Initialize the new system
+        this.initWorld(playerStrength, targetSystemId);
+
+        // Restore player fleet state
+        this.playerFleet.strength = playerStrength;
+        this.playerFleet.money = playerMoney;
+
+        // Update UI
+        this.ui.updateMoney(this.playerFleet.money);
+
+        console.log(`Successfully warped to System ${targetSystemId}!`);
     }
 
     private activateAbility(id: string) {
