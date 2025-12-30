@@ -20,7 +20,7 @@ export class Attack {
     update(dt: number) {
         // Check if attack should be interrupted (distance > 2 * interception radius)
         const dist = Vector2.distance(this.attacker.position, this.target.position);
-        const maxDist = 400; // 2 * 200 (interception radius)
+        const maxDist = 200; // 2 * 100 (interception radius)
         if (dist > maxDist) {
             this.finished = true;
             // Reset states

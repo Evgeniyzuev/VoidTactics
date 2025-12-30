@@ -572,7 +572,7 @@ export class Game {
                 // Skip if attacker is already attacking someone
                 if (attacker.currentTarget) continue;
 
-                const baseTriggerDist = 200; // Fixed interception radius
+                const baseTriggerDist = 100; // Fixed interception radius
 
                 const dist = Vector2.distance(attacker.position, target.position);
 
@@ -936,20 +936,7 @@ export class Game {
             }
         }
 
-        // Draw attack zones (red dotted circles)
-        for (const attack of this.attacks) {
-            const attackPos = this.camera.worldToScreen(attack.position);
-            const attackRadius = attack.radius * this.camera.zoom;
 
-            ctx.save();
-            ctx.beginPath();
-            ctx.arc(attackPos.x, attackPos.y, attackRadius, 0, Math.PI * 2);
-            ctx.setLineDash([10 * this.camera.zoom, 10 * this.camera.zoom]);
-            ctx.strokeStyle = 'rgba(255, 0, 0, 0.6)'; // Red dotted line
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            ctx.restore();
-        }
 
         // Draw off-screen indicators
         const star = this.entities.find(e => e instanceof CelestialBody && (e as CelestialBody).isStar);
