@@ -54,10 +54,14 @@ export class SystemManager {
             spawnRules: {
                 targetFleetCount: 50, // Can have more fleets
                 factionWeights: [
-                    { type: 'orc', weight: 1.0 } // Only orcs
+                    { type: 'raider', weight: 0.5 },
+                    { type: 'civilian', weight: 0.237 },
+                    { type: 'pirate', weight: 0.105 },
+                    { type: 'orc', weight: 0.079 },
+                    { type: 'military', weight: 0.079 }
                 ],
-                strengthMin: 100,
-                strengthMax: 1000,
+                strengthMin: 50,
+                strengthMax: 300,
                 spawnInterval: 60 // 1 minute = 60 seconds
             },
             entities: this.createAlphaCentauriEntities()
@@ -224,7 +228,7 @@ export class SystemManager {
         this.spawnTimers.set(systemId, currentTimer + dt);
     }
 
-    public spawnFleetsForSystem(systemId: number, playerStrength: number): Fleet[] {
+    public spawnFleetsForSystem(systemId: number, playerStrength: number, forcedFaction?: Faction): Fleet[] {
         const system = this.systems.get(systemId);
         if (!system) return [];
 
@@ -232,7 +236,9 @@ export class SystemManager {
 
         // Pick faction based on weights
         let selectedFaction: Faction = 'civilian';
-        if (rules.factionWeights.length === 1) {
+        if (forcedFaction) {
+            selectedFaction = forcedFaction;
+        } else if (rules.factionWeights.length === 1) {
             // Only one faction available (like orcs in Alpha Centauri)
             selectedFaction = rules.factionWeights[0].type;
         } else {

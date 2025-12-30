@@ -225,7 +225,15 @@ export class Game {
         this.playerFleet.faction = 'player';
         this.entities.push(this.playerFleet);
 
-        this.spawnNPCs(30);
+        // Spawn initial fleets using system-specific rules
+        const initialFleets: Fleet[] = [];
+        for (let i = 0; i < 30; i++) {
+            const forcedFaction = this.currentSystemId === 2 ? 'raider' : undefined;
+            const fleets = this.systemManager.spawnFleetsForSystem(this.currentSystemId, startStrength, forcedFaction);
+            initialFleets.push(...fleets);
+        }
+        this.entities.push(...initialFleets);
+        this.npcFleets.push(...initialFleets);
 
         // Reset camera position
         this.camera.position = this.playerFleet.position.clone();
