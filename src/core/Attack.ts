@@ -8,26 +8,23 @@ export class Attack {
     public target: Fleet;
     public finished: boolean = false;
     private game: Game;
-    public isCounterAttack: boolean = false;
-
-    constructor(attacker: Fleet, target: Fleet, game: Game, isCounterAttack: boolean = false) {
+    constructor(attacker: Fleet, target: Fleet, game: Game) {
         this.attacker = attacker;
         this.target = target;
         this.game = game;
-        this.isCounterAttack = isCounterAttack;
         // Set attack states
         attacker.currentTarget = target;
         attacker.state = 'combat';
 
-        // NPC creates bubble on initial attack (not counter-attack)
-        if (!isCounterAttack && !attacker.isPlayer) {
+        // NPC creates bubble if attacker is stronger than target
+        if (!attacker.isPlayer && attacker.strength > target.strength) {
             this.createBubbleForAttacker();
         }
     }
 
     private createBubbleForAttacker() {
-        // Calculate bubble radius based on fleet size (same as player)
-        const radius = 8 * this.attacker.sizeMultiplier * 25;
+        // Fixed radius for all bubbles
+        const radius = 200;
         const bubbleZone = new BubbleZone(this.attacker.position.x, this.attacker.position.y, radius);
         this.game.getBubbleZones().push(bubbleZone);
     }
@@ -64,7 +61,7 @@ export class Attack {
             // Target responds if not attacking anyone
             if (this.target.currentTarget === null && !this.target.isCloaked) {
                 // Target starts attacking back immediately (no distance check)
-                const counterAttack = new Attack(this.target, this.attacker, this.game, true);
+                const counterAttack = new Attack(this.target, this.attacker, this.game);
                 this.game.getAttacks().push(counterAttack);
             }
         }

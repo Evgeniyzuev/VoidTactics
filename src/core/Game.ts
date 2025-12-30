@@ -1100,7 +1100,7 @@ export class Game {
         if (id === 'bubble') {
             // Special handling for bubble: create zone if not on cooldown
             if (a.cooldown <= 0) {
-                const radius = 8 * this.playerFleet.sizeMultiplier * 25; // Match visual radius from old code
+                const radius = 200; // Fixed radius for all bubbles
                 const bubbleZone = new BubbleZone(this.playerFleet.position.x, this.playerFleet.position.y, radius);
                 this.bubbleZones.push(bubbleZone);
                 a.cooldown = a.cdMax; // Start cooldown
