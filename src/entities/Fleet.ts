@@ -348,15 +348,37 @@ export class Fleet extends Entity {
             const targetScreenPos = camera.worldToScreen(this.currentTarget.position);
             const myScreenPos = camera.worldToScreen(this.position);
 
-            // Flickering alpha for attack line
-            const flicker = 0.5 + 0.5 * Math.sin(Date.now() * 0.01); // Simple flicker
-            ctx.strokeStyle = `rgba(255, 0, 0, ${flicker})`;
-            ctx.lineWidth = 2;
+            // Pulsing attack line with particles
+            const time = Date.now() * 0.005;
+            const pulse = 0.5 + 0.5 * Math.sin(time);
+            const alpha = 0.8 + 0.2 * Math.sin(time * 2);
+
+            // Main attack line
+            ctx.strokeStyle = `rgba(255, 50, 50, ${alpha})`;
+            ctx.lineWidth = 3 + pulse * 2;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = 'rgba(255, 0, 0, 0.8)';
 
             ctx.beginPath();
             ctx.moveTo(myScreenPos.x, myScreenPos.y);
             ctx.lineTo(targetScreenPos.x, targetScreenPos.y);
             ctx.stroke();
+
+            // Energy particles along the line
+            const dist = Math.sqrt((targetScreenPos.x - myScreenPos.x) ** 2 + (targetScreenPos.y - myScreenPos.y) ** 2);
+            const numParticles = Math.floor(dist / 20);
+            for (let i = 0; i < numParticles; i++) {
+                const t = i / numParticles;
+                const x = myScreenPos.x + (targetScreenPos.x - myScreenPos.x) * t + (Math.random() - 0.5) * 10;
+                const y = myScreenPos.y + (targetScreenPos.y - myScreenPos.y) * t + (Math.random() - 0.5) * 10;
+                const size = 1 + Math.random() * 2;
+                ctx.fillStyle = `rgba(255, 150, 0, ${Math.random() * 0.5})`;
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            ctx.shadowBlur = 0; // Reset shadow
         }
 
         // Draw Target Marker (Bubble) - Only for Player

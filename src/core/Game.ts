@@ -8,7 +8,7 @@ import { Entity } from '../entities/Entity';
 import { SaveSystem } from './SaveSystem';
 import { UIManager } from './UIManager';
 import { ModalManager } from './ModalManager';
-import { Battle } from './Battle';
+import { Attack } from './Attack';
 import { AIController } from './AIController';
 
 
@@ -25,13 +25,13 @@ export class Game {
     private entities: Entity[] = [];
     private playerFleet!: Fleet;
     private npcFleets: Fleet[] = [];
-    private battles: Battle[] = [];
+    private attacks: Attack[] = [];
 
     // Getters for AIController
     public getEntities(): Entity[] { return this.entities; }
     public getPlayerFleet(): Fleet { return this.playerFleet; }
     public getNpcFleets(): Fleet[] { return this.npcFleets; }
-    public getBattles(): Battle[] { return this.battles; }
+    public getAttacks(): Attack[] { return this.attacks; }
     public getSystemRadius(): number { return this.SYSTEM_RADIUS; }
 
     private backgroundCanvas: HTMLCanvasElement;
@@ -183,7 +183,7 @@ export class Game {
         // Clear existing state
         this.entities = [];
         this.npcFleets = [];
-        this.battles = [];
+        this.attacks = [];
         this.isGameOver = false;
 
         // Unpause if paused
@@ -550,46 +550,42 @@ export class Game {
 
         // 1. Tick and Check for Resolution
         const toRemove: Fleet[] = [];
-        for (let i = this.battles.length - 1; i >= 0; i--) {
-            const b = this.battles[i];
+        for (let i = this.attacks.length - 1; i >= 0; i--) {
+            const a = this.attacks[i];
 
-            b.update(dt);
-            if (b.finished) {
-                this.resolveBattleGroup(b, toRemove);
-                this.battles.splice(i, 1);
+            a.update(dt);
+            if (a.finished) {
+                this.resolveAttack(a, toRemove);
+                this.attacks.splice(i, 1);
             }
         }
 
-        // 2. Interaction check for new combats or joining
+        // 2. Interaction check for new attacks
         for (let i = 0; i < allFleets.length; i++) {
-            const f1 = allFleets[i];
-            if (toRemove.includes(f1)) continue;
+            const attacker = allFleets[i];
+            if (toRemove.includes(attacker)) continue;
 
-            for (let j = i + 1; j < allFleets.length; j++) {
-                const f2 = allFleets[j];
-                if (toRemove.includes(f2)) continue;
+            for (let j = 0; j < allFleets.length; j++) {
+                const target = allFleets[j];
+                if (toRemove.includes(target) || attacker === target) continue;
 
-                if (f1.activeBattle && f1.activeBattle === f2.activeBattle) continue;
+                // Skip if attacker is already attacking someone
+                if (attacker.currentTarget) continue;
 
-                const r1 = 8 * f1.sizeMultiplier;
-                const r2 = 8 * f2.sizeMultiplier;
+                const baseTriggerDist = 200; // Fixed interception radius
 
-                const baseTriggerDist = 4 * Math.max(r1, r2);
+                const dist = Vector2.distance(attacker.position, target.position);
 
-                const dist = Vector2.distance(f1.position, f2.position);
-
-                // Only start NEW 1v1 combat if both are not in battle
-                if (this.aiController.isHostile(f1, f2) || this.aiController.isHostile(f2, f1)) {
+                // Start NEW attack if hostile and not attacking
+                if (this.aiController.isHostile(attacker, target)) {
                     let triggerDist = baseTriggerDist;
-                    if (f1.followTarget === f2) triggerDist = 4 * r1;
-                    else if (f2.followTarget === f1) triggerDist = 4 * r2;
+                    if (attacker.followTarget === target) triggerDist = baseTriggerDist * 2; // Double for following
 
-                    if (dist < triggerDist && !f1.activeBattle && !f2.activeBattle) {
-                        const b = new Battle(f1, f2);
-                        this.battles.push(b);
+                    if (dist < triggerDist) {
+                        const attack = new Attack(attacker, target, this);
+                        this.attacks.push(attack);
                     }
                 }
-
             }
         }
 
@@ -611,22 +607,21 @@ export class Game {
     }
 
 
-    private resolveBattleGroup(battle: Battle, toRemove: Fleet[]) {
+    private resolveAttack(attack: Attack, toRemove: Fleet[]) {
         const winners: Fleet[] = [];
-        if (battle.fleet1.strength > 0) winners.push(battle.fleet1);
-        if (battle.fleet2.strength > 0) winners.push(battle.fleet2);
+        if (attack.attacker.strength > 0) winners.push(attack.attacker);
+        if (attack.target.strength > 0) winners.push(attack.target);
 
         // Reset winner states
         for (const winner of winners) {
             winner.state = 'normal';
-            winner.activeBattle = null;
             winner.currentTarget = null;
         }
 
         // Remove dead fleets
         const dead: Fleet[] = [];
-        if (battle.fleet1.strength <= 0) dead.push(battle.fleet1);
-        if (battle.fleet2.strength <= 0) dead.push(battle.fleet2);
+        if (attack.attacker.strength <= 0) dead.push(attack.attacker);
+        if (attack.target.strength <= 0) dead.push(attack.target);
         for (const d of dead) {
             toRemove.push(d);
         }
@@ -634,10 +629,10 @@ export class Game {
         // Money is now awarded per damage in real-time
         if (winners.includes(this.playerFleet)) {
             if (!this.isPaused) this.togglePause();
-            console.log(`Battle resolved. Player won.`);
+            console.log(`Attack resolved. Player won.`);
         }
 
-        console.log(`Battle Resolved: Winners: ${winners.length}, Losers: ${dead.length}.`);
+        console.log(`Attack Resolved: Winners: ${winners.length}, Losers: ${dead.length}.`);
     }
 
 
@@ -856,19 +851,19 @@ export class Game {
                 if (this.isPaused) this.togglePause();
             },
             () => {
-                console.log('Initiating battle...');
-                // Use the new Battle system
-                if (!this.playerFleet.activeBattle && !fleet.activeBattle) {
-                    const b = new Battle(this.playerFleet, fleet);
-                    this.battles.push(b);
+                console.log('Initiating attack...');
+                // Use the new Attack system
+                if (!this.playerFleet.currentTarget && !fleet.currentTarget) {
+                    const a = new Attack(this.playerFleet, fleet, this);
+                    this.attacks.push(a);
                 } else {
-                    console.log('Cannot initiate battle - one fleet is already in combat');
+                    console.log('Cannot initiate attack - one fleet is already attacking');
                 }
 
                 if (this.isPaused) this.togglePause();
 
                 this.modal.showBattleScreen(() => {
-                    console.log('Battle animation ended');
+                    console.log('Attack animation ended');
                 });
             },
             () => {
@@ -941,14 +936,14 @@ export class Game {
             }
         }
 
-        // Draw battle zones (red dotted circles)
-        for (const battle of this.battles) {
-            const battlePos = this.camera.worldToScreen(battle.position);
-            const battleRadius = battle.radius * this.camera.zoom;
+        // Draw attack zones (red dotted circles)
+        for (const attack of this.attacks) {
+            const attackPos = this.camera.worldToScreen(attack.position);
+            const attackRadius = attack.radius * this.camera.zoom;
 
             ctx.save();
             ctx.beginPath();
-            ctx.arc(battlePos.x, battlePos.y, battleRadius, 0, Math.PI * 2);
+            ctx.arc(attackPos.x, attackPos.y, attackRadius, 0, Math.PI * 2);
             ctx.setLineDash([10 * this.camera.zoom, 10 * this.camera.zoom]);
             ctx.strokeStyle = 'rgba(255, 0, 0, 0.6)'; // Red dotted line
             ctx.lineWidth = 2;

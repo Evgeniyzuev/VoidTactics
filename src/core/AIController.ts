@@ -16,7 +16,7 @@ export class AIController {
         const celestialBodies = this.game.getEntities().filter(e => e instanceof CelestialBody) as CelestialBody[];
 
         for (const npc of this.game.getNpcFleets()) {
-            if (npc.state === 'combat') continue;
+            if (npc.currentTarget) continue;
 
             // Give up chase/flee if too far or futility
             if (npc.followTarget instanceof Fleet) {
@@ -96,8 +96,8 @@ export class AIController {
                 } else if (hostileAtoB) {
                     // Target: I want to kill him
                     let canTarget = other.strength < npc.strength * 0.8;
-                    if (other.state === 'combat') {
-                        // Opportunistic: attack weakened enemies in battle
+                    if (other.currentTarget) {
+                        // Opportunistic: attack weakened enemies in attack
                         if (['pirate', 'orc', 'military'].includes(npc.faction) && other.strength < npc.strength * 0.6) {
                             canTarget = true;
                         } else {
@@ -117,8 +117,8 @@ export class AIController {
                             sizeScore = (npc.faction === 'military' || npc.faction === 'raider') ? 0.1 : 0.01;
                         }
 
-                        // Combat bonus: big plus if target is already in battle
-                        const combatBonus = other.state === 'combat' ? 2.0 : 0;
+                        // Combat bonus: big plus if target is already in attack
+                        const combatBonus = other.currentTarget ? 2.0 : 0;
 
                         // Movement score: approaching/stationary is plus, fleeing is minus
                         let movementScore = 0;
@@ -240,7 +240,7 @@ export class AIController {
         }
         if (f1 === 'civilian') {
             // Hostile to anyone who is attacking them or their allies
-            if (b.activeBattle && b.currentTarget) {
+            if (b.currentTarget) {
                 return this.isAlly(a, b.currentTarget);
             }
             return false;
@@ -253,7 +253,7 @@ export class AIController {
         if (f1 === 'military') {
             if (f2 === 'pirate' || f2 === 'orc') return true;
             // Hostile to anyone attacking allies
-            if (b.activeBattle && b.currentTarget) {
+            if (b.currentTarget) {
                 return this.isAlly(a, b.currentTarget);
             }
             return false;
