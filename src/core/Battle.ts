@@ -2,60 +2,76 @@ import { Fleet } from '../entities/Fleet';
 import { Vector2 } from '../utils/Vector2';
 
 export class Battle {
-    public attacker: Fleet;
-    public defender: Fleet;
+    public fleet1: Fleet;
+    public fleet2: Fleet;
     public finished: boolean = false;
 
-    constructor(attacker: Fleet, defender: Fleet) {
-        this.attacker = attacker;
-        this.defender = defender;
+    constructor(fleet1: Fleet, fleet2: Fleet) {
+        this.fleet1 = fleet1;
+        this.fleet2 = fleet2;
         // Set states to combat
-        attacker.state = 'combat';
-        defender.state = 'combat';
-        attacker.activeBattle = this;
-        defender.activeBattle = this;
+        fleet1.state = 'combat';
+        fleet2.state = 'combat';
+        fleet1.activeBattle = this;
+        fleet2.activeBattle = this;
     }
 
     update(dt: number) {
-        // Attacker attacks Defender (one-sided)
-        const damage = this.attacker.strength * 0.01 * 10 * dt;
-        this.defender.accumulatedDamage += damage;
+        // Fleet1 attacks Fleet2
+        const damage1 = this.fleet1.strength * 0.01 * 10 * dt;
+        this.fleet2.accumulatedDamage += damage1;
 
         // Apply integer damage
-        const integerDamage = Math.floor(this.defender.accumulatedDamage);
-        if (integerDamage > 0) {
-            this.defender.strength = Math.max(0, this.defender.strength - integerDamage);
-            this.defender.accumulatedDamage -= integerDamage;
+        const integerDamage1 = Math.floor(this.fleet2.accumulatedDamage);
+        if (integerDamage1 > 0) {
+            this.fleet2.strength = Math.max(0, this.fleet2.strength - integerDamage1);
+            this.fleet2.accumulatedDamage -= integerDamage1;
 
             // Player gets money per integer damage dealt
-            if (this.attacker.isPlayer) {
-                this.attacker.money = Math.floor(this.attacker.money + integerDamage * 100);
+            if (this.fleet1.isPlayer) {
+                this.fleet1.money = Math.floor(this.fleet1.money + integerDamage1*100);
             }
         }
 
-        // Check if battle finished (defender dead or attacker dead)
-        if (this.defender.strength <= 0 || this.attacker.strength <= 0) {
+        // Fleet2 attacks Fleet1 (automatic response)
+        const damage2 = this.fleet2.strength * 0.01 * 10 * dt;
+        this.fleet1.accumulatedDamage += damage2;
+
+        // Apply integer damage
+        const integerDamage2 = Math.floor(this.fleet1.accumulatedDamage);
+        if (integerDamage2 > 0) {
+            this.fleet1.strength = Math.max(0, this.fleet1.strength - integerDamage2);
+            this.fleet1.accumulatedDamage -= integerDamage2;
+
+            // Player gets money per integer damage dealt
+            if (this.fleet2.isPlayer) {
+                this.fleet2.money = Math.floor(this.fleet2.money + integerDamage2*100);
+            }
+        }
+
+        // Check if battle finished
+        if (this.fleet1.strength <= 0 || this.fleet2.strength <= 0) {
             this.finished = true;
             // Reset states
-            if (this.attacker.strength > 0) {
-                this.attacker.state = 'normal';
-                this.attacker.activeBattle = null;
+            if (this.fleet1.strength > 0) {
+                this.fleet1.state = 'normal';
+                this.fleet1.activeBattle = null;
             }
-            if (this.defender.strength > 0) {
-                this.defender.state = 'normal';
-                this.defender.activeBattle = null;
+            if (this.fleet2.strength > 0) {
+                this.fleet2.state = 'normal';
+                this.fleet2.activeBattle = null;
             }
         }
     }
 
     get position(): Vector2 {
-        const x = (this.attacker.position.x + this.defender.position.x) / 2;
-        const y = (this.attacker.position.y + this.defender.position.y) / 2;
+        const x = (this.fleet1.position.x + this.fleet2.position.x) / 2;
+        const y = (this.fleet1.position.y + this.fleet2.position.y) / 2;
         return new Vector2(x, y);
     }
 
     get radius(): number {
-        const dist = Vector2.distance(this.attacker.position, this.defender.position);
+        const dist = Vector2.distance(this.fleet1.position, this.fleet2.position);
         return dist / 2 + 100; // Half distance + padding
     }
 }

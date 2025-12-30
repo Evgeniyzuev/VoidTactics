@@ -99,7 +99,7 @@ export class Game {
     }
 
     private setTimeScale(scale: number) {
-        this.timeScale = scale;
+        this.timeScale = scale*0.5;
     }
 
     private setCameraFollow(follow: boolean) {
@@ -560,7 +560,7 @@ export class Game {
             }
         }
 
-        // 2. Interaction check for new combats
+        // 2. Interaction check for new combats or joining
         for (let i = 0; i < allFleets.length; i++) {
             const f1 = allFleets[i];
             if (toRemove.includes(f1)) continue;
@@ -569,6 +569,8 @@ export class Game {
                 const f2 = allFleets[j];
                 if (toRemove.includes(f2)) continue;
 
+                if (f1.activeBattle && f1.activeBattle === f2.activeBattle) continue;
+
                 const r1 = 8 * f1.sizeMultiplier;
                 const r2 = 8 * f2.sizeMultiplier;
 
@@ -576,37 +578,18 @@ export class Game {
 
                 const dist = Vector2.distance(f1.position, f2.position);
 
-                if (this.aiController.isHostile(f1, f2)) {
+                // Only start NEW 1v1 combat if both are not in battle
+                if (this.aiController.isHostile(f1, f2) || this.aiController.isHostile(f2, f1)) {
                     let triggerDist = baseTriggerDist;
                     if (f1.followTarget === f2) triggerDist = 4 * r1;
+                    else if (f2.followTarget === f1) triggerDist = 4 * r2;
 
-                    if (dist < triggerDist) {
-                        const wasNotAttacking = !f2.activeBattle; // Check before battle
+                    if (dist < triggerDist && !f1.activeBattle && !f2.activeBattle) {
                         const b = new Battle(f1, f2);
                         this.battles.push(b);
-                        // Auto-response if defender was not attacking
-                        if (wasNotAttacking) {
-                            const responseBattle = new Battle(f2, f1);
-                            this.battles.push(responseBattle);
-                        }
                     }
                 }
 
-                if (this.aiController.isHostile(f2, f1)) {
-                    let triggerDist = baseTriggerDist;
-                    if (f2.followTarget === f1) triggerDist = 4 * r2;
-
-                    if (dist < triggerDist) {
-                        const wasNotAttacking = !f1.activeBattle; // Check before battle
-                        const b = new Battle(f2, f1);
-                        this.battles.push(b);
-                        // Auto-response if defender was not attacking
-                        if (wasNotAttacking) {
-                            const responseBattle = new Battle(f1, f2);
-                            this.battles.push(responseBattle);
-                        }
-                    }
-                }
             }
         }
 
@@ -630,8 +613,8 @@ export class Game {
 
     private resolveBattleGroup(battle: Battle, toRemove: Fleet[]) {
         const winners: Fleet[] = [];
-        if (battle.attacker.strength > 0) winners.push(battle.attacker);
-        if (battle.defender.strength > 0) winners.push(battle.defender);
+        if (battle.fleet1.strength > 0) winners.push(battle.fleet1);
+        if (battle.fleet2.strength > 0) winners.push(battle.fleet2);
 
         // Reset winner states
         for (const winner of winners) {
@@ -642,8 +625,8 @@ export class Game {
 
         // Remove dead fleets
         const dead: Fleet[] = [];
-        if (battle.attacker.strength <= 0) dead.push(battle.attacker);
-        if (battle.defender.strength <= 0) dead.push(battle.defender);
+        if (battle.fleet1.strength <= 0) dead.push(battle.fleet1);
+        if (battle.fleet2.strength <= 0) dead.push(battle.fleet2);
         for (const d of dead) {
             toRemove.push(d);
         }
@@ -874,14 +857,12 @@ export class Game {
             },
             () => {
                 console.log('Initiating battle...');
-                // Start battle, defender may respond if not attacking
-                const wasNotAttacking = !fleet.activeBattle; // Check before battle
-                const b = new Battle(this.playerFleet, fleet);
-                this.battles.push(b);
-                // Auto-response if defender was not attacking
-                if (wasNotAttacking) {
-                    const responseBattle = new Battle(fleet, this.playerFleet);
-                    this.battles.push(responseBattle);
+                // Use the new Battle system
+                if (!this.playerFleet.activeBattle && !fleet.activeBattle) {
+                    const b = new Battle(this.playerFleet, fleet);
+                    this.battles.push(b);
+                } else {
+                    console.log('Cannot initiate battle - one fleet is already in combat');
                 }
 
                 if (this.isPaused) this.togglePause();
@@ -973,22 +954,6 @@ export class Game {
             ctx.lineWidth = 2;
             ctx.stroke();
             ctx.restore();
-        }
-
-        // Draw attack lines (blinking red from attacker to defender)
-        for (const battle of this.battles) {
-            const attackerPos = this.camera.worldToScreen(battle.attacker.position);
-            const defenderPos = this.camera.worldToScreen(battle.defender.position);
-
-            // Flickering alpha for attack line
-            const flicker = 0.5 + 0.5 * Math.sin(Date.now() * 0.01); // Simple flicker
-            ctx.strokeStyle = `rgba(255, 0, 0, ${flicker})`;
-            ctx.lineWidth = 3;
-
-            ctx.beginPath();
-            ctx.moveTo(attackerPos.x, attackerPos.y);
-            ctx.lineTo(defenderPos.x, defenderPos.y);
-            ctx.stroke();
         }
 
         // Draw off-screen indicators
