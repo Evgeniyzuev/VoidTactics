@@ -1,7 +1,7 @@
 export function formatNumber(num: number): string {
     const absNum = Math.abs(num);
     if (absNum < 1000) {
-        return num.toString();
+        return num.toString().substring(0, 5);
     }
 
     const suffixes = ['k', 'm', 'b', 't'];
@@ -25,5 +25,6 @@ export function formatNumber(num: number): string {
     }
 
     const suffix = suffixes[thousands - 1] || '';
-    return (num < 0 ? '-' : '') + formatted + suffix;
+    const result = (num < 0 ? '-' : '') + formatted + suffix;
+    return result.substring(0, 5);
 }

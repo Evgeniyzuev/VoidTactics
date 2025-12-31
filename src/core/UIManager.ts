@@ -184,22 +184,22 @@ export class UIManager {
         // Strength display
         const strengthDisplay = document.createElement('div');
         strengthDisplay.id = 'strength-display';
+        strengthDisplay.className = 'resource-display';
         strengthDisplay.style.color = '#FFFFFF';
         strengthDisplay.style.fontSize = '16px';
         strengthDisplay.style.fontWeight = 'bold';
         strengthDisplay.style.fontFamily = 'monospace';
-        strengthDisplay.style.marginRight = '10px';
         strengthDisplay.textContent = '💪: 10';
         panel.appendChild(strengthDisplay);
 
         // Money display
         const moneyDisplay = document.createElement('div');
         moneyDisplay.id = 'money-display';
+        moneyDisplay.className = 'resource-display';
         moneyDisplay.style.color = '#FFD700';
         moneyDisplay.style.fontSize = '16px';
         moneyDisplay.style.fontWeight = 'bold';
         moneyDisplay.style.fontFamily = 'monospace';
-        moneyDisplay.style.marginRight = '10px';
         moneyDisplay.textContent = '$: 0';
         panel.appendChild(moneyDisplay);
 

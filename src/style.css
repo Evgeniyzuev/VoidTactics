@@ -130,3 +130,14 @@ canvas {
     gap: 8px;
   }
 }
+
+.resource-display {
+  width: 70px;
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  padding: 4px 6px;
+  text-align: center;
+  display: inline-block;
+  margin-right: 10px;
+}
