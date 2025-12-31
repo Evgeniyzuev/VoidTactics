@@ -44,7 +44,7 @@ export class Game {
 
     // Time Control
     private isPaused: boolean = false;
-    private timeScale: number = 1;
+    private timeScale: number = 1* 0.7;
     private wasMovingLastFrame: boolean = false;
     private infoTooltip: HTMLDivElement | null = null;
     private cameraFollow: boolean = true;
@@ -112,7 +112,9 @@ export class Game {
     }
 
     private setTimeScale(scale: number) {
-        this.timeScale = scale;
+        // Apply scaling factor to make speed 1.0 work like the current 0.7 speed
+        // This shifts the entire speed curve to be slower at the base
+        this.timeScale = scale * 0.7;
     }
 
     private setCameraFollow(follow: boolean) {
