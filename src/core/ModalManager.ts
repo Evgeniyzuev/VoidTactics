@@ -1,4 +1,5 @@
 import { formatNumber } from '../utils/NumberFormatter';
+import { SaveSystem } from './SaveSystem';
 
 export class ModalManager {
     private modalContainer: HTMLDivElement | null = null;
@@ -187,7 +188,7 @@ export class ModalManager {
     /**
      * Show main menu
      */
-    showMainMenu(callbacks: { onNewGame: () => void, onSaveFleet: () => void, onLoadFleet: () => void, onResume: () => void }, isDead: boolean = false) {
+    showMainMenu(callbacks: { onNewGame: () => void, onSaveFleet: () => void, onLoadFleet: () => void, onLoadAuto: () => void, onResume: () => void }, isDead: boolean = false) {
         this.closeModal();
 
         this.modalContainer = document.createElement('div');
@@ -222,6 +223,10 @@ export class ModalManager {
         title.style.letterSpacing = '5px';
         title.style.fontSize = '24px';
         title.style.fontFamily = 'monospace';
+
+        // Get saved fleet sizes
+        const savedSize = SaveSystem.loadFleetSize();
+        const autosaveSize = SaveSystem.loadAutosaveFleetSize();
 
         const createMenuButton = (text: string, subtext: string, color: string, callback: () => void, disabled: boolean = false) => {
             const btn = document.createElement('button');
@@ -277,7 +282,14 @@ export class ModalManager {
         menu.appendChild(createMenuButton('CONTINUE', 'Back to battle', '#00C8FF', callbacks.onResume, isDead));
         menu.appendChild(createMenuButton('NEW GAME', 'Reset all progress', '#FF4444', callbacks.onNewGame));
         menu.appendChild(createMenuButton('SAVE FLEET', 'Store current fleet size', '#00FF88', callbacks.onSaveFleet, isDead));
-        menu.appendChild(createMenuButton('LOAD FLEET', 'Restore stored fleet size', '#FFCC00', callbacks.onLoadFleet));
+        
+        // Load Fleet button with saved size
+        const loadFleetText = savedSize ? `Load Fleet (Size: ${formatNumber(savedSize)})` : 'Load Fleet';
+        menu.appendChild(createMenuButton('LOAD FLEET', loadFleetText, '#FFCC00', callbacks.onLoadFleet));
+        
+        // Load Auto button with autosave size
+        const loadAutoText = autosaveSize ? `Load Auto (Size: ${formatNumber(autosaveSize)})` : 'Load Auto';
+        menu.appendChild(createMenuButton('LOAD AUTO', loadAutoText, '#00FFFF', callbacks.onLoadAuto));
 
         this.modalContainer.appendChild(menu);
         document.body.appendChild(this.modalContainer);

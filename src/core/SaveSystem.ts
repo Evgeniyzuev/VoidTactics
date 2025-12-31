@@ -29,6 +29,7 @@ export class SaveSystem {
 
     static clear() {
         localStorage.removeItem('vt_fleet_size');
+        localStorage.removeItem('vt_autosave_fleet_size');
     }
 
     static saveFleetSize(size: number) {
@@ -38,5 +39,18 @@ export class SaveSystem {
     static loadFleetSize(): number | null {
         const val = localStorage.getItem('vt_fleet_size');
         return val ? parseInt(val, 10) : null;
+    }
+
+    static saveAutosaveFleetSize(size: number) {
+        localStorage.setItem('vt_autosave_fleet_size', size.toString());
+    }
+
+    static loadAutosaveFleetSize(): number | null {
+        const val = localStorage.getItem('vt_autosave_fleet_size');
+        return val ? parseInt(val, 10) : null;
+    }
+
+    static clearAutosave() {
+        localStorage.removeItem('vt_autosave_fleet_size');
     }
 }

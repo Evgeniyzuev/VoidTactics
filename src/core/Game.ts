@@ -145,6 +145,11 @@ export class Game {
                 // Load saved size and start new world with it
                 const savedSize = SaveSystem.loadFleetSize();
                 this.initWorld(savedSize || 10);
+            },
+            onLoadAuto: () => {
+                // Load autosave size and start new world with it
+                const autosaveSize = SaveSystem.loadAutosaveFleetSize();
+                this.initWorld(autosaveSize || 10);
             }
         }, this.isGameOver);
     }
@@ -879,6 +884,11 @@ export class Game {
                     this.playerFleet.money -= upgradeAmount * 100;
                     this.ui.updateMoney(this.playerFleet.money);
                     console.log('Fleet upgraded by', upgradeAmount, 'to strength:', this.playerFleet.strength);
+                    
+                    // Trigger autosave after upgrade
+                    SaveSystem.saveAutosaveFleetSize(this.playerFleet.strength);
+                    console.log('Autosave created with fleet strength:', this.playerFleet.strength);
+                    
                     // Update dialog with new values
                     this.showTerraUpgradeDialog();
                 }
