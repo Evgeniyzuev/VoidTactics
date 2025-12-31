@@ -45,7 +45,6 @@ export class Game {
     // Time Control
     private isPaused: boolean = false;
     private timeScale: number = 1* 0.7;
-    private wasMovingLastFrame: boolean = false;
     private infoTooltip: HTMLDivElement | null = null;
     private cameraFollow: boolean = true;
     private isDragging: boolean = false;
@@ -480,10 +479,7 @@ export class Game {
             }
         }
 
-        const isMoving = this.playerFleet.velocity.mag() > 1;
-        const inCombat = this.playerFleet.state === 'combat';
 
-        this.wasMovingLastFrame = isMoving;
     }
 
 
