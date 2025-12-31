@@ -105,7 +105,7 @@ export class AIController {
                     // Target: I want to kill him
                     let canTarget = false;
                     if (npc.faction === 'military') {
-                        canTarget = other.strength < npc.strength * 1.2;
+                        canTarget = other.strength < npc.strength * 1,5;
                     } else if (npc.faction === 'civilian') {
                         canTarget = other.strength < npc.strength * 0.8;
                         if (nearbyCivilians > 2) {

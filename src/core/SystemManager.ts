@@ -33,7 +33,7 @@ export class SystemManager {
             id: 1,
             name: 'Sol System',
             spawnRules: {
-                targetFleetCount: 50,
+                targetFleetCount: 60,
                 factionWeights: [
                     { type: 'civilian', weight: 0.45 },
                     { type: 'pirate', weight: 0.2 },
