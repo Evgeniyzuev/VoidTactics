@@ -228,7 +228,7 @@ export class SystemManager {
         this.spawnTimers.set(systemId, currentTimer + dt);
     }
 
-    public countFleetsByFaction(systemId: number, fleets: Fleet[]): Record<Faction, number> {
+    public countFleetsByFaction(fleets: Fleet[]): Record<Faction, number> {
         const counts: Record<Faction, number> = {
             'player': 0,
             'civilian': 0,
@@ -245,7 +245,7 @@ export class SystemManager {
         return counts;
     }
 
-    public canFactionSpawn(systemId: number, faction: Faction, fleets: Fleet[]): boolean {
+    public canFactionSpawn(faction: Faction, fleets: Fleet[]): boolean {
         // Only apply percentage restrictions to civilian and military
         if (faction !== 'civilian' && faction !== 'military') {
             return true;
@@ -256,7 +256,7 @@ export class SystemManager {
             return true; // Always allow spawning if no fleets exist
         }
 
-        const counts = this.countFleetsByFaction(systemId, fleets);
+        const counts = this.countFleetsByFaction(fleets);
         
         if (faction === 'civilian') {
             const civilianPercentage = (counts.civilian / totalFleets) * 100;
@@ -300,7 +300,7 @@ export class SystemManager {
                 }
 
                 // Check if this faction can spawn within percentage limits
-                if (this.canFactionSpawn(systemId, selectedFaction, fleets)) {
+                if (this.canFactionSpawn(selectedFaction, fleets)) {
                     break;
                 }
 
@@ -313,7 +313,7 @@ export class SystemManager {
         }
 
         // If the selected faction still can't spawn (e.g., forced faction), skip
-        if (!this.canFactionSpawn(systemId, selectedFaction, fleets)) {
+        if (!this.canFactionSpawn(selectedFaction, fleets)) {
             console.log(`System ${systemId}: Faction ${selectedFaction} cannot spawn due to percentage limits`);
             return [];
         }
