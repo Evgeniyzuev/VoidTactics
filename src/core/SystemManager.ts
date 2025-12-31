@@ -330,7 +330,16 @@ export class SystemManager {
 
         // Generate random position
         const angle = Math.random() * Math.PI * 2;
-        const distance = 1000 + Math.random() * 3000;
+        let distance: number;
+        if (systemId === 1) {
+            if (selectedFaction === 'civilian' || selectedFaction === 'military') {
+                distance = 500 + Math.random() * 3500; // Inner region: 500-4000
+            } else {
+                distance = 4000 + Math.random() * 4000; // Outer region: 4000-8000
+            }
+        } else {
+            distance = 1000 + Math.random() * 3000;
+        }
         const startX = Math.cos(angle) * distance;
         const startY = Math.sin(angle) * distance;
 
