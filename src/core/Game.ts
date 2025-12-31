@@ -483,9 +483,6 @@ export class Game {
         const isMoving = this.playerFleet.velocity.mag() > 1;
         const inCombat = this.playerFleet.state === 'combat';
 
-        if (this.wasMovingLastFrame && !isMoving && !this.playerFleet.target && !inCombat) {
-            if (!this.isPaused) this.togglePause();
-        }
         this.wasMovingLastFrame = isMoving;
     }
 
