@@ -193,34 +193,17 @@ export class AIController {
 
 
             // Decide action
-            if (closestThreat && npc.faction !== 'raider') {
-                // Flee! (Raiders never flee)
+            if (closestThreat && npc.faction !== 'raider' && npc.faction !== 'military') {
+                // Flee! (Raiders and military never flee)
                 const runDir = npc.position.sub(closestThreat.position).normalize();
                 npc.setTarget(npc.position.add(runDir.scale(800)));
                 npc.state = 'flee';
                 npc.decisionTimer = 1.0 + Math.random(); // Reaction delay
             } else if (bestTarget) {
-                // Military coordination: check for support before attacking stronger enemies
-                let shouldAttack = true;
-                if (npc.faction === 'military' && bestTarget.strength > npc.strength) {
-                    const supportCount = allFleets.filter(f =>
-                        f !== npc &&
-                        (f.faction === 'military' || f.faction === 'civilian') &&
-                        Vector2.distance(npc.position, f.position) < 800
-                    ).length;
-                    shouldAttack = supportCount * 0.5 + npc.strength > bestTarget.strength;
-                }
-
-                if (shouldAttack) {
-                    // Attack!
-                    npc.setFollowTarget(bestTarget, 'contact');
-                    npc.state = 'normal';
-                    npc.decisionTimer = 0.5 + Math.random();
-                } else {
-                    // Not enough support, patrol instead
-                    npc.state = 'normal';
-                    npc.decisionTimer = 2.0;
-                }
+                // Attack!
+                npc.setFollowTarget(bestTarget, 'contact');
+                npc.state = 'normal';
+                npc.decisionTimer = 0.5 + Math.random();
             } else if (!npc.target && !npc.followTarget || npc.velocity.mag() < 5) {
                 // Idle roaming: Head to POIs more often
                 npc.state = 'normal';
