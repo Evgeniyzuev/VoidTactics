@@ -37,6 +37,7 @@ export class Fleet extends Entity {
     };
     public isCloaked: boolean = false;
     public isBubbled: boolean = false; // Set by external bubbles
+    public bubbleDistance: number = 0; // Distance to bubble center
     public stunTimer: number = 0;
     public money: number = 0; // Only for player
 

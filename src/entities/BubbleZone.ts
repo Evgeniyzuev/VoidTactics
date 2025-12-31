@@ -35,6 +35,7 @@ export class BubbleZone extends Entity {
     applyEffect(fleet: Fleet) {
         if (this.isDeployed && Vector2.distance(this.position, fleet.position) < this.radius) {
             fleet.isBubbled = true;
+            fleet.bubbleDistance = Vector2.distance(this.position, fleet.position);
         }
     }
 
