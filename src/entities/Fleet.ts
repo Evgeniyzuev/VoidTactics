@@ -11,7 +11,7 @@ export class Fleet extends Entity {
     public followMode: 'approach' | 'contact' | null = null;
     public manualSteerTarget: Vector2 | null = null; // Manual override for interception
 
-    public maxSpeed: number = 300;
+    public maxSpeed: number = 500;
     private stopThreshold: number = 5;
 
     private rotation: number = 0;
@@ -121,11 +121,7 @@ export class Fleet extends Entity {
             return;
         }
 
-        // Smaller fleets are faster: 300 * (size^-0.2)
-        // size 0.8 -> 313
-        // size 1.0 -> 300
-        // size 1.4 -> 280
-        let currentMaxSpeed = this.maxSpeed * Math.pow(this.sizeMultiplier, -0.2);
+        let currentMaxSpeed = this.maxSpeed;
 
         // Ability modifiers
         if (this.abilities.afterburner.active) {
@@ -147,7 +143,7 @@ export class Fleet extends Entity {
 
         // Combat speed limit: if under attack, speed cannot exceed 90% of base max
         if (this.currentTarget) {
-            const baseMaxSpeed = this.maxSpeed * Math.pow(this.sizeMultiplier, -0.2);
+            const baseMaxSpeed = this.maxSpeed;
             const combatSpeedCap = baseMaxSpeed * 0.9;
             currentMaxSpeed = Math.min(currentMaxSpeed, combatSpeedCap);
             // Instantly slow down velocity if it's faster than combat speed cap

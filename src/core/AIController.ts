@@ -24,8 +24,7 @@ export class AIController {
                 // If it's a chase: Check if target is much faster or too far
                 const isChasing = this.isHostile(npc, npc.followTarget as Fleet);
                 if (isChasing) {
-                    const targetSpeed = (npc.followTarget as Fleet).velocity.mag();
-                    const myMaxSpeed = npc.maxSpeed * Math.pow(npc.sizeMultiplier, -0.2);
+
 
                     // Check if target is escaping the system
                     const targetPosMag = npc.followTarget.position.mag();
@@ -41,7 +40,7 @@ export class AIController {
                         }
                     }
 
-                    if (dist > giveUpRadius || (targetSpeed > myMaxSpeed * 1.1 && dist > 800)) {
+                    if (dist > giveUpRadius || ( dist > 800)) {
                         npc.stopFollowing();
                         // Head to random planet
                         if (celestialBodies.length > 0) {
