@@ -62,7 +62,7 @@ export class SystemManager {
                 ],
                 strengthMin: 50,
                 strengthMax: 300,
-                spawnInterval: 60 // 1 minute = 60 seconds
+                spawnInterval: 10 // 10 seconds
             },
             entities: this.createAlphaCentauriEntities()
         });
