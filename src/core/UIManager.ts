@@ -134,7 +134,7 @@ export class UIManager {
         plusBtn.style.padding = '4px 8px';
         plusBtn.style.minWidth = '30px';
         plusBtn.onclick = () => {
-            this.currentSpeed = Math.min(10, Math.round((this.currentSpeed + 0.1) * 10) / 10);
+            this.currentSpeed = Math.min(4.0, Math.round((this.currentSpeed + 0.1) * 10) / 10);
             this.onSpeedChange(this.currentSpeed);
             this.updateSpeedDisplay();
         };
@@ -155,6 +155,9 @@ export class UIManager {
         hud.appendChild(this.cameraFollowBtn);
         hud.appendChild(menuBtn);
         this.container.appendChild(hud);
+
+        // Initialize speed scaling (fix for page reload issue)
+        this.onSpeedChange(this.currentSpeed);
 
         // Ability Panel (Bottom Center)
         this.renderAbilityPanel();
