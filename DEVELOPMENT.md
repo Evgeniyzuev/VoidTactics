@@ -1,29 +1,29 @@
-# Документация разработки VoidTactics
+# VoidTactics Development Documentation
 
-## 1. Стек технологий
-*   **Язык**: TypeScript (Строгая типизация для надежности).
-*   **Сборщик**: Vite (Быстрый старт, HMR).
-*   **Рендеринг**: HTML5 Canvas API (Максимальная производительность для 2D, нативный контроль).
-*   **Платформа**: Веб-браузер (PC/Mobile). PWA (в планах).
+## 1. Technology Stack
+*   **Language**: TypeScript (Strict typing for reliability).
+*   **Bundler**: Vite (Fast startup, HMR).
+*   **Rendering**: HTML5 Canvas API (Maximum performance for 2D, native control).
+*   **Platform**: Web browser (PC/Mobile). PWA (planned).
 
-## 2. Архитектура проекта
-Проект строится на модульной Объектно-Ориентированной Архитектуре (OOP) с элементами ECS (в будущем для оптимизации).
+## 2. Project Architecture
+The project is built on a modular Object-Oriented Architecture (OOP) with elements of ECS (for future optimization).
 
-### Основные модули
+### Main Modules
 *   **Core**:
-    *   `Game`: Главный контроллер. Управляет игровым циклом (`loop`), обновлением (`update`) и отрисовкой (`draw`). Владеет списком сущностей.
-    *   `InputManager`: Абстрагирует ввод. Унифицирует Mouse и Touch события в единый интерфейс (позиция курсора, клики, жесты).
+    *   `Game`: Main controller. Manages the game loop (`loop`), updates (`update`) and rendering (`draw`). Owns the list of entities.
+    *   `InputManager`: Abstracts input. Unifies Mouse and Touch events into a single interface (cursor position, clicks, gestures).
 *   **Renderer**:
-    *   `Renderer`: Обертка над `CanvasRenderingContext2D`. Отвечает за ресайз окна, DPI (Retina), очистку кадра.
-    *   `Camera`: Управляет "окном" в игровой мир. Преобразует координаты World <-> Screen. Поддерживает слежение за целью и зум.
-*   **Entities (Сущности)**:
-    *   `Entity` (Abstract): Базовый класс для всех объектов. Имеет позицию (`Vector2`), методы `update(dt)` и `draw(ctx, camera)`.
-    *   `Fleet`: Игрок или AI. Реализует физику перемещения (инерция, ускорение).
-    *   `CelestialBody`: Планеты, Звезды, Астероиды. Реализует освещение (тени относительно солнца).
+    *   `Renderer`: Wrapper over `CanvasRenderingContext2D`. Handles window resize, DPI (Retina), frame clearing.
+    *   `Camera`: Manages the "window" into the game world. Transforms coordinates World <-> Screen. Supports target tracking and zoom.
+*   **Entities**:
+    *   `Entity` (Abstract): Base class for all objects. Has position (`Vector2`), methods `update(dt)` and `draw(ctx, camera)`.
+    *   `Fleet`: Player or AI. Implements movement physics (inertia, acceleration).
+    *   `CelestialBody`: Planets, Stars, Asteroids. Implements lighting (shadows relative to the sun).
 *   **Utils**:
-    *   `Vector2`: Математика векторов (сложение, вычитание, нормализация) для физики.
+    *   `Vector2`: Vector math (addition, subtraction, normalization) for physics.
 
-### Схема взаимодействия (Текущая)
+### Interaction Diagram (Current)
 ```mermaid
 graph TD
     Main --> Game
@@ -37,51 +37,51 @@ graph TD
     CelestialBody -- uses --> Vector2
 ```
 
-### Принципы (Refactoring Goals)
-*   **Избегание Хардкода**: Сейчас инициализация мира (`initWorld`) находится внутри `Game.ts`. В планах вынести это в `SceneManager` или `LevelLoader`.
-*   **Конфигурация**: Параметры кораблей и планет должны загружаться из JSON/Config файлов, а не прописываться в коде.
+### Principles (Refactoring Goals)
+*   **Avoid Hardcoding**: Currently world initialization (`initWorld`) is inside `Game.ts`. Plans to extract this to `SceneManager` or `LevelLoader`.
+*   **Configuration**: Ship and planet parameters should be loaded from JSON/Config files, not hardcoded in code.
 
-## 3. Текущий статус (Реализовано)
-*   [x] **Игровой движок**: Loop, Time delta, Canvas Setup.
-*   [x] **Камера**: Плавное слежение (Lerp), зум (колесо мыши/пинч).
-*   [x] **Управление**: Touch/Mouse клик для движения, двойной клик в режиме осмотра.
-*   [x] **Физика флота**: Ускорение, инерция, дрифт (Drift).
-*   [x] **Визуал Маркера**: Animated Bubble Target.
-*   [x] **Космос**:
-*   [x] Звезда (Sol) с шейдерным свечением.
-*   [x] Планеты с динамическими тенями (Day/Night cycle) зависящими от положения Солнца.
-*   [x] Фон (Space Background).
-*   [x] Астероиды
-*   [x] **Selection System** (проверка клика по объектам).
-*   [x] **Выделение планеты/корабля** - показ информации с кнопками действий.
-*   [x] **Система взаимодействия с флотами**:
-    *   Режим "Приближение" - следование за выбранным флотом на расстоянии.
-    *   Визуальная индикация (пунктирная линия) при следовании.
-    *   Диалог контакта при сближении (Связь/Атака/Отмена).
-    *   Базовый экран боя (placeholder).
+## 3. Current Status (Implemented)
+*   [x] **Game Engine**: Loop, Time delta, Canvas Setup.
+*   [x] **Camera**: Smooth tracking (Lerp), zoom (mouse wheel/pinch).
+*   [x] **Controls**: Touch/Mouse click for movement, double-click in inspection mode.
+*   [x] **Fleet Physics**: Acceleration, inertia, drift (Drift).
+*   [x] **Marker Visual**: Animated Bubble Target.
+*   [x] **Space**:
+*   [x] Star (Sol) with shader glow.
+*   [x] Planets with dynamic shadows (Day/Night cycle) depending on Sun position.
+*   [x] Background (Space Background).
+*   [x] Asteroids
+*   [x] **Selection System** (click detection on objects).
+*   [x] **Planet/Ship Selection** - show information with action buttons.
+*   [x] **Fleet Interaction System**:
+    *   "Approach" mode - following selected fleet at distance.
+    *   Visual indication (dashed line) when following.
+    *   Contact dialog when approaching (Communicate/Attack/Cancel).
+    *   Basic battle screen (placeholder).
 
-## 4. План разработки (Roadmap)
+## 4. Development Plan (Roadmap)
 
-### Этап 2: Интерактивность и UI (В работе)
+### Phase 2: Interactivity and UI (In Progress)
 
-2.  **HUD (Интерфейс)**:
-    *   Кнопка "Dock" (Пристыковаться) при сближении с планетой.
-3.  **Орбитальная механика**:
-    *   Заставить планеты двигаться по орбитам (реалистично или упрощенно).
+2.  **HUD (Interface)**:
+    *   "Dock" button when approaching a planet.
+3.  **Orbital Mechanics**:
+    *   Make planets move in orbits (realistic or simplified).
 
-### Этап 3: Геймплей и Экономика
-1.  **Инвентарь и Ресурсы**:
-    *   Fuel (Топливо), Supplies (Припасы).
-    *   Торговля на станциях (UI Модальные окна).
-2.  **Генерация Систем**:
-    *   Процедурная генерация звездных систем (JSON data).
-    *   Переход межу системами (Hyperjump).
-3.  **Система коммуникаций**:
-    *   Диалоги с NPC флотами.
-    *   Торговля и квесты через коммуникации.
+### Phase 3: Gameplay and Economy
+1.  **Inventory and Resources**:
+    *   Fuel, Supplies.
+    *   Trading at stations (UI Modal windows).
+2.  **System Generation**:
+    *   Procedural generation of star systems (JSON data).
+    *   Transitions between systems (Hyperjump).
+3.  **Communications System**:
+    *   Dialogs with NPC fleets.
+    *   Trading and quests through communications.
 
-### Этап 4: Боевая система
-1.  **Оружие**: Слоты на корабле, снаряды (Projectiles).
-2.  **AI**: Поведение врагов (Orbit, Chase, Attack).
-3.  **Damage Model**: Щиты, Броня, Структура (как в Starsector).
-4.  **Детальный экран боя**: Управление оружием, щитами, маневрами.
+### Phase 4: Combat System
+1.  **Weapons**: Ship slots, projectiles (Projectiles).
+2.  **AI**: Enemy behavior (Orbit, Chase, Attack).
+3.  **Damage Model**: Shields, Armor, Structure (like in Starsector).
+4.  **Detailed Battle Screen**: Weapon control, shields, maneuvers.

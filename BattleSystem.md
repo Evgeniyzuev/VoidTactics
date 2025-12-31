@@ -1,46 +1,46 @@
-# Документ: Поэтапная разработка новой системы боя
+# Document: Phased Development of New Combat System
 
-## Введение
-Текущая система боя является раундовой и симметричной (две стороны), что ограничивает динамику. Новая система вводит:
-- **Реальное время**: Урон и деньги рассчитываются непрерывно, с высокой точностью (используя fixed timestep для детерминизма).
-- **Индивидуальные атаки**: Каждый флот выбирает цель независимо, без разделения на стороны. Атаки визуализируются красными мерцающими линиями.
-- **Баблы**: Атакующий флот создает статичный бабл, замедляющий движение внутри. Атакованный отвечает без бабла. Флот может пытаться покинуть бабл, если бабл атакующего в кд.
-- **Оптимизация**: Использовать пространственные индексы (quadtree) для поиска целей, батчинг урон-расчетов, ограничение количества активных боев.
+## Introduction
+The current combat system is turn-based and symmetrical (two sides), which limits dynamics. The new system introduces:
+- **Real Time**: Damage and money are calculated continuously, with high precision (using fixed timestep for determinism).
+- **Individual Attacks**: Each fleet chooses targets independently, without dividing into sides. Attacks are visualized with red flickering lines.
+- **Bubbles**: Attacking fleet creates a static bubble that slows movement inside. The attacked responds without a bubble. Fleet can try to escape the bubble if attacker's bubble is on cooldown.
+- **Optimization**: Use spatial indexes (quadtree) for target search, damage calculation batching, limit active combat count.
 
-## Этап 1: Переход к индивидуальным атакам без сторон
-1. **Модификация Battle.ts**: Убрать sideA и sideB. Сделать бой индивидуальным: каждый флот в бою атакует свою ближайшую цель, без разделения на стороны.
-2. **Обновление Fleet.ts**: Добавить поле `currentTarget: Fleet | null` для текущей цели атаки. Модифицировать логику выбора цели в update().
-3. **Визуализация линий атаки**: В draw() добавить рисование красных мерцающих линий от атакующего флота к цели. Использовать alpha-анимацию для мерцания.
-4. **Интеграция в AIController.ts**: Адаптировать AI для выбора целей индивидуально, без присоединения к сторонам.
+## Phase 1: Transition to Individual Attacks Without Sides
+1. **Modify Battle.ts**: Remove sideA and sideB. Make combat individual: each fleet in combat attacks its nearest target, without dividing into sides.
+2. **Update Fleet.ts**: Add `currentTarget: Fleet | null` field for current attack target. Modify target selection logic in update().
+3. **Attack Lines Visualization**: In draw() add drawing of red flickering lines from attacking fleet to target. Use alpha animation for flickering.
+4. **Integration in AIController.ts**: Adapt AI for individual target selection, without joining sides.
 
-## Этап 2: Реализация расчета урона в реальном времени
-1. **Модель урона**: Перейти от strength к детализированной: HP, shields, armor. Урон рассчитывается per-frame (например, 60 FPS), но с накоплением для точности (как accumulatedDamage сейчас, но более детально).
-2. **Деньги**: Добавить систему награбления. При уроне атакующий получает деньги пропорционально урону (например, 10% от стоимости корабля цели). Деньги обновляются в реальном времени, без задержек.
-3. **Оптимизация**: Использовать fixed timestep (например, 1/60 сек) для урон-расчетов, чтобы избежать зависимости от FPS. Батчинг: рассчитывать урон для групп флотов вместе, используя SIMD если возможно.
+## Phase 2: Real-Time Damage Calculation Implementation
+1. **Damage Model**: Transition from strength to detailed: HP, shields, armor. Damage is calculated per-frame (e.g. 60 FPS), but with accumulation for precision (like accumulatedDamage currently, but more detailed).
+2. **Money**: Add looting system. On damage, attacker receives money proportional to damage (e.g. 10% of target's ship value). Money updates in real time, without delays.
+3. **Optimization**: Use fixed timestep (e.g. 1/60 sec) for damage calculations to avoid FPS dependency. Batching: calculate damage for fleet groups together, using SIMD if possible.
 
-## Этап 3: Переработка логики атак и целей
-1. **Выбор целей**: Убрать стороны. Каждый флот сканирует ближайших врагов (радиус 1000 ед.) и выбирает ближайшую цель по приоритету (расстояние, фракция, сила).
-2. **Логика атаки**: При начале атаки флот создает CombatZone вокруг цели. Атакованный автоматически отвечает, но без своего бабла. Флот в зоне может перестать атаковать и покинуть зону (если бабл в кд).
-3. **Переключение целей**: После уничтожения цели флот ищет следующую ближайшую автоматически. Добавить таймеры для предотвращения спама переключений.
-4. **AI адаптация**: Модифицировать AIController.ts для новой логики: вместо присоединения к сторонам, индивидуальный выбор целей и реакция на баблы.
+## Phase 3: Combat Logic and Targets Rework
+1. **Target Selection**: Remove sides. Each fleet scans nearby enemies (radius 1000 units) and chooses nearest target by priority (distance, faction, strength).
+2. **Attack Logic**: When attack starts, fleet creates CombatZone around target. Attacked automatically responds, but without its bubble. Fleet in zone can stop attacking and leave zone (if bubble on cooldown).
+3. **Target Switching**: After destroying target, fleet automatically seeks next nearest. Add timers to prevent switching spam.
+4. **AI Adaptation**: Modify AIController.ts for new logic: instead of joining sides, individual target selection and bubble reaction.
 
-## Этап 4: Внедрение баблов и эффектов замедления
-1. **Создание бабла**: При атаке флот создает CombatZone с радиусом (например, 500 ед.), внутри которой скорость всех флотов * 0.1. Бабл статичен, не следует за флотом.
-2. **Эффекты**: В CombatZone.update() применять замедление к флотам внутри. Атакованный отвечает без бабла, но может использовать свои abilities (bubble для контр-замедления).
-3. **Побег из бабла**: Добавить логику: если бабл атакующего в кд (например, 5 сек после создания), флот может покинуть зону, двигаясь наружу.
-4. **Визуалы**: Бабл как полупрозрачный круг с эффектами частиц, линии атаки красные, мерцающие (alpha анимация).
+## Phase 4: Bubble and Slow Effects Implementation
+1. **Bubble Creation**: On attack, fleet creates CombatZone with radius (e.g. 500 units), inside which all fleets speed * 0.1. Bubble is static, doesn't follow fleet.
+2. **Effects**: In CombatZone.update() apply slowdown to fleets inside. Attacked responds without bubble, but can use abilities (bubble for counter-slowdown).
+3. **Escape from Bubble**: Add logic: if attacker's bubble is on cooldown (e.g. 5 sec after creation), fleet can leave zone by moving outward.
+4. **Visuals**: Bubble as semi-transparent circle with particle effects, attack lines red, flickering (alpha animation).
 
-## Этап 5: Тестирование и оптимизация производительности
-1. **Тестирование**: Создать тестовые сценарии (1v1, 5v5, массовые бои) для проверки баланса, производительности (цель: <10ms/frame при 100+ флотах).
-2. **Оптимизация**: Внедрить quadtree для поиска целей (O(log n) вместо O(n^2)). Лимит активных зон (например, 50 одновременно). Профилирование с Chrome DevTools.
-3. **Баланс**: Настроить урон, баблы, деньги через конфиг-файлы, не хардкод.
+## Phase 5: Testing and Performance Optimization
+1. **Testing**: Create test scenarios (1v1, 5v5, mass battles) to check balance, performance (goal: <10ms/frame at 100+ fleets).
+2. **Optimization**: Implement quadtree for target search (O(log n) instead of O(n^2)). Limit active zones (e.g. 50 simultaneously). Profiling with Chrome DevTools.
+3. **Balance**: Tune damage, bubbles, money through config files, not hardcoded.
 
-## Этап 6: Интеграция с UI и экономикой
-1. **UI обновления**: В UIManager.ts добавить индикаторы баблов, линий атаки. Показывать деньги в реальном времени.
-2. **Экономика**: Интегрировать с инвентарем (Stage 3 Roadmap). Деньги от боев влияют на покупку топлива/поставок.
-3. **Сохранение**: Обновить SaveSystem.ts для хранения баблов и активных боев.
+## Phase 6: UI and Economy Integration
+1. **UI Updates**: In UIManager.ts add bubble indicators, attack lines. Show money in real time.
+2. **Economy**: Integrate with inventory (Phase 3 Roadmap). Money from battles affects fuel/supply purchases.
+3. **Saving**: Update SaveSystem.ts to store bubbles and active combats.
 
-## Риски и mitigation
-- **Производительность**: Раннее профилирование, лимиты на зоны/флоты.
-- **Баланс**: Итеративное тестирование, метрики (средняя продолжительность боя, экономика).
-- **Регрессии**: Постепенная миграция, флаги для старой/новой системы.
+## Risks and Mitigation
+- **Performance**: Early profiling, limits on zones/fleets.
+- **Balance**: Iterative testing, metrics (average battle duration, economy).
+- **Regressions**: Gradual migration, flags for old/new system.

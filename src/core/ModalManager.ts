@@ -44,13 +44,13 @@ export class ModalManager {
         dialog.style.minWidth = '300px';
 
         const title = document.createElement('h2');
-        title.textContent = '⚠️ Контакт с флотом';
+        title.textContent = '⚠️ Fleet Contact';
         title.style.margin = '0 0 20px 0';
         title.style.fontSize = '24px';
         title.style.color = '#00C8FF';
 
         const message = document.createElement('p');
-        message.textContent = 'Вы находитесь в зоне контакта с другим флотом. Выберите действие:';
+        message.textContent = 'You are in contact zone with another fleet. Choose an action:';
         message.style.margin = '0 0 30px 0';
         message.style.fontSize = '14px';
         message.style.lineHeight = '1.6';
@@ -92,9 +92,9 @@ export class ModalManager {
             return btn;
         };
 
-        buttonContainer.appendChild(createButton('📡 Связь', '#00A8FF', onCommunicate));
-        buttonContainer.appendChild(createButton('⚔️ Атака', '#FF4444', onAttack));
-        buttonContainer.appendChild(createButton('❌ Отмена', '#666666', onCancel));
+        buttonContainer.appendChild(createButton('📡 Communicate', '#00A8FF', onCommunicate));
+        buttonContainer.appendChild(createButton('⚔️ Attack', '#FF4444', onAttack));
+        buttonContainer.appendChild(createButton('❌ Cancel', '#666666', onCancel));
 
         dialog.appendChild(title);
         dialog.appendChild(message);
@@ -137,20 +137,20 @@ export class ModalManager {
         battleScreen.style.position = 'relative';
 
         const title = document.createElement('h1');
-        title.textContent = '⚔️ БОЕВОЙ ЭКРАН ⚔️';
+        title.textContent = '⚔️ BATTLE SCREEN ⚔️';
         title.style.fontSize = '48px';
         title.style.color = '#FF4444';
         title.style.textShadow = '0 0 20px rgba(255, 68, 68, 0.8)';
         title.style.margin = '0 0 20px 0';
 
         const subtitle = document.createElement('p');
-        subtitle.textContent = 'В разработке...';
+        subtitle.textContent = 'In development...';
         subtitle.style.fontSize = '24px';
         subtitle.style.color = '#AAAAAA';
         subtitle.style.margin = '0 0 40px 0';
 
         const closeButton = document.createElement('button');
-        closeButton.textContent = '✖ Закрыть';
+        closeButton.textContent = '✖ Close';
         closeButton.style.padding = '16px 32px';
         closeButton.style.border = 'none';
         closeButton.style.borderRadius = '8px';
@@ -319,7 +319,7 @@ export class ModalManager {
         title.style.color = '#00C8FF';
 
         const message = document.createElement('p');
-        message.textContent = `Вы прибыли к ${name}`;
+        message.textContent = `You have arrived at ${name}`;
         message.style.margin = '0 0 30px 0';
         message.style.fontSize = '14px';
         message.style.lineHeight = '1.6';
@@ -377,19 +377,19 @@ export class ModalManager {
         dialog.style.minWidth = '300px';
 
         const title = document.createElement('h2');
-        title.textContent = '🎉 Освобождение системы!';
+        title.textContent = '🎉 System Liberation!';
         title.style.margin = '0 0 20px 0';
         title.style.fontSize = '24px';
         title.style.color = '#00FF00';
 
         const message = document.createElement('p');
-        message.textContent = 'Поздравляем! Вы освободили систему Альфа Центавра от рейдеров. Центральная планета благодарит вас и предлагает награду:';
+        message.textContent = 'Congratulations! You have liberated the Alpha Centauri system from raiders. The central planet thanks you and offers a reward:';
         message.style.margin = '0 0 20px 0';
         message.style.fontSize = '14px';
         message.style.lineHeight = '1.6';
 
         const reward = document.createElement('p');
-        reward.textContent = '+100 💪 Сила флота\n+$5,000 💰 Деньги';
+        reward.textContent = '+100 💪 Fleet Strength\n+$5,000 💰 Money';
         reward.style.margin = '0 0 30px 0';
         reward.style.fontSize = '16px';
         reward.style.fontWeight = 'bold';
@@ -397,7 +397,7 @@ export class ModalManager {
         reward.style.whiteSpace = 'pre-line';
 
         const collectButton = document.createElement('button');
-        collectButton.textContent = '🎁 Получить награду';
+        collectButton.textContent = '🎁 Collect Reward';
         collectButton.style.padding = '12px 24px';
         collectButton.style.border = 'none';
         collectButton.style.borderRadius = '6px';
@@ -415,7 +415,7 @@ export class ModalManager {
         });
 
         const cancelButton = document.createElement('button');
-        cancelButton.textContent = '❌ Отказаться';
+        cancelButton.textContent = '❌ Decline';
         cancelButton.style.padding = '12px 24px';
         cancelButton.style.border = 'none';
         cancelButton.style.borderRadius = '6px';

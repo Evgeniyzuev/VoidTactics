@@ -728,7 +728,7 @@ export class Game {
         };
 
         if (showApproach) {
-            const approachBtn = createButton('🚀', 'Приближение (Intercept & Follow)', '#0088FF', () => {
+            const approachBtn = createButton('🚀', 'Approach (Intercept & Follow)', '#0088FF', () => {
                 console.log('Approach command issued for', entity);
                 this.playerFleet.setFollowTarget(entity, 'approach');
                 this.closeTooltip();
@@ -738,7 +738,7 @@ export class Game {
         }
 
         if (showContact || showDock) {
-            const contactBtn = createButton('🎯', 'Контакт/Стыковка (Intercept & Dock)', '#00AA00', () => {
+            const contactBtn = createButton('🎯', 'Contact/Dock (Intercept & Dock)', '#00AA00', () => {
                 console.log('Contact command issued for', entity);
                 this.playerFleet.setFollowTarget(entity, 'contact');
                 this.closeTooltip();
@@ -776,7 +776,7 @@ export class Game {
         this.modal.showContactDialog(
             () => {
                 console.log('Establishing communication with fleet...');
-                console.log('Связь установлена! (Функция в разработке)');
+                console.log('Communication established! (Function in development)');
                 this.modal.closeModal();
                 if (this.isPaused) this.togglePause();
             },
