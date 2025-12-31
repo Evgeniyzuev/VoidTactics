@@ -1245,16 +1245,22 @@ export class Game {
         const a = (this.playerFleet.abilities as any)[id];
         if (!a) return;
 
-        if (id === 'bubble') {
-            // Special handling for bubble: create zone if not on cooldown
+        if (id === 'bubble' || id === 'afterburner') {
+            // Special handling for bubble and afterburner: activate once if not on cooldown
             if (a.cooldown <= 0) {
-                const radius = 200; // Fixed radius for all bubbles
-                const bubbleZone = new BubbleZone(this.playerFleet.position.x, this.playerFleet.position.y, radius);
-                this.bubbleZones.push(bubbleZone);
-                a.cooldown = a.cdMax; // Start cooldown
-                console.log('Bubble zone created');
+                a.active = true;
+                a.timer = a.duration; // Start duration timer
+                a.cooldown = a.cdMax; // Start cooldown immediately
+                if (id === 'bubble') {
+                    const radius = 200; // Fixed radius for all bubbles
+                    const bubbleZone = new BubbleZone(this.playerFleet.position.x, this.playerFleet.position.y, radius);
+                    this.bubbleZones.push(bubbleZone);
+                    console.log('Bubble zone created');
+                } else {
+                    console.log('Afterburner activated');
+                }
             } else {
-                console.log('Bubble on cooldown');
+                console.log(`${id} on cooldown`);
             }
             return;
         }

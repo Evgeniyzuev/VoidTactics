@@ -32,7 +32,7 @@ export class Fleet extends Entity {
 
     // Abilities State
     public abilities = {
-        afterburner: { active: false, timer: 0, cooldown: 0, duration: 10, cdMax: 10 },
+        afterburner: { active: false, timer: 0, cooldown: 0, duration: 3, cdMax: 6 },
         cloak: { active: false, timer: 0, cooldown: 0, duration: 10, cdMax: 10 },
         bubble: { active: false, timer: 0, cooldown: 0, duration: 10, cdMax: 16 }
     };

@@ -16,6 +16,12 @@ export class Attack {
         // Set attack states
         attacker.currentTarget = target;
         attacker.state = 'combat';
+
+        // Disable cloak if player is attacking
+        if (attacker.isPlayer) {
+            attacker.abilities.cloak.active = false;
+            attacker.isCloaked = false;
+        }
     }
 
     private createBubbleForAttacker() {
