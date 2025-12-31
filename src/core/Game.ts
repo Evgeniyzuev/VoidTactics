@@ -247,7 +247,7 @@ export class Game {
         const initialFleets: Fleet[] = [];
         for (let i = 0; i < 30; i++) {
             const forcedFaction = this.currentSystemId === 2 ? 'raider' : undefined;
-            const fleets = this.systemManager.spawnFleetsForSystem(this.currentSystemId, startStrength, forcedFaction);
+            const fleets = this.systemManager.spawnFleetsForSystem(this.currentSystemId, startStrength, this.npcFleets, forcedFaction);
             initialFleets.push(...fleets);
         }
         this.entities.push(...initialFleets);
@@ -357,7 +357,7 @@ export class Game {
 
         // Check if we should spawn more fleets
         if (this.systemManager.shouldSpawnMoreFleets(this.currentSystemId, this.npcFleets)) {
-            const newFleets = this.systemManager.spawnFleetsForSystem(this.currentSystemId, this.playerFleet.strength);
+            const newFleets = this.systemManager.spawnFleetsForSystem(this.currentSystemId, this.playerFleet.strength, this.npcFleets);
             // Add new fleets to entities and npcFleets
             for (const fleet of newFleets) {
                 this.entities.push(fleet);

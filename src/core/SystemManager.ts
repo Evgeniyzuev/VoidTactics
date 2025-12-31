@@ -228,28 +228,94 @@ export class SystemManager {
         this.spawnTimers.set(systemId, currentTimer + dt);
     }
 
-    public spawnFleetsForSystem(systemId: number, playerStrength: number, forcedFaction?: Faction): Fleet[] {
+    public countFleetsByFaction(systemId: number, fleets: Fleet[]): Record<Faction, number> {
+        const counts: Record<Faction, number> = {
+            'player': 0,
+            'civilian': 0,
+            'pirate': 0,
+            'orc': 0,
+            'military': 0,
+            'raider': 0
+        };
+
+        for (const fleet of fleets) {
+            counts[fleet.faction]++;
+        }
+
+        return counts;
+    }
+
+    public canFactionSpawn(systemId: number, faction: Faction, fleets: Fleet[]): boolean {
+        // Only apply percentage restrictions to civilian and military
+        if (faction !== 'civilian' && faction !== 'military') {
+            return true;
+        }
+
+        const totalFleets = fleets.length;
+        if (totalFleets === 0) {
+            return true; // Always allow spawning if no fleets exist
+        }
+
+        const counts = this.countFleetsByFaction(systemId, fleets);
+        
+        if (faction === 'civilian') {
+            const civilianPercentage = (counts.civilian / totalFleets) * 100;
+            return civilianPercentage <= 40;
+        } else if (faction === 'military') {
+            const militaryPercentage = (counts.military / totalFleets) * 100;
+            return militaryPercentage <= 20;
+        }
+
+        return true;
+    }
+
+    public spawnFleetsForSystem(systemId: number, playerStrength: number, fleets: Fleet[], forcedFaction?: Faction): Fleet[] {
         const system = this.systems.get(systemId);
         if (!system) return [];
 
         const rules = system.spawnRules;
 
-        // Pick faction based on weights
+        // Pick faction based on weights with percentage restrictions
         let selectedFaction: Faction = 'civilian';
+        let attempts = 0;
+        const maxAttempts = 10;
+
         if (forcedFaction) {
             selectedFaction = forcedFaction;
         } else if (rules.factionWeights.length === 1) {
             // Only one faction available (like orcs in Alpha Centauri)
             selectedFaction = rules.factionWeights[0].type;
         } else {
-            let rand = Math.random();
-            for (const factionWeight of rules.factionWeights) {
-                if (rand < factionWeight.weight) {
-                    selectedFaction = factionWeight.type;
+            // Try to find a faction that can spawn within percentage limits
+            while (attempts < maxAttempts) {
+                let rand = Math.random();
+                selectedFaction = 'civilian'; // default fallback
+                
+                for (const factionWeight of rules.factionWeights) {
+                    if (rand < factionWeight.weight) {
+                        selectedFaction = factionWeight.type;
+                        break;
+                    }
+                    rand -= factionWeight.weight;
+                }
+
+                // Check if this faction can spawn within percentage limits
+                if (this.canFactionSpawn(systemId, selectedFaction, fleets)) {
                     break;
                 }
-                rand -= factionWeight.weight;
+
+                attempts++;
+                if (attempts >= maxAttempts) {
+                    console.log(`System ${systemId}: Max attempts reached for faction selection, skipping spawn`);
+                    return []; // No valid faction found within limits
+                }
             }
+        }
+
+        // If the selected faction still can't spawn (e.g., forced faction), skip
+        if (!this.canFactionSpawn(systemId, selectedFaction, fleets)) {
+            console.log(`System ${systemId}: Faction ${selectedFaction} cannot spawn due to percentage limits`);
+            return [];
         }
 
         // Get faction color
@@ -305,6 +371,7 @@ export class SystemManager {
             npc.setTarget(new Vector2((Math.random() - 0.5) * 1000, (Math.random() - 0.5) * 1000));
         }
 
+        console.log(`System ${systemId}: Spawning ${selectedFaction} fleet (strength: ${npc.strength})`);
         return [npc];
     }
 
