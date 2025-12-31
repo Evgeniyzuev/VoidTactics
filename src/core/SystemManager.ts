@@ -35,13 +35,13 @@ export class SystemManager {
             spawnRules: {
                 targetFleetCount: 60,
                 factionWeights: [
-                    { type: 'civilian', weight: 0.45 },
-                    { type: 'pirate', weight: 0.2 },
-                    { type: 'orc', weight: 0.15 },
+                    { type: 'civilian', weight: 0.40 },
+                    { type: 'pirate', weight: 0.25 },
+                    { type: 'orc', weight: 0.18 },
                     { type: 'military', weight: 0.15 },
-                    { type: 'raider', weight: 0.05 }
+                    { type: 'raider', weight: 0.02 }
                 ],
-                strengthMin: 1,
+                strengthMin: 5,
                 strengthMax: 1000
             },
             entities: this.createSolEntities()
@@ -60,7 +60,7 @@ export class SystemManager {
                     { type: 'orc', weight: 0.079 },
                     { type: 'military', weight: 0.079 }
                 ],
-                strengthMin: 50,
+                strengthMin: 100,
                 strengthMax: 300,
                 spawnInterval: 10 // 10 seconds
             },
@@ -352,21 +352,13 @@ export class SystemManager {
             npc.strength = rules.strengthMin + Math.random() * (rules.strengthMax - rules.strengthMin);
         } else {
             // Dynamic strength based on player (original logic)
-            const coefficients = [2, 4, 8];
+            const coefficients = [0.5, 1, 2, 4, 8];
             const coeff = coefficients[Math.floor(Math.random() * coefficients.length)];
 
-            let baseS = playerStrength;
-            const randType = Math.random();
-            if (randType < 0.33) {
-                baseS = playerStrength;
-            } else if (randType < 0.66) {
-                baseS = playerStrength * coeff;
-            } else {
-                baseS = playerStrength / coeff;
-            }
+            let baseS = playerStrength * coeff;
 
             // Apply variance and clamp to system limits
-            const variance = 0.7 + Math.random() * 0.6;
+            const variance = 0.6 + Math.random() * 0.7;
             npc.strength = Math.max(rules.strengthMin, Math.min(rules.strengthMax, Math.round(baseS * variance)));
         }
 
