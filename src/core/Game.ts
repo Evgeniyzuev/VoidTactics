@@ -532,6 +532,26 @@ export class Game {
                     if (dist < triggerDist) {
                         const attack = new Attack(attacker, target, this);
                         this.attacks.push(attack);
+
+                        // Special case: Player attacking civilian or military triggers hostility
+                        if (attacker.isPlayer && (target.faction === 'civilian' || target.faction === 'military')) {
+                            const detectionRadius = 2000;
+                            const player = attacker;
+
+                            // All military in detection radius become hostile to player
+                            for (const fleet of allFleets) {
+                                if (fleet.faction === 'military' && Vector2.distance(fleet.position, player.position) <= detectionRadius) {
+                                    fleet.hostileTo.add(player);
+                                }
+                            }
+
+                            // All civilians larger than player in detection radius become hostile to player
+                            for (const fleet of allFleets) {
+                                if (fleet.faction === 'civilian' && fleet.sizeMultiplier > player.sizeMultiplier && Vector2.distance(fleet.position, player.position) <= detectionRadius) {
+                                    fleet.hostileTo.add(player);
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -814,6 +834,26 @@ export class Game {
                     this.attacks.push(a);
                     // Auto-follow the target
                     this.playerFleet.setFollowTarget(fleet, 'contact');
+
+                    // Special case: Player attacking civilian or military triggers hostility
+                    if (fleet.faction === 'civilian' || fleet.faction === 'military') {
+                        const detectionRadius = 2000;
+                        const allFleets = [this.playerFleet, ...this.npcFleets];
+
+                        // All military in detection radius become hostile to player
+                        for (const f of allFleets) {
+                            if (f.faction === 'military' && Vector2.distance(f.position, this.playerFleet.position) <= detectionRadius) {
+                                f.hostileTo.add(this.playerFleet);
+                            }
+                        }
+
+                        // All civilians larger than player in detection radius become hostile to player
+                        for (const f of allFleets) {
+                            if (f.faction === 'civilian' && f.sizeMultiplier > this.playerFleet.sizeMultiplier && Vector2.distance(f.position, this.playerFleet.position) <= detectionRadius) {
+                                f.hostileTo.add(this.playerFleet);
+                            }
+                        }
+                    }
                 } else {
                     console.log('Cannot initiate attack - one fleet is already attacking');
                 }

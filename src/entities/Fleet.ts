@@ -28,6 +28,7 @@ export class Fleet extends Entity {
     public civilianStopTimer: number = 0;
     public lastAcceleration: Vector2 = new Vector2(0, 0);
     public currentTarget: Fleet | null = null; // Current attack target
+    public hostileTo: Set<Fleet> = new Set(); // Persistent hostility to other fleets
 
     // Abilities State
     public abilities = {

@@ -252,6 +252,8 @@ export class AIController {
 
     public isHostile(a: Fleet, b: Fleet): boolean {
         if (a === b) return false;
+        // Check persistent hostility
+        if (a.hostileTo.has(b)) return true;
         const f1 = a.faction;
         const f2 = b.faction;
 
