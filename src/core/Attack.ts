@@ -2,6 +2,7 @@ import { Fleet } from '../entities/Fleet';
 import { Vector2 } from '../utils/Vector2';
 import { Game } from './Game';
 import { BubbleZone } from '../entities/BubbleZone';
+import { CelestialBody } from '../entities/CelestialBody';
 
 export class Attack {
     public attacker: Fleet;
@@ -38,6 +39,27 @@ export class Attack {
             return;
         }
 
+        // Check if target is an asteroid (CelestialBody)
+        if (this.target instanceof CelestialBody) {
+            // Asteroid mining logic
+            const miningRate = this.attacker.strength * 0.001; // $ per second
+            const moneyGained = miningRate * dt;
+            
+            this.attacker.money += moneyGained;
+            
+            // Update mining progress (optional visual feedback)
+            if (this.target.miningYield > 0) {
+                this.target.miningProgress += dt * miningRate;
+                if (this.target.miningProgress >= this.target.miningYield) {
+                    this.target.miningProgress = this.target.miningYield;
+                    this.finished = true;
+                }
+            }
+            
+            return; // Skip normal combat logic for asteroids
+        }
+
+        // Normal combat logic for fleet vs fleet
         // Attacker deals damage to target
         const damage = this.attacker.strength * 0.01 * 10 * dt;
         this.target.accumulatedDamage += damage;
@@ -53,7 +75,7 @@ export class Attack {
                 this.attacker.money = Math.floor(this.attacker.money + integerDamage * 50);
             }
 
-            // NPC deploys bubble if conditions met
+            // NPC deploys bubble if conditions met (skip for asteroids)
             if (!this.attacker.isPlayer &&
                 this.attacker.abilities.bubble.cooldown <= 0 &&
                 dist < 80 &&
@@ -63,7 +85,7 @@ export class Attack {
                 this.attacker.abilities.bubble.cooldown = this.attacker.abilities.bubble.cdMax;
             }
 
-            // Target responds if not attacking anyone
+            // Target responds if not attacking anyone (skip for asteroids)
             if (this.target.currentTarget === null && !this.target.isCloaked) {
                 // Target starts attacking back immediately (no distance check)
                 const counterAttack = new Attack(this.target, this.attacker, this.game);

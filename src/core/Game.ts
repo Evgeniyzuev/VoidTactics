@@ -642,6 +642,7 @@ export class Game {
         let showApproach = false;
         let showContact = false;
         let showDock = false;
+        let showMine = false;
 
         if (entity instanceof CelestialBody) {
             const body = entity as CelestialBody;
@@ -656,6 +657,7 @@ export class Game {
             }
             showApproach = true;
             if (!body.isStar && body.name !== 'Asteroid') showDock = true;
+            if (body.name === 'Asteroid') showMine = true;
         } else if (entity instanceof WarpGate) {
             const gate = entity as WarpGate;
             info = `<strong>${gate.name}</strong><br/>`;
@@ -747,6 +749,16 @@ export class Game {
             buttonContainer.appendChild(contactBtn);
         }
 
+        if (showMine) {
+            const mineBtn = createButton('⛏️', 'Mine Asteroid', '#FFA500', () => {
+                console.log('Mine command issued for asteroid');
+                this.initiateMining(entity);
+                this.closeTooltip();
+                if (this.isPaused) this.togglePause();
+            });
+            buttonContainer.appendChild(mineBtn);
+        }
+
         if (buttonContainer.children.length > 0) {
             this.infoTooltip.appendChild(buttonContainer);
         }
@@ -805,6 +817,43 @@ export class Game {
                 if (this.isPaused) this.togglePause();
             }
         );
+    }
+
+    private initiateMining(asteroid: any) {
+        this.closeTooltip();
+
+        // Ensure game is paused while dialog is open
+        if (!this.isPaused) {
+            this.togglePause();
+        }
+
+        console.log(`Initiating mining with asteroid at ${asteroid.position.x}, ${asteroid.position.y}`);
+
+        this.modal.showAsteroidMiningDialog(
+            () => {
+                // Start mining
+                this.modal.closeModal();
+                this.startMining(asteroid);
+                if (this.isPaused) this.togglePause();
+            },
+            () => {
+                // Cancel
+                this.modal.closeModal();
+                if (this.isPaused) this.togglePause();
+            }
+        );
+    }
+
+    private startMining(asteroid: any) {
+        // Set mining state
+        this.playerFleet.state = 'mining';
+        this.playerFleet.isMining = true;
+        this.playerFleet.miningTarget = asteroid;
+        asteroid.isMiningTarget = true;
+        
+        // Create mining "attack" - this will handle the money generation
+        const miningAttack = new Attack(this.playerFleet, asteroid, this);
+        this.attacks.push(miningAttack);
     }
 
     private showTerraUpgradeDialog() {

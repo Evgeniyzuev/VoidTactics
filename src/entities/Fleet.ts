@@ -21,7 +21,7 @@ export class Fleet extends Entity {
     public accumulatedDamage: number = 0;
     public sizeMultiplier: number = 1.0;
     public faction: Faction = 'civilian';
-    public state: 'normal' | 'combat' | 'flee' = 'normal';
+    public state: 'normal' | 'combat' | 'flee' | 'mining' = 'normal';
     public combatTimer: number = 0;
     public activeBattle: any = null; // Reference to ongoing Battle
     public decisionTimer: number = 0;
@@ -40,6 +40,10 @@ export class Fleet extends Entity {
     public bubbleDistance: number = 0; // Distance to bubble center
     public stunTimer: number = 0;
     public money: number = 0; // Only for player
+
+    // Mining properties
+    public isMining: boolean = false;
+    public miningTarget: any = null; // Reference to asteroid being mined
 
     constructor(x: number, y: number, color: string = '#55CCFF', isPlayer: boolean = false) {
         super(x, y);

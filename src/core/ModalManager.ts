@@ -612,6 +612,110 @@ export class ModalManager {
     }
 
     /**
+     * Show asteroid mining dialog
+     */
+    showAsteroidMiningDialog(onMine: () => void, onCancel: () => void) {
+        this.closeModal();
+
+        this.modalContainer = document.createElement('div');
+        this.modalContainer.style.position = 'fixed';
+        this.modalContainer.style.top = '0';
+        this.modalContainer.style.left = '0';
+        this.modalContainer.style.width = '100%';
+        this.modalContainer.style.height = '100%';
+        this.modalContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+        this.modalContainer.style.display = 'flex';
+        this.modalContainer.style.alignItems = 'center';
+        this.modalContainer.style.justifyContent = 'center';
+        this.modalContainer.style.zIndex = '10000';
+
+        const dialog = document.createElement('div');
+        dialog.style.background = 'linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%)';
+        dialog.style.padding = '30px';
+        dialog.style.borderRadius = '12px';
+        dialog.style.border = '2px solid rgba(255, 165, 0, 0.5)';
+        dialog.style.boxShadow = '0 8px 32px rgba(255, 165, 0, 0.3)';
+        dialog.style.color = 'white';
+        dialog.style.fontFamily = 'monospace';
+        dialog.style.textAlign = 'center';
+        dialog.style.minWidth = '300px';
+
+        const title = document.createElement('h2');
+        title.textContent = '⛏️ Asteroid Mining';
+        title.style.margin = '0 0 20px 0';
+        title.style.fontSize = '24px';
+        title.style.color = '#FFA500';
+
+        const message = document.createElement('p');
+        message.textContent = 'Mining Rate: 0.001$ per second per fleet strength';
+        message.style.margin = '0 0 30px 0';
+        message.style.fontSize = '14px';
+        message.style.lineHeight = '1.6';
+        message.style.color = '#CCCCCC';
+
+        const info = document.createElement('div');
+        info.style.background = 'rgba(255, 255, 255, 0.1)';
+        info.style.padding = '15px';
+        info.style.borderRadius = '8px';
+        info.style.marginBottom = '30px';
+        info.style.fontSize = '12px';
+        info.style.color = '#AAAAAA';
+        info.innerHTML = `
+            <strong>⚠️ WARNING:</strong><br/>
+            While mining, your fleet is vulnerable to attacks.<br/>
+            Enemies will prioritize mining targets.<br/>
+            Mining will be interrupted if you take damage.
+        `;
+
+        const buttonContainer = document.createElement('div');
+        buttonContainer.style.display = 'flex';
+        buttonContainer.style.gap = '10px';
+        buttonContainer.style.justifyContent = 'center';
+
+        const createButton = (text: string, bgColor: string, callback: () => void) => {
+            const btn = document.createElement('button');
+            btn.textContent = text;
+            btn.style.padding = '12px 24px';
+            btn.style.border = 'none';
+            btn.style.borderRadius = '6px';
+            btn.style.background = bgColor;
+            btn.style.color = 'white';
+            btn.style.fontSize = '14px';
+            btn.style.fontWeight = 'bold';
+            btn.style.cursor = 'pointer';
+            btn.style.transition = 'transform 0.2s, box-shadow 0.2s';
+            btn.style.fontFamily = 'monospace';
+
+            btn.addEventListener('mouseenter', () => {
+                btn.style.transform = 'scale(1.05)';
+                btn.style.boxShadow = `0 4px 12px ${bgColor}80`;
+            });
+
+            btn.addEventListener('mouseleave', () => {
+                btn.style.transform = 'scale(1)';
+                btn.style.boxShadow = 'none';
+            });
+
+            btn.addEventListener('click', () => {
+                callback();
+                this.closeModal();
+            });
+
+            return btn;
+        };
+
+        buttonContainer.appendChild(createButton('⛏️ Mine', '#FFA500', onMine));
+        buttonContainer.appendChild(createButton('❌ Cancel', '#666666', onCancel));
+
+        dialog.appendChild(title);
+        dialog.appendChild(message);
+        dialog.appendChild(info);
+        dialog.appendChild(buttonContainer);
+        this.modalContainer.appendChild(dialog);
+        document.body.appendChild(this.modalContainer);
+    }
+
+    /**
      * Close any open modal
      */
     closeModal() {

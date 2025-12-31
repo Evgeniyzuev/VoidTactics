@@ -123,16 +123,19 @@ export class AIController {
                     }
 
                     if (canTarget) {
-                        // Calculate size score: optimal 0.5x own size, falls off for larger/smaller
-                        const sizeRatio = other.sizeMultiplier / npc.sizeMultiplier;
-                        let sizeScore = 0;
-                        if (sizeRatio >= 0.1 && sizeRatio <= 0.9) {
-                            // Optimal at 0.5, falls off outside
-                            sizeScore = 1 / (1 + Math.abs(sizeRatio - 0.5) * 2);
-                        } else {
-                            // Too small or too large: very low priority, only for raiders/military
-                            sizeScore = (npc.faction === 'military' || npc.faction === 'raider') ? 0.1 : 0.01;
-                        }
+                    // Calculate size score: optimal 0.5x own size, falls off for larger/smaller
+                    const sizeRatio = other.sizeMultiplier / npc.sizeMultiplier;
+                    let sizeScore = 0;
+                    if (sizeRatio >= 0.1 && sizeRatio <= 0.9) {
+                        // Optimal at 0.5, falls off outside
+                        sizeScore = 1 / (1 + Math.abs(sizeRatio - 0.5) * 2);
+                    } else {
+                        // Too small or too large: very low priority, only for raiders/military
+                        sizeScore = (npc.faction === 'military' || npc.faction === 'raider') ? 0.1 : 0.01;
+                    }
+
+                    // Mining vulnerability bonus: mining fleets are high-priority targets
+                    const miningBonus = other.state === 'mining' ? 3.0 : 0;
 
                         // Combat bonus: big plus if target is already in attack
                         const combatBonus = other.currentTarget ? 2.0 : 0;

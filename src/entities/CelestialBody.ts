@@ -30,6 +30,11 @@ export class CelestialBody extends Entity {
     public pulsing: boolean = false;
     public rewardCollected: boolean = false;
 
+    // Mining properties
+    public isMiningTarget: boolean = false;
+    public miningProgress: number = 0;
+    public miningYield: number = 0; // Total money available in asteroid
+
     constructor(
         x: number,
         y: number,
