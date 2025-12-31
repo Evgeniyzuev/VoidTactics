@@ -717,6 +717,9 @@ export class Game {
                 info += `Pos: ???`;
             } else {
                 info = `<strong>${factionNames[fleet.faction] || 'Unknown'}</strong><br/>`;
+                const isHostile = this.aiController.isHostile(fleet, this.playerFleet);
+                const status = isHostile ? '<span style="color: red;">Hostile</span>' : '<span style="color: green;">Friendly</span>';
+                info += `${status}<br/>`;
                 info += `Size: ${formatNumber(fleet.strength)}<br/>`;
                 info += `Speed: ${fleet.velocity.mag().toFixed(1)}<br/>`;
                 info += `Pos: (${fleet.position.x.toFixed(0)}, ${fleet.position.y.toFixed(0)})`;
