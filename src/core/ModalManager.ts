@@ -447,6 +447,82 @@ export class ModalManager {
     }
 
     /**
+     * Show communication dialog with OK button
+     */
+    showCommunicationDialog(onOk: () => void) {
+        this.closeModal();
+
+        this.modalContainer = document.createElement('div');
+        this.modalContainer.style.position = 'fixed';
+        this.modalContainer.style.top = '0';
+        this.modalContainer.style.left = '0';
+        this.modalContainer.style.width = '100%';
+        this.modalContainer.style.height = '100%';
+        this.modalContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+        this.modalContainer.style.display = 'flex';
+        this.modalContainer.style.alignItems = 'center';
+        this.modalContainer.style.justifyContent = 'center';
+        this.modalContainer.style.zIndex = '10000';
+
+        const dialog = document.createElement('div');
+        dialog.style.background = 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)';
+        dialog.style.padding = '30px';
+        dialog.style.borderRadius = '12px';
+        dialog.style.border = '2px solid rgba(0, 200, 255, 0.5)';
+        dialog.style.boxShadow = '0 8px 32px rgba(0, 200, 255, 0.3)';
+        dialog.style.color = 'white';
+        dialog.style.fontFamily = 'monospace';
+        dialog.style.textAlign = 'center';
+        dialog.style.minWidth = '300px';
+
+        const title = document.createElement('h2');
+        title.textContent = '📡 Communication';
+        title.style.margin = '0 0 20px 0';
+        title.style.fontSize = '24px';
+        title.style.color = '#00C8FF';
+
+        const message = document.createElement('p');
+        message.textContent = 'Communication established.';
+        message.style.margin = '0 0 30px 0';
+        message.style.fontSize = '16px';
+        message.style.lineHeight = '1.6';
+
+        const okButton = document.createElement('button');
+        okButton.textContent = 'OK';
+        okButton.style.padding = '12px 24px';
+        okButton.style.border = 'none';
+        okButton.style.borderRadius = '6px';
+        okButton.style.background = '#00A8FF';
+        okButton.style.color = 'white';
+        okButton.style.fontSize = '14px';
+        okButton.style.fontWeight = 'bold';
+        okButton.style.cursor = 'pointer';
+        okButton.style.transition = 'transform 0.2s, box-shadow 0.2s';
+        okButton.style.fontFamily = 'monospace';
+
+        okButton.addEventListener('mouseenter', () => {
+            okButton.style.transform = 'scale(1.05)';
+            okButton.style.boxShadow = '0 4px 12px rgba(0, 168, 255, 0.8)';
+        });
+
+        okButton.addEventListener('mouseleave', () => {
+            okButton.style.transform = 'scale(1)';
+            okButton.style.boxShadow = 'none';
+        });
+
+        okButton.addEventListener('click', () => {
+            onOk();
+            this.closeModal();
+        });
+
+        dialog.appendChild(title);
+        dialog.appendChild(message);
+        dialog.appendChild(okButton);
+        this.modalContainer.appendChild(dialog);
+        document.body.appendChild(this.modalContainer);
+    }
+
+    /**
      * Show Terra upgrade dialog
      */
     showTerraUpgradeDialog(currentStrength: number, currentMoney: number, onUpgrade: () => void, onCancel: () => void) {

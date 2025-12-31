@@ -775,10 +775,13 @@ export class Game {
 
         this.modal.showContactDialog(
             () => {
-                console.log('Establishing communication with fleet...');
-                console.log('Communication established! (Function in development)');
+                // Close contact dialog first, then open communication dialog with proper timing
                 this.modal.closeModal();
-                if (this.isPaused) this.togglePause();
+                setTimeout(() => {
+                    this.modal.showCommunicationDialog(() => {
+                        if (this.isPaused) this.togglePause();
+                    });
+                }, 50); // Small delay to ensure DOM removal is complete
             },
             () => {
                 console.log('Initiating attack...');
