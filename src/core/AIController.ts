@@ -173,7 +173,7 @@ export class AIController {
                         const proximityBonus = (npc.faction === 'military') ? proximityCoefficient * 2.0 : 0;
 
                         // Total score
-                        let targetScore = proximityCoefficient * (combatBonus + sizeScore + movementScore + strengthScore + currentTargetBonus) + proximityBonus;
+                        let targetScore = proximityCoefficient * (combatBonus + sizeScore + movementScore + strengthScore + currentTargetBonus + miningBonus) + proximityBonus;
 
                         // Center bonus for military
                         if (npc.faction === 'military') {
