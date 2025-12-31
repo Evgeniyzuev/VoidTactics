@@ -11,7 +11,7 @@ export class AIController {
     }
 
     processAI() {
-        const detectionRadius = 1000;
+        const detectionRadius = 2000;
         const giveUpRadius = 2500;
         const celestialBodies = this.game.getEntities().filter(e => e instanceof CelestialBody) as CelestialBody[];
 
@@ -48,7 +48,7 @@ export class AIController {
                             const poi = celestialBodies[Math.floor(Math.random() * celestialBodies.length)];
                             npc.setTarget(poi.position.add(new Vector2((Math.random() - 0.5) * 200, (Math.random() - 0.5) * 200)));
                         }
-                        npc.decisionTimer = 2.0; // Don't re-target immediately
+                        npc.decisionTimer = 1.0; // Don't re-target immediately
                         continue;
                     }
                 }
