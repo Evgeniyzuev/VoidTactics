@@ -41,8 +41,8 @@ export class Attack {
 
         // Check if target is an asteroid (CelestialBody)
         if (this.target instanceof CelestialBody) {
-            // Asteroid mining logic
-            const miningRate = this.attacker.strength * 0.001; // $ per second
+            // Asteroid mining logic - 100x increased rate
+            const miningRate = this.attacker.strength * 0.1; // $ per second (100x increase)
             const moneyGained = miningRate * dt;
             
             this.attacker.money += moneyGained;

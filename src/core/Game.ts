@@ -438,7 +438,7 @@ export class Game {
             } else {
                 const dist = Vector2.distance(this.playerFleet.position, this.playerFleet.followTarget.position);
 
-                if (this.playerFleet.followMode === 'contact') {
+        if (this.playerFleet.followMode === 'contact') {
                     const triggerDist = this.playerFleet.followTarget instanceof CelestialBody ?
                         (this.playerFleet.followTarget as CelestialBody).radius + 10 :
                         this.playerFleet.followTarget instanceof WarpGate ?
@@ -452,6 +452,9 @@ export class Game {
                     this.showTerraUpgradeDialog();
                 } else if (body.name === 'Centauri Prime' && body.isLiberated && !body.rewardCollected) {
                     this.showLiberationRewardDialog(body);
+                } else if (body.name === 'Asteroid') {
+                    // Show mining dialog for asteroids
+                    this.initiateMining(body);
                 } else {
                     this.showArrivalDialog(body.name);
                 }
@@ -752,7 +755,8 @@ export class Game {
         if (showMine) {
             const mineBtn = createButton('⛏️', 'Mine Asteroid', '#FFA500', () => {
                 console.log('Mine command issued for asteroid');
-                this.initiateMining(entity);
+                // Use contact mode for asteroids - approach first, then dialog
+                this.playerFleet.setFollowTarget(entity, 'contact');
                 this.closeTooltip();
                 if (this.isPaused) this.togglePause();
             });
