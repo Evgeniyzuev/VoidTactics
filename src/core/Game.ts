@@ -14,6 +14,7 @@ import { Attack } from './Attack';
 import { AIController } from './AIController';
 import { SystemManager } from './SystemManager';
 import { formatNumber } from '../utils/NumberFormatter';
+import { WarpMine } from '../entities/WarpMine';
 
 
 export class Game {
@@ -31,6 +32,7 @@ export class Game {
     private npcFleets: Fleet[] = [];
     private attacks: Attack[] = [];
     private bubbleZones: BubbleZone[] = [];
+    private mines: WarpMine[] = [];
 
     // Getters for AIController
     public getEntities(): Entity[] { return this.entities; }
@@ -207,6 +209,7 @@ export class Game {
         this.npcFleets = [];
         this.attacks = [];
         this.bubbleZones = [];
+        this.mines = [];
         this.isGameOver = false;
 
         // Unpause if paused
@@ -242,6 +245,12 @@ export class Game {
         this.playerFleet = new Fleet(spawnX, spawnY, '#00AAFF', true);
         this.playerFleet.strength = startStrength;
         this.playerFleet.faction = 'player';
+
+        // Initial ability charges (1 each for new game/load)
+        for (const key in this.playerFleet.abilities) {
+            (this.playerFleet.abilities as any)[key].charges = 1;
+        }
+
         this.entities.push(this.playerFleet);
 
         // Spawn initial fleets using system-specific rules
@@ -427,6 +436,16 @@ export class Game {
 
         // 4. Update Entities
         for (const e of this.entities) e.update(dt);
+
+        // Update Mines
+        const fleets = [this.playerFleet, ...this.npcFleets];
+        for (let i = this.mines.length - 1; i >= 0; i--) {
+            const mine = this.mines[i];
+            mine.tick(dt, fleets, (b) => this.bubbleZones.push(b));
+            if (mine.isExploded) {
+                this.mines.splice(i, 1);
+            }
+        }
 
         if (this.cameraFollow) {
             const camTarget = this.playerFleet.position;
@@ -938,6 +957,18 @@ export class Game {
                 // Close modal and unpause
                 this.modal.closeModal();
                 if (this.isPaused) this.togglePause();
+            },
+            // Ability Purchase Logic
+            (abilityId: string) => {
+                const a = (this.playerFleet.abilities as any)[abilityId];
+                if (a && this.playerFleet.money >= 50 && a.charges < 10) {
+                    this.playerFleet.money -= 50;
+                    a.charges++;
+                    this.ui.updateMoney(this.playerFleet.money);
+                    this.ui.updateAbilities(this.playerFleet);
+                    // Refresh dialog to show new counts
+                    this.showTerraUpgradeDialog();
+                }
             }
         );
     }
@@ -1006,6 +1037,11 @@ export class Game {
         // Draw BubbleZones
         for (const bubble of this.bubbleZones) {
             bubble.draw(ctx, this.camera);
+        }
+
+        // Draw Mines
+        for (const mine of this.mines) {
+            mine.draw(ctx, this.camera);
         }
 
         const allFleets = [this.playerFleet, ...this.npcFleets];
@@ -1240,36 +1276,57 @@ export class Game {
         const a = (this.playerFleet.abilities as any)[id];
         if (!a) return;
 
+        // Player uses charges
+        if (a.charges <= 0) {
+            console.log(`No charges left for ${id}`);
+            return;
+        }
+
+        // Check global cooldown (1 second between any ability use)
+        if (a.cooldown > 0) {
+            console.log(`${id} is still on cooldown`);
+            return;
+        }
+
+        if (id === 'mine') {
+            const mine = new WarpMine(this.playerFleet.position.x, this.playerFleet.position.y, this.playerFleet);
+            this.mines.push(mine);
+            a.charges--;
+            a.cooldown = 1.0; // Small delay before next mine
+            console.log('Warp Mine dropped');
+            return;
+        }
+
         if (id === 'bubble' || id === 'afterburner') {
             // Special handling for bubble and afterburner: activate once if not on cooldown
-            if (a.cooldown <= 0) {
-                a.active = true;
-                a.timer = a.duration; // Start duration timer
-                a.cooldown = a.cdMax; // Start cooldown immediately
-                if (id === 'bubble') {
-                    const radius = 200; // Fixed radius for all bubbles
-                    const bubbleZone = new BubbleZone(this.playerFleet.position.x, this.playerFleet.position.y, radius);
-                    this.bubbleZones.push(bubbleZone);
-                    console.log('Bubble zone created');
-                } else {
-                    console.log('Afterburner activated');
-                }
+            a.active = true;
+            a.timer = a.duration; // Start duration timer
+            a.cooldown = a.cdMax; // Player uses cdMax as the reuse delay
+            a.charges--;
+
+            if (id === 'bubble') {
+                const radius = 200; // Fixed radius for all bubbles
+                const bubbleZone = new BubbleZone(this.playerFleet.position.x, this.playerFleet.position.y, radius);
+                this.bubbleZones.push(bubbleZone);
+                console.log('Bubble zone created');
             } else {
-                console.log(`${id} on cooldown`);
+                console.log('Afterburner activated');
             }
             return;
         }
 
-        // For other abilities: activate if not on cooldown and not active
-        if (a.cooldown <= 0 && !a.active) {
+        // For other abilities (cloak): activate if not active
+        if (!a.active) {
             a.active = true;
             a.timer = a.duration; // Start duration timer
+            a.charges--;
+            a.cooldown = a.cdMax;
             if (id === 'cloak') {
                 this.playerFleet.isCloaked = true;
             }
             console.log(`Ability activated: ${id}`);
-        } else if (a.active) {
-            // Allow manual deactivation
+        } else {
+            // Manual deactivation allowed
             a.active = false;
             a.timer = 0;
             if (id === 'cloak') {

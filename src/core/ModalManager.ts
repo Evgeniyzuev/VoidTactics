@@ -282,11 +282,11 @@ export class ModalManager {
         menu.appendChild(createMenuButton('CONTINUE', 'Back to battle', '#00C8FF', callbacks.onResume, isDead));
         menu.appendChild(createMenuButton('NEW GAME', 'Reset all progress', '#FF4444', callbacks.onNewGame));
         menu.appendChild(createMenuButton('SAVE FLEET', 'Store current fleet size', '#00FF88', callbacks.onSaveFleet, isDead));
-        
+
         // Load Fleet button with saved size
         const loadFleetText = savedSize ? `Load Fleet (Size: ${formatNumber(savedSize)})` : 'Load Fleet';
         menu.appendChild(createMenuButton('LOAD FLEET', loadFleetText, '#FFCC00', callbacks.onLoadFleet));
-        
+
         // Load Auto button with autosave size
         const loadAutoText = autosaveSize ? `Load Auto (Size: ${formatNumber(autosaveSize)})` : 'Load Auto';
         menu.appendChild(createMenuButton('LOAD AUTO', loadAutoText, '#00FFFF', callbacks.onLoadAuto));
@@ -537,7 +537,7 @@ export class ModalManager {
     /**
      * Show Terra upgrade dialog
      */
-    showTerraUpgradeDialog(currentStrength: number, currentMoney: number, onUpgrade: () => void, onCancel: () => void) {
+    showTerraUpgradeDialog(currentStrength: number, currentMoney: number, onUpgrade: () => void, onCancel: () => void, onBuyAbility: (id: string) => void) {
         this.closeModal();
 
         this.modalContainer = document.createElement('div');
@@ -561,64 +561,108 @@ export class ModalManager {
         dialog.style.color = 'white';
         dialog.style.fontFamily = 'monospace';
         dialog.style.textAlign = 'center';
-        dialog.style.minWidth = '300px';
+        dialog.style.minWidth = '400px';
 
         const title = document.createElement('h2');
         title.textContent = '🌍 Terra Station';
-        title.style.margin = '0 0 20px 0';
+        title.style.margin = '0 0 10px 0';
         title.style.fontSize = '24px';
         title.style.color = '#00C8FF';
 
         const info = document.createElement('p');
-        info.textContent = `Current Fleet Strength: ${formatNumber(currentStrength)}\nCurrent Money: $${formatNumber(currentMoney)}`;
-        info.style.margin = '0 0 30px 0';
+        info.textContent = `Fleet Strength: ${formatNumber(currentStrength)} | Money: $${formatNumber(currentMoney)}`;
+        info.style.margin = '0 0 20px 0';
         info.style.fontSize = '14px';
-        info.style.lineHeight = '1.6';
-        info.style.whiteSpace = 'pre-line';
+        info.style.color = '#FFD700';
+
+        // --- UPGRADE SECTION ---
+        const section1 = document.createElement('div');
+        section1.style.background = 'rgba(255, 255, 255, 0.05)';
+        section1.style.padding = '15px';
+        section1.style.borderRadius = '8px';
+        section1.style.marginBottom = '20px';
+
+        const upgradeLabel = document.createElement('div');
+        upgradeLabel.textContent = 'REINFORCE FLEET';
+        upgradeLabel.style.fontSize = '12px';
+        upgradeLabel.style.marginBottom = '10px';
+        upgradeLabel.style.opacity = '0.7';
 
         const upgradeButton = document.createElement('button');
-        upgradeButton.textContent = 'Upgrade Fleet (All Money)';
-        upgradeButton.style.padding = '12px 24px';
+        upgradeButton.textContent = 'Buy strength with all money (100$ per 1💪)';
+        upgradeButton.style.padding = '10px 20px';
+        upgradeButton.style.width = '100%';
         upgradeButton.style.border = 'none';
         upgradeButton.style.borderRadius = '6px';
-        upgradeButton.style.background = currentMoney >= 100 ? '#00AA00' : '#666666';
+        upgradeButton.style.background = currentMoney >= 100 ? '#00AA00' : '#444444';
         upgradeButton.style.color = 'white';
-        upgradeButton.style.fontSize = '14px';
-        upgradeButton.style.fontWeight = 'bold';
         upgradeButton.style.cursor = currentMoney >= 100 ? 'pointer' : 'not-allowed';
-        upgradeButton.style.fontFamily = 'monospace';
-        upgradeButton.style.marginRight = '10px';
+        upgradeButton.onclick = () => onUpgrade();
 
-        upgradeButton.addEventListener('click', () => {
-            onUpgrade();
+        section1.appendChild(upgradeLabel);
+        section1.appendChild(upgradeButton);
+
+        // --- ABILITIES SECTION ---
+        const section2 = document.createElement('div');
+        section2.style.background = 'rgba(255, 255, 255, 0.05)';
+        section2.style.padding = '15px';
+        section2.style.borderRadius = '8px';
+        section2.style.marginBottom = '20px';
+
+        const shopLabel = document.createElement('div');
+        shopLabel.textContent = 'EQUIPMENT SHOP (50$ per unit, max 10)';
+        shopLabel.style.fontSize = '12px';
+        shopLabel.style.marginBottom = '10px';
+        shopLabel.style.opacity = '0.7';
+        section2.appendChild(shopLabel);
+
+        const abilities = [
+            { id: 'afterburner', name: '🚀 Boost' },
+            { id: 'bubble', name: '🫧 Bubble' },
+            { id: 'cloak', name: '👻 Cloak' },
+            { id: 'mine', name: '💣 Warp Mine' }
+        ];
+
+        const shopGrid = document.createElement('div');
+        shopGrid.style.display = 'grid';
+        shopGrid.style.gridTemplateColumns = '1fr 1fr';
+        shopGrid.style.gap = '8px';
+
+        abilities.forEach(ability => {
+            const btn = document.createElement('button');
+            btn.textContent = ability.name;
+            btn.style.padding = '8px';
+            btn.style.background = currentMoney >= 50 ? 'rgba(0, 200, 255, 0.2)' : '#333';
+            btn.style.border = '1px solid rgba(0, 200, 255, 0.4)';
+            btn.style.color = 'white';
+            btn.style.borderRadius = '4px';
+            btn.style.cursor = currentMoney >= 50 ? 'pointer' : 'not-allowed';
+            btn.style.fontSize = '12px';
+            btn.onclick = () => onBuyAbility(ability.id);
+            shopGrid.appendChild(btn);
         });
+        section2.appendChild(shopGrid);
 
-        const cancelButton = document.createElement('button');
-        cancelButton.textContent = 'Cancel';
-        cancelButton.style.padding = '12px 24px';
-        cancelButton.style.border = 'none';
-        cancelButton.style.borderRadius = '6px';
-        cancelButton.style.background = '#FF4444';
-        cancelButton.style.color = 'white';
-        cancelButton.style.fontSize = '14px';
-        cancelButton.style.fontWeight = 'bold';
-        cancelButton.style.cursor = 'pointer';
-        cancelButton.style.fontFamily = 'monospace';
-
-        cancelButton.addEventListener('click', () => {
+        // --- FOOTER ---
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = '❌ Close';
+        closeBtn.style.marginTop = '10px';
+        closeBtn.style.padding = '10px 30px';
+        closeBtn.style.background = '#666';
+        closeBtn.style.border = 'none';
+        closeBtn.style.color = 'white';
+        closeBtn.style.borderRadius = '6px';
+        closeBtn.style.cursor = 'pointer';
+        closeBtn.onclick = () => {
             onCancel();
-        });
-
-        const buttonContainer = document.createElement('div');
-        buttonContainer.style.display = 'flex';
-        buttonContainer.style.justifyContent = 'center';
-        buttonContainer.style.gap = '10px';
-        buttonContainer.appendChild(upgradeButton);
-        buttonContainer.appendChild(cancelButton);
+            this.closeModal();
+        };
 
         dialog.appendChild(title);
         dialog.appendChild(info);
-        dialog.appendChild(buttonContainer);
+        dialog.appendChild(section1);
+        dialog.appendChild(section2);
+        dialog.appendChild(closeBtn);
         this.modalContainer.appendChild(dialog);
         document.body.appendChild(this.modalContainer);
     }

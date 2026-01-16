@@ -85,3 +85,12 @@ graph TD
 2.  **AI**: Enemy behavior (Orbit, Chase, Attack).
 3.  **Damage Model**: Shields, Armor, Structure (like in Starsector).
 4.  **Detailed Battle Screen**: Weapon control, shields, maneuvers.
+
+## 5. Game Systems
+*   **Ability System**:
+    *   Consumables: Afterburner, Bubble, Cloak, Warp Mine.
+    *   Charges management ($50 per unit at Terra, max 10).
+    *   Ability panel with cooldowns and charge badges.
+*   **Tactical Entities**:
+    *   `WarpMine`: Proximity trigger, explosion damage, and short-stasis effect (3 damage + 5% size).
+    *   `BubbleZone`: Area-of-effect stasis field that slows ships by 90%.

@@ -206,7 +206,8 @@ export class UIManager {
         const abilities = [
             { id: 'afterburner', icon: '🚀', color: '#FF4400', title: 'Afterburner (Boost Speed)' },
             { id: 'bubble', icon: '🫧', color: '#00AAFF', title: 'Bubble (Stop Nearby)' },
-            { id: 'cloak', icon: '👻', color: '#AAAAAA', title: 'Cloak (Invisibility)' }
+            { id: 'cloak', icon: '👻', color: '#AAAAAA', title: 'Cloak (Invisibility)' },
+            { id: 'mine', icon: '💣', color: '#FF0000', title: 'Warp Mine (Proximity Trap)' }
         ];
 
         abilities.forEach(ability => {
@@ -282,8 +283,35 @@ export class UIManager {
             const overlay = this.abilityCooldowns[key];
 
             if (btn && overlay) {
-                if (a.cooldown > 0) {
-                    const perc = (1 - a.cooldown / a.cdMax) * 100;
+                // Show charges count
+                let badge = btn.querySelector('.charge-badge') as HTMLElement;
+                if (!badge) {
+                    badge = document.createElement('div');
+                    badge.className = 'charge-badge';
+                    badge.style.position = 'absolute';
+                    badge.style.top = '-5px';
+                    badge.style.right = '-5px';
+                    badge.style.background = '#FFD700';
+                    badge.style.color = 'black';
+                    badge.style.borderRadius = '50%';
+                    badge.style.width = '16px';
+                    badge.style.height = '16px';
+                    badge.style.fontSize = '10px';
+                    badge.style.fontWeight = 'bold';
+                    badge.style.display = 'flex';
+                    badge.style.alignItems = 'center';
+                    badge.style.justifyContent = 'center';
+                    badge.style.zIndex = '10';
+                    btn.appendChild(badge);
+                }
+                badge.textContent = a.charges.toString();
+                badge.style.background = a.charges > 0 ? '#FFD700' : '#666';
+
+                if (a.charges <= 0 && !a.active) {
+                    btn.style.opacity = '0.3';
+                    btn.style.cursor = 'not-allowed';
+                } else if (a.cooldown > 0) {
+                    const perc = (1 - a.cooldown / (a.cdMax || 1)) * 100;
                     overlay.style.height = `${perc}%`;
                     btn.style.opacity = '0.5';
                     btn.style.cursor = 'not-allowed';

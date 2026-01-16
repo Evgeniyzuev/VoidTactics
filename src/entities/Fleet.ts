@@ -30,11 +30,12 @@ export class Fleet extends Entity {
     public currentTarget: Fleet | null = null; // Current attack target
     public hostileTo: Set<Fleet> = new Set(); // Persistent hostility to other fleets
 
-    // Abilities State
+    // Abilities State (Player uses charges, others use cooldowns)
     public abilities = {
-        afterburner: { active: false, timer: 0, cooldown: 0, duration: 3, cdMax: 6 },
-        cloak: { active: false, timer: 0, cooldown: 0, duration: 10, cdMax: 10 },
-        bubble: { active: false, timer: 0, cooldown: 0, duration: 10, cdMax: 16 }
+        afterburner: { active: false, timer: 0, cooldown: 0, duration: 3, cdMax: 10, charges: 0 },
+        cloak: { active: false, timer: 0, cooldown: 0, duration: 10, cdMax: 12, charges: 0 },
+        bubble: { active: false, timer: 0, cooldown: 0, duration: 10, cdMax: 16, charges: 0 },
+        mine: { active: false, timer: 0, cooldown: 0, duration: 0, cdMax: 5, charges: 0 }
     };
     public isCloaked: boolean = false;
     public isBubbled: boolean = false; // Set by external bubbles
