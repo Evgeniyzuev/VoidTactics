@@ -25,7 +25,8 @@ export class Debris extends Entity {
         for (let i = 0; i < numPiles; i++) {
             const offsetX = (i - (numPiles - 1) / 2) * 3;
             const offsetY = (i % 2 === 0 ? -2 : 2);
-            const pileRadius = this.radius * (0.5 + Math.random() * 0.5);
+            // Use deterministic size based on position and index to avoid flickering
+            const pileRadius = this.radius * (0.5 + (Math.sin(this.position.x * 0.01 + i * 0.5) * 0.25 + 0.25));
 
             ctx.beginPath();
             ctx.arc(offsetX, offsetY, pileRadius, 0, Math.PI * 2);

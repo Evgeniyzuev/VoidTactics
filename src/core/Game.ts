@@ -76,6 +76,10 @@ export class Game {
     private contactDistance: number = 100; // Distance for contact dialog
     private inspectedEntity: Entity | null = null; // Entity being inspected for tooltip
 
+    // Debris collection animation
+    private isCollectingDebris: boolean = false;
+    private collectionAnimationTime: number = 0;
+
     // System management
     private currentSystemId: number = 1; // Current star system (1 = Sol, 2 = Alpha Centauri, etc.)
     private systemManager: SystemManager;
@@ -457,7 +461,7 @@ export class Game {
         // Debris pickup - only for player
         const playerFleet = this.playerFleet;
         if (playerFleet.state !== 'combat') { // Don't pick up during combat
-            const pickupRadius = 150; // Radius for debris pickup
+            const pickupRadius = 75; // Radius for debris pickup
             const pickupRate = dt * (playerFleet.strength / 10); // Units per second
             let remainingPickup = pickupRate;
 
@@ -467,11 +471,13 @@ export class Game {
                 .filter(d => d.dist <= pickupRadius)
                 .sort((a, b) => a.dist - b.dist);
 
+            let collectedAny = false;
             for (const { debris } of nearbyDebris) {
                 if (remainingPickup <= 0) break;
                 const pickupAmount = Math.min(remainingPickup, debris.value);
                 debris.value -= pickupAmount;
                 remainingPickup -= pickupAmount;
+                collectedAny = true;
 
                 // Award money to player
                 playerFleet.money += pickupAmount * 5;
@@ -485,6 +491,21 @@ export class Game {
                     if (eidx !== -1) this.entities.splice(eidx, 1);
                 }
             }
+
+            // Update collection animation
+            if (collectedAny) {
+                this.isCollectingDebris = true;
+                this.collectionAnimationTime = 0.5; // 0.5 seconds animation
+            } else if (this.collectionAnimationTime > 0) {
+                this.collectionAnimationTime -= dt;
+                if (this.collectionAnimationTime <= 0) {
+                    this.isCollectingDebris = false;
+                }
+            }
+        } else {
+            // Reset animation if in combat
+            this.isCollectingDebris = false;
+            this.collectionAnimationTime = 0;
         }
 
         // 4. Update Entities
@@ -1097,6 +1118,34 @@ export class Game {
 
         const ctx = this.renderer.getContext();
         for (const e of this.entities) e.draw(ctx, this.camera);
+
+        // Draw debris collection animation
+        if (this.isCollectingDebris) {
+            const playerPos = this.camera.worldToScreen(this.playerFleet.position);
+            const pickupRadius = 75 * this.camera.zoom; // Updated radius
+            const alpha = this.collectionAnimationTime / 0.5; // Fade out over 0.5 seconds
+            const rotationAngle = (Date.now() * 0.005) % (Math.PI * 2); // Rotating sector
+
+            ctx.save();
+            ctx.globalAlpha = alpha * 0.8;
+
+            // Rotating green sector
+            ctx.beginPath();
+            ctx.moveTo(playerPos.x, playerPos.y);
+            ctx.arc(playerPos.x, playerPos.y, pickupRadius, rotationAngle, rotationAngle + Math.PI / 3); // 60-degree sector
+            ctx.closePath();
+            ctx.fillStyle = '#00FF00'; // Green
+            ctx.fill();
+
+            // Outer ring
+            ctx.beginPath();
+            ctx.arc(playerPos.x, playerPos.y, pickupRadius, 0, Math.PI * 2);
+            ctx.strokeStyle = '#00FF00';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.restore();
+        }
 
         // Draw BubbleZones
         for (const bubble of this.bubbleZones) {
