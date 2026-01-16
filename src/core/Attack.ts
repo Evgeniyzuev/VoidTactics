@@ -81,6 +81,11 @@ export class Attack {
             this.target.strength = Math.max(0, this.target.strength - integerDamage);
             this.target.accumulatedDamage -= integerDamage;
 
+            // Spawn debris for each damage point
+            if (integerDamage > 0) {
+                this.game.spawnDebris(this.target.position.x, this.target.position.y, integerDamage);
+            }
+
             // NPC deploys bubble if conditions met (skip for asteroids)
             if (!this.attacker.isPlayer &&
                 this.attacker.abilities.bubble.cooldown <= 0 &&

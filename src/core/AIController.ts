@@ -155,6 +155,7 @@ export class AIController {
             } else if (!npc.target && !npc.followTarget || npc.velocity.mag() < 5) {
                 // Roaming
                 npc.state = 'normal';
+
                 if (Math.random() < 0.01 && celestialBodies.length > 0) {
                     let filteredPOIs = celestialBodies;
                     if (['civilian', 'military'].includes(npc.faction)) {

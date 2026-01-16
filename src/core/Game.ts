@@ -15,6 +15,7 @@ import { AIController } from './AIController';
 import { SystemManager } from './SystemManager';
 import { formatNumber } from '../utils/NumberFormatter';
 import { WarpMine } from '../entities/WarpMine';
+import { Debris } from '../entities/Debris';
 
 
 export class Game {
@@ -33,6 +34,7 @@ export class Game {
     private attacks: Attack[] = [];
     private bubbleZones: BubbleZone[] = [];
     private mines: WarpMine[] = [];
+    private debris: Debris[] = [];
 
     // Getters for AIController
     public getEntities(): Entity[] { return this.entities; }
@@ -40,7 +42,24 @@ export class Game {
     public getNpcFleets(): Fleet[] { return this.npcFleets; }
     public getAttacks(): Attack[] { return this.attacks; }
     public getBubbleZones(): BubbleZone[] { return this.bubbleZones; }
+    public getDebris(): Debris[] { return this.debris; }
     public getSystemRadius(): number { return this.SYSTEM_RADIUS; }
+
+    public spawnDebris(x: number, y: number, value: number) {
+        // Check for nearby debris to combine
+        for (const existing of this.debris) {
+            const dist = Vector2.distance(new Vector2(x, y), existing.position);
+            if (dist < 50) { // Combine if within 50 units
+                existing.value += value;
+                existing.radius = Math.max(2, Math.min(8, Math.sqrt(existing.value)));
+                return;
+            }
+        }
+        // No nearby debris, create new
+        const newDebris = new Debris(x, y, value);
+        this.debris.push(newDebris);
+        this.entities.push(newDebris);
+    }
 
     private backgroundCanvas: HTMLCanvasElement;
 
@@ -210,6 +229,7 @@ export class Game {
         this.attacks = [];
         this.bubbleZones = [];
         this.mines = [];
+        this.debris = [];
         this.isGameOver = false;
 
         // Unpause if paused
@@ -434,6 +454,39 @@ export class Game {
         this.aiController.processAI();
         this.processCombat(dt);
 
+        // Debris pickup - only for player
+        const playerFleet = this.playerFleet;
+        if (playerFleet.state !== 'combat') { // Don't pick up during combat
+            const pickupRadius = 150; // Radius for debris pickup
+            const pickupRate = dt * (playerFleet.strength / 10); // Units per second
+            let remainingPickup = pickupRate;
+
+            // Sort debris by distance for closest first
+            const nearbyDebris = this.debris
+                .map(d => ({ debris: d, dist: Vector2.distance(playerFleet.position, d.position) }))
+                .filter(d => d.dist <= pickupRadius)
+                .sort((a, b) => a.dist - b.dist);
+
+            for (const { debris } of nearbyDebris) {
+                if (remainingPickup <= 0) break;
+                const pickupAmount = Math.min(remainingPickup, debris.value);
+                debris.value -= pickupAmount;
+                remainingPickup -= pickupAmount;
+
+                // Award money to player
+                playerFleet.money += pickupAmount * 5;
+                this.ui.updateMoney(playerFleet.money);
+
+                // Remove empty debris
+                if (debris.value <= 0) {
+                    const idx = this.debris.indexOf(debris);
+                    if (idx !== -1) this.debris.splice(idx, 1);
+                    const eidx = this.entities.indexOf(debris);
+                    if (eidx !== -1) this.entities.splice(eidx, 1);
+                }
+            }
+        }
+
         // 4. Update Entities
         for (const e of this.entities) e.update(dt);
 
@@ -598,11 +651,17 @@ export class Game {
             winner.currentTarget = null;
         }
 
-        // Remove dead fleets
+        // Spawn debris for dead fleets
         const dead: Fleet[] = [];
         if (attack.attacker.strength <= 0) dead.push(attack.attacker);
         if (attack.target.strength <= 0) dead.push(attack.target);
         for (const d of dead) {
+            if (!d.isPlayer) { // Don't spawn debris for player fleet
+                const debrisValue = Math.floor(d.strength / 10);
+                if (debrisValue > 0) {
+                    this.spawnDebris(d.position.x, d.position.y, debrisValue);
+                }
+            }
             toRemove.push(d);
         }
 
@@ -743,6 +802,11 @@ export class Game {
                 showApproach = true;
                 showContact = true;
             }
+        } else if (entity instanceof Debris) {
+            const debris = entity as Debris;
+            info = `<strong>Space Debris</strong><br/>`;
+            info += `Value: ${formatNumber(debris.value)} units<br/>`;
+            info += `Pos: (${debris.position.x.toFixed(0)}, ${debris.position.y.toFixed(0)})`;
         }
 
         header.innerHTML = info;
