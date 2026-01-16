@@ -2,7 +2,7 @@ import { Entity } from './Entity';
 import { Camera } from '../renderer/Camera';
 import { Vector2 } from '../utils/Vector2';
 
-export type Faction = 'civilian' | 'pirate' | 'orc' | 'military' | 'player' | 'raider';
+export type Faction = 'civilian' | 'pirate' | 'orc' | 'military' | 'player' | 'raider' | 'trader' | 'mercenary';
 
 export class Fleet extends Entity {
     public target: Vector2 | null = null;

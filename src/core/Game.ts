@@ -44,7 +44,7 @@ export class Game {
 
     // Time Control
     private isPaused: boolean = false;
-    private timeScale: number = 1* 0.7;
+    private timeScale: number = 1 * 0.7;
     private infoTooltip: HTMLDivElement | null = null;
     private cameraFollow: boolean = true;
     private isDragging: boolean = false;
@@ -444,27 +444,27 @@ export class Game {
             } else {
                 const dist = Vector2.distance(this.playerFleet.position, this.playerFleet.followTarget.position);
 
-        if (this.playerFleet.followMode === 'contact') {
+                if (this.playerFleet.followMode === 'contact') {
                     const triggerDist = this.playerFleet.followTarget instanceof CelestialBody ?
                         (this.playerFleet.followTarget as CelestialBody).radius + 10 :
                         this.playerFleet.followTarget instanceof WarpGate ?
                             (this.playerFleet.followTarget as WarpGate).radius + 10 :
                             this.contactDistance;
 
-        if (dist <= triggerDist) {
-            if (this.playerFleet.followTarget instanceof CelestialBody) {
-                const body = this.playerFleet.followTarget as CelestialBody;
-                if (body.name === 'Terra') {
-                    this.showTerraUpgradeDialog();
-                } else if (body.name === 'Centauri Prime' && body.isLiberated && !body.rewardCollected) {
-                    this.showLiberationRewardDialog(body);
-                } else if (body.name === 'Asteroid') {
-                    // Show mining dialog for asteroids
-                    this.initiateMining(body);
-                } else {
-                    this.showArrivalDialog(body.name);
-                }
-                this.playerFleet.stopFollowing();
+                    if (dist <= triggerDist) {
+                        if (this.playerFleet.followTarget instanceof CelestialBody) {
+                            const body = this.playerFleet.followTarget as CelestialBody;
+                            if (body.name === 'Terra') {
+                                this.showTerraUpgradeDialog();
+                            } else if (body.name === 'Centauri Prime' && body.isLiberated && !body.rewardCollected) {
+                                this.showLiberationRewardDialog(body);
+                            } else if (body.name === 'Asteroid') {
+                                // Show mining dialog for asteroids
+                                this.initiateMining(body);
+                            } else {
+                                this.showArrivalDialog(body.name);
+                            }
+                            this.playerFleet.stopFollowing();
                         } else if (this.playerFleet.followTarget instanceof WarpGate) {
                             const gate = this.playerFleet.followTarget as WarpGate;
                             this.warpToSystem(gate.targetSystemId);
@@ -697,7 +697,9 @@ export class Game {
                 'pirate': 'Pirate',
                 'orc': 'Orc',
                 'military': 'Military',
-                'raider': 'Raider'
+                'raider': 'Raider',
+                'trader': 'Trader',
+                'mercenary': 'Mercenary'
             };
 
             const dist = Vector2.distance(fleet.position, this.playerFleet.position);
@@ -854,7 +856,7 @@ export class Game {
                     console.log('Cannot initiate attack - one fleet is already attacking');
                 }
 
-                this.modal.showBattleScreen(() => {});
+                this.modal.showBattleScreen(() => { });
                 this.modal.closeModal();
                 if (this.isPaused) this.togglePause();
             },
@@ -897,7 +899,7 @@ export class Game {
         this.playerFleet.isMining = true;
         this.playerFleet.miningTarget = asteroid;
         asteroid.isMiningTarget = true;
-        
+
         // Create mining "attack" - this will handle the money generation
         const miningAttack = new Attack(this.playerFleet, asteroid, this);
         this.attacks.push(miningAttack);
@@ -922,11 +924,11 @@ export class Game {
                     this.playerFleet.money -= upgradeAmount * 100;
                     this.ui.updateMoney(this.playerFleet.money);
                     console.log('Fleet upgraded by', upgradeAmount, 'to strength:', this.playerFleet.strength);
-                    
+
                     // Trigger autosave after upgrade
                     SaveSystem.saveAutosaveFleetSize(this.playerFleet.strength);
                     console.log('Autosave created with fleet strength:', this.playerFleet.strength);
-                    
+
                     // Update dialog with new values
                     this.showTerraUpgradeDialog();
                 }

@@ -35,10 +35,12 @@ export class SystemManager {
             spawnRules: {
                 targetFleetCount: 60,
                 factionWeights: [
-                    { type: 'civilian', weight: 0.40 },
-                    { type: 'pirate', weight: 0.25 },
-                    { type: 'orc', weight: 0.18 },
-                    { type: 'military', weight: 0.15 },
+                    { type: 'civilian', weight: 0.30 },
+                    { type: 'trader', weight: 0.12 },
+                    { type: 'mercenary', weight: 0.08 },
+                    { type: 'pirate', weight: 0.20 },
+                    { type: 'orc', weight: 0.15 },
+                    { type: 'military', weight: 0.13 },
                     { type: 'raider', weight: 0.02 }
                 ],
                 strengthMin: 5,
@@ -55,10 +57,11 @@ export class SystemManager {
                 targetFleetCount: 50, // Can have more fleets
                 factionWeights: [
                     { type: 'raider', weight: 0.5 },
-                    { type: 'civilian', weight: 0.237 },
-                    { type: 'pirate', weight: 0.105 },
-                    { type: 'orc', weight: 0.079 },
-                    { type: 'military', weight: 0.079 }
+                    { type: 'mercenary', weight: 0.15 },
+                    { type: 'civilian', weight: 0.137 },
+                    { type: 'pirate', weight: 0.085 },
+                    { type: 'orc', weight: 0.054 },
+                    { type: 'military', weight: 0.074 }
                 ],
                 strengthMin: 100,
                 strengthMax: 300,
@@ -235,7 +238,9 @@ export class SystemManager {
             'pirate': 0,
             'orc': 0,
             'military': 0,
-            'raider': 0
+            'raider': 0,
+            'trader': 0,
+            'mercenary': 0
         };
 
         for (const fleet of fleets) {
@@ -257,7 +262,7 @@ export class SystemManager {
         }
 
         const counts = this.countFleetsByFaction(fleets);
-        
+
         if (faction === 'civilian') {
             const civilianPercentage = (counts.civilian / totalFleets) * 100;
             return civilianPercentage <= 40;
@@ -290,7 +295,7 @@ export class SystemManager {
             while (attempts < maxAttempts) {
                 let rand = Math.random();
                 selectedFaction = 'civilian'; // default fallback
-                
+
                 for (const factionWeight of rules.factionWeights) {
                     if (rand < factionWeight.weight) {
                         selectedFaction = factionWeight.type;
@@ -325,7 +330,9 @@ export class SystemManager {
             'pirate': '#FF4444',
             'orc': '#9370DB',
             'military': '#FFFF00',
-            'raider': '#888888'
+            'raider': '#888888',
+            'trader': '#00FFFF',
+            'mercenary': '#FF8C00'
         };
 
         // Generate random position
@@ -359,7 +366,12 @@ export class SystemManager {
 
             // Apply variance and clamp to system limits
             const variance = 0.6 + Math.random() * 0.7;
-            npc.strength = Math.max(rules.strengthMin, Math.min(rules.strengthMax, Math.round(baseS * variance)));
+            let finalStrength = Math.max(rules.strengthMin, Math.min(rules.strengthMax, Math.round(baseS * variance)));
+
+            // Traders are bulkier
+            if (selectedFaction === 'trader') finalStrength *= 2.5;
+
+            npc.strength = finalStrength;
         }
 
         // Give initial target to roam
