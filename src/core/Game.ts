@@ -460,7 +460,7 @@ export class Game {
 
         // Debris pickup - only for player
         const playerFleet = this.playerFleet;
-        if (playerFleet.state !== 'combat') { // Don't pick up during combat
+        if (playerFleet.state !== 'combat' && playerFleet.velocity.mag() < 10) { // Don't pick up during combat or when moving fast
             const pickupRadius = 75; // Radius for debris pickup
             const pickupRate = dt * (playerFleet.strength / 10); // Units per second
             let remainingPickup = pickupRate;
@@ -677,12 +677,10 @@ export class Game {
         if (attack.attacker.strength <= 0) dead.push(attack.attacker);
         if (attack.target.strength <= 0) dead.push(attack.target);
         for (const d of dead) {
-            if (!d.isPlayer) { // Don't spawn debris for player fleet
-                const debrisValue = Math.floor(d.strength / 10);
+                const debrisValue = Math.floor(d.strength / 20); // Reduced by half
                 if (debrisValue > 0) {
                     this.spawnDebris(d.position.x, d.position.y, debrisValue);
                 }
-            }
             toRemove.push(d);
         }
 
