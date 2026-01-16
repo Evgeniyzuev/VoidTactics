@@ -335,7 +335,7 @@ export class UIManager {
     public updateMoney(money: number) {
         const moneyDisplay = document.getElementById('money-display');
         if (moneyDisplay) {
-            moneyDisplay.textContent = `$: ${formatNumber(money)}`;
+            moneyDisplay.textContent = `$: ${formatNumber(Math.floor(money))}`;
         }
     }
 

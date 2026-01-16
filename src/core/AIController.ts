@@ -157,11 +157,17 @@ export class AIController {
                 npc.state = 'normal';
                 if (Math.random() < 0.01 && celestialBodies.length > 0) {
                     let filteredPOIs = celestialBodies;
-                    if (['civilian', 'military', 'trader'].includes(npc.faction)) {
+                    if (['civilian', 'military'].includes(npc.faction)) {
                         filteredPOIs = celestialBodies
                             .filter(b => !b.name.includes('Asteroid') && !b.name.includes('Alpha'))
                             .sort((a, b) => a.position.mag() - b.position.mag())
                             .slice(0, 4);
+                    } else if (npc.faction === 'trader') {
+                        // Traders only move between major hubs
+                        filteredPOIs = celestialBodies
+                            .filter(b => !b.name.includes('Asteroid') && !b.name.includes('Alpha') && !b.name.includes('Outpost'))
+                            .sort((a, b) => a.position.mag() - b.position.mag())
+                            .slice(0, 2);
                     } else if (['pirate', 'orc', 'raider'].includes(npc.faction)) {
                         filteredPOIs = celestialBodies.filter(b => b.name.includes('Asteroid') || b.name.includes('Alpha') || b.isStar);
                     }
@@ -171,8 +177,10 @@ export class AIController {
                     const poi = filteredPOIs[Math.floor(Math.random() * filteredPOIs.length)];
                     const offset = new Vector2((Math.random() - 0.5) * 400, (Math.random() - 0.5) * 400);
                     npc.setTarget(poi.position.add(offset));
-                    if (npc.faction === 'civilian' || npc.faction === 'trader') {
+                    if (npc.faction === 'civilian') {
                         npc.civilianStopTimer = 2 + Math.random() * 4;
+                    } else if (npc.faction === 'trader') {
+                        npc.civilianStopTimer = 10 + Math.random() * 10;
                     }
                     npc.decisionTimer = 5.0;
                 }

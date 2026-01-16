@@ -141,6 +141,11 @@ export class Fleet extends Entity {
             }
         }
 
+        // Trader speed penalty (Heavy Cargo)
+        if (this.faction === 'trader') {
+            currentMaxSpeed *= 0.3;
+        }
+
         // Combat speed limit: if under attack, speed cannot exceed 90% of base max
         if (this.currentTarget) {
             const baseMaxSpeed = this.maxSpeed;

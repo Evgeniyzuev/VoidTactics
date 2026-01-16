@@ -8,7 +8,7 @@ This document describes the advanced faction system in VoidTactics, designed to 
 |---------|-------|------|------------|------------------|
 | **Player** | Blue | Freelancer | N/A | Can choose to be a hero, pirate, or trader. |
 | **Civilian** | Green | Transporter | Very Low | Moves between planets. Flees easily. Often travels in pairs. |
-| **Trader** | Cyan | Economy Hub | Low | Heavily armored, carries large amounts of credits. Usually has an escort. |
+| **Trader** | Goldenrod | Heavy Transporter | Low | **Heavy Cargo**: Moves 70% slower. Stays longer at hubs. Hub-to-hub only. |
 | **Military** | Yellow | Peacekeeper | High (vs Threats) | **Call for Backup**: Allies converge to help. Never flees if allies are fighting. |
 | **Mercenary** | Orange | Bounty Hunter | Medium | Hunts Pirates and Orcs. Neutral to others unless paid/provoked. |
 | **Pirate** | Red | Scavenger | High | Attacks traders and weak civilians. Hits and runs. |

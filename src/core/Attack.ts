@@ -50,9 +50,9 @@ export class Attack {
             // Asteroid mining logic - 100x increased rate
             const miningRate = this.attacker.strength * 0.1; // $ per second (100x increase)
             const moneyGained = miningRate * dt;
-            
+
             this.attacker.money += moneyGained;
-            
+
             // Update mining progress (optional visual feedback)
             if (this.target.miningYield > 0) {
                 this.target.miningProgress += dt * miningRate;
@@ -61,25 +61,25 @@ export class Attack {
                     this.finished = true;
                 }
             }
-            
+
             return; // Skip normal combat logic for asteroids
         }
 
         // Normal combat logic for fleet vs fleet
-        // Attacker deals damage to target
-        const damage = this.attacker.strength * 0.01 * 10 * dt;
+        // Attacker deals damage to target (halved to make battles 2x longer)
+        const damage = this.attacker.strength * 0.05 * dt;
         this.target.accumulatedDamage += damage;
 
-        // Apply integer damage
+        // Player gets money per fractional damage dealt (continuous feedback)
+        if (this.attacker.isPlayer) {
+            this.attacker.money += damage * 50;
+        }
+
+        // Apply integer damage to strength
         const integerDamage = Math.floor(this.target.accumulatedDamage);
         if (integerDamage > 0) {
             this.target.strength = Math.max(0, this.target.strength - integerDamage);
             this.target.accumulatedDamage -= integerDamage;
-
-            // Player gets money per integer damage dealt
-            if (this.attacker.isPlayer) {
-                this.attacker.money = Math.floor(this.attacker.money + integerDamage * 50);
-            }
 
             // NPC deploys bubble if conditions met (skip for asteroids)
             if (!this.attacker.isPlayer &&

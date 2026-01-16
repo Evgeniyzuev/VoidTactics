@@ -36,12 +36,12 @@ export class SystemManager {
                 targetFleetCount: 60,
                 factionWeights: [
                     { type: 'civilian', weight: 0.30 },
-                    { type: 'trader', weight: 0.12 },
-                    { type: 'mercenary', weight: 0.08 },
-                    { type: 'pirate', weight: 0.20 },
-                    { type: 'orc', weight: 0.15 },
-                    { type: 'military', weight: 0.13 },
-                    { type: 'raider', weight: 0.02 }
+                    { type: 'trader', weight: 0.05 },
+                    { type: 'mercenary', weight: 0.05 },
+                    { type: 'pirate', weight: 0.25 },
+                    { type: 'orc', weight: 0.20 },
+                    { type: 'military', weight: 0.10 },
+                    { type: 'raider', weight: 0.05 }
                 ],
                 strengthMin: 5,
                 strengthMax: 1000
@@ -331,7 +331,7 @@ export class SystemManager {
             'orc': '#9370DB',
             'military': '#FFFF00',
             'raider': '#888888',
-            'trader': '#00FFFF',
+            'trader': '#DAA520',
             'mercenary': '#FF8C00'
         };
 
