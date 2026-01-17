@@ -458,9 +458,12 @@ export class Game {
         this.aiController.processAI();
         this.processCombat(dt);
 
-        // Debris pickup - only for player
+        // Debris pickup - player and NPCs
+
+        // Player collection (with animation)
         const playerFleet = this.playerFleet;
-        if (playerFleet.state !== 'combat' && playerFleet.velocity.mag() < 10) { // Don't pick up during combat or when moving fast
+        let playerCollectedAny = false;
+        if (playerFleet.state !== 'combat' && playerFleet.velocity.mag() < 20) { // Don't pick up during combat or when moving fast
             const pickupRadius = 75; // Radius for debris pickup
             const pickupRate = dt * (playerFleet.strength / 10); // Units per second
             let remainingPickup = pickupRate;
@@ -471,13 +474,12 @@ export class Game {
                 .filter(d => d.dist <= pickupRadius)
                 .sort((a, b) => a.dist - b.dist);
 
-            let collectedAny = false;
             for (const { debris } of nearbyDebris) {
                 if (remainingPickup <= 0) break;
                 const pickupAmount = Math.min(remainingPickup, debris.value);
                 debris.value -= pickupAmount;
                 remainingPickup -= pickupAmount;
-                collectedAny = true;
+                playerCollectedAny = true;
 
                 // Award money to player
                 playerFleet.money += pickupAmount * 5;
@@ -491,21 +493,53 @@ export class Game {
                     if (eidx !== -1) this.entities.splice(eidx, 1);
                 }
             }
+        }
 
-            // Update collection animation
-            if (collectedAny) {
-                this.isCollectingDebris = true;
-                this.collectionAnimationTime = 0.5; // 0.5 seconds animation
-            } else if (this.collectionAnimationTime > 0) {
-                this.collectionAnimationTime -= dt;
-                if (this.collectionAnimationTime <= 0) {
-                    this.isCollectingDebris = false;
-                }
+        // Update collection animation for player
+        if (playerCollectedAny) {
+            this.isCollectingDebris = true;
+            this.collectionAnimationTime = 0.5; // 0.5 seconds animation
+        } else if (this.collectionAnimationTime > 0) {
+            this.collectionAnimationTime -= dt;
+            if (this.collectionAnimationTime <= 0) {
+                this.isCollectingDebris = false;
             }
         } else {
             // Reset animation if in combat
             this.isCollectingDebris = false;
             this.collectionAnimationTime = 0;
+        }
+
+        // NPC debris collection - all NPCs collect at any speed
+        for (const npc of this.npcFleets) {
+            if (npc.state !== 'combat') { // Only condition is not being in combat
+                const pickupRadius = 75; // Same radius as player
+                const pickupRate = dt * (npc.strength / 10); // Same collection rate as player
+                let remainingPickup = pickupRate;
+
+                // Sort debris by distance for closest first
+                const nearbyDebris = this.debris
+                    .map(d => ({ debris: d, dist: Vector2.distance(npc.position, d.position) }))
+                    .filter(d => d.dist <= pickupRadius)
+                    .sort((a, b) => a.dist - b.dist);
+
+                for (const { debris } of nearbyDebris) {
+                    if (remainingPickup <= 0) break;
+                    const pickupAmount = Math.min(remainingPickup, debris.value);
+                    debris.value -= pickupAmount;
+                    remainingPickup -= pickupAmount;
+
+                    // NPCs don't get money from debris (unlike player)
+
+                    // Remove empty debris
+                    if (debris.value <= 0) {
+                        const idx = this.debris.indexOf(debris);
+                        if (idx !== -1) this.debris.splice(idx, 1);
+                        const eidx = this.entities.indexOf(debris);
+                        if (eidx !== -1) this.entities.splice(eidx, 1);
+                    }
+                }
+            }
         }
 
         // 4. Update Entities

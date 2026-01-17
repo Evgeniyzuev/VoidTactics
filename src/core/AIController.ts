@@ -92,8 +92,8 @@ export class AIController {
 
                     // Threat Evaluation
                     if (hostileBtoA) {
-                        // Civilians and Traders are easily spooked
-                        const fearFactor = (npc.faction === 'civilian' || npc.faction === 'trader') ? 0.5 : 1.2;
+                        // Civilians are easily spooked, Traders only flee from stronger opponents
+                        const fearFactor = npc.faction === 'civilian' ? 0.5 : (npc.faction === 'trader' ? 1.0 : 1.2);
                         if (other.strength > npc.strength * fearFactor) {
                             if (dist < minDistThreat) {
                                 minDistThreat = dist;
@@ -153,10 +153,27 @@ export class AIController {
                 npc.state = 'normal';
                 npc.decisionTimer = 0.5 + Math.random();
             } else if (!npc.target && !npc.followTarget || npc.velocity.mag() < 5) {
-                // Roaming
+                // Roaming - check for debris first
                 npc.state = 'normal';
 
-                if (Math.random() < 0.01 && celestialBodies.length > 0) {
+                // Traders always seek debris, pirates and civilians seek when safe
+                let foundDebris = false;
+                if (npc.faction === 'trader' ||
+                    (['pirate', 'civilian'].includes(npc.faction) && minDistThreat > 1000)) { // Traders always, others when safe
+                    const nearbyDebris = this.game.getDebris()
+                        .filter((d: any) => Vector2.distance(npc.position, d.position) < (npc.faction === 'trader' ? 1500 : 1200)) // Traders have longer range
+                        .sort((a: any, b: any) => Vector2.distance(npc.position, a.position) - Vector2.distance(npc.position, b.position));
+
+                    if (nearbyDebris.length > 0) {
+                        const targetDebris = nearbyDebris[0];
+                        npc.setFollowTarget(targetDebris, 'approach');
+                        foundDebris = true;
+                        npc.decisionTimer = npc.faction === 'trader' ? 6.0 : 4.0; // Traders stay longer
+                    }
+                }
+
+                // If no debris found, roam normally
+                if (!foundDebris && Math.random() < 0.01 && celestialBodies.length > 0) {
                     let filteredPOIs = celestialBodies;
                     if (['civilian', 'military'].includes(npc.faction)) {
                         filteredPOIs = celestialBodies
@@ -164,7 +181,7 @@ export class AIController {
                             .sort((a, b) => a.position.mag() - b.position.mag())
                             .slice(0, 4);
                     } else if (npc.faction === 'trader') {
-                        // Traders only move between major hubs
+                        // Traders prioritize debris over planets now, but still roam if no debris
                         filteredPOIs = celestialBodies
                             .filter(b => !b.name.includes('Asteroid') && !b.name.includes('Alpha') && !b.name.includes('Outpost'))
                             .sort((a, b) => a.position.mag() - b.position.mag())
