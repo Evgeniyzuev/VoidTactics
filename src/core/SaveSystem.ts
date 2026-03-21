@@ -17,6 +17,14 @@ export interface PlayerProgressSave {
     nextLevelThreshold: number;
 }
 
+export interface AbilityChargesSave {
+    afterburner: number;
+    cloak: number;
+    bubble: number;
+    mine: number;
+    medkit: number;
+}
+
 export interface GameSaveData {
     player: SavedFleetState;
     npcs: SavedFleetState[];
@@ -39,6 +47,8 @@ export class SaveSystem {
         localStorage.removeItem('vt_autosave_fleet_size');
         localStorage.removeItem('vt_fleet_progress');
         localStorage.removeItem('vt_autosave_fleet_progress');
+        localStorage.removeItem('vt_fleet_ability_charges');
+        localStorage.removeItem('vt_autosave_fleet_ability_charges');
     }
 
     static saveFleetSize(size: number) {
@@ -59,6 +69,15 @@ export class SaveSystem {
         return val ? (JSON.parse(val) as PlayerProgressSave) : null;
     }
 
+    static saveFleetAbilityCharges(charges: AbilityChargesSave) {
+        localStorage.setItem('vt_fleet_ability_charges', JSON.stringify(charges));
+    }
+
+    static loadFleetAbilityCharges(): AbilityChargesSave | null {
+        const val = localStorage.getItem('vt_fleet_ability_charges');
+        return val ? (JSON.parse(val) as AbilityChargesSave) : null;
+    }
+
     static saveAutosaveFleetSize(size: number) {
         localStorage.setItem('vt_autosave_fleet_size', size.toString());
     }
@@ -77,8 +96,18 @@ export class SaveSystem {
         return val ? (JSON.parse(val) as PlayerProgressSave) : null;
     }
 
+    static saveAutosaveFleetAbilityCharges(charges: AbilityChargesSave) {
+        localStorage.setItem('vt_autosave_fleet_ability_charges', JSON.stringify(charges));
+    }
+
+    static loadAutosaveFleetAbilityCharges(): AbilityChargesSave | null {
+        const val = localStorage.getItem('vt_autosave_fleet_ability_charges');
+        return val ? (JSON.parse(val) as AbilityChargesSave) : null;
+    }
+
     static clearAutosave() {
         localStorage.removeItem('vt_autosave_fleet_size');
         localStorage.removeItem('vt_autosave_fleet_progress');
+        localStorage.removeItem('vt_autosave_fleet_ability_charges');
     }
 }

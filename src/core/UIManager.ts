@@ -17,6 +17,7 @@ export class UIManager {
     private abilityButtons: Record<string, HTMLButtonElement> = {};
     private abilityCooldowns: Record<string, HTMLElement> = {};
     private levelDisplay!: HTMLElement;
+    private chargesSummary!: HTMLElement;
 
     constructor(
         containerId: string,
@@ -175,6 +176,7 @@ export class UIManager {
         panel.style.display = 'flex';
         panel.style.gap = '8px';
         panel.style.alignItems = 'center';
+        panel.style.flexWrap = 'wrap';
         panel.style.padding = '6px 12px';
         panel.style.background = 'rgba(0, 0, 0, 0.6)';
         panel.style.backdropFilter = 'blur(10px)';
@@ -283,6 +285,17 @@ export class UIManager {
             panel.appendChild(btn);
         });
 
+        const chargesSummary = document.createElement('div');
+        chargesSummary.id = 'ability-charges-summary';
+        chargesSummary.style.width = '100%';
+        chargesSummary.style.textAlign = 'center';
+        chargesSummary.style.marginTop = '4px';
+        chargesSummary.style.fontSize = '11px';
+        chargesSummary.style.color = '#AAAAAA';
+        chargesSummary.style.fontFamily = 'monospace';
+        panel.appendChild(chargesSummary);
+        this.chargesSummary = chargesSummary;
+
         panel.addEventListener('click', (e) => e.stopPropagation());
         panel.addEventListener('pointerdown', (e) => e.stopPropagation());
 
@@ -343,6 +356,24 @@ export class UIManager {
                     btn.style.boxShadow = 'none';
                 }
             }
+        }
+
+        if (this.chargesSummary) {
+            const labels: Record<string, string> = {
+                afterburner: 'Boost',
+                bubble: 'Bubble',
+                cloak: 'Cloak',
+                mine: 'Mine',
+                medkit: 'Medkit'
+            };
+            const parts: string[] = [];
+            for (const key in fleet.abilities) {
+                const a = fleet.abilities[key];
+                if (labels[key] !== undefined) {
+                    parts.push(`${labels[key]} ${a.charges}`);
+                }
+            }
+            this.chargesSummary.textContent = parts.join(' · ');
         }
     }
 
