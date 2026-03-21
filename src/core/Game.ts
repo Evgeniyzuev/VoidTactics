@@ -113,7 +113,7 @@ export class Game {
         });
 
         this.refreshDifficultyMultiplier();
-        this.updateExperienceDisplay();
+        this.updateLevelDisplay();
 
         // Setup Modal Manager
         this.modal = new ModalManager();
@@ -364,7 +364,7 @@ export class Game {
             this.ui.updateAbilities(this.playerFleet);
             this.ui.updateMoney(this.playerFleet.money);
             this.ui.updateStrength(this.playerFleet.strength);
-            this.updateExperienceDisplay();
+            this.updateLevelDisplay();
         }
         this.draw();
 
@@ -375,34 +375,41 @@ export class Game {
 
     private refreshDifficultyMultiplier() {
         if (!this.playerFleet) return;
-        const extra = Math.min(5, this.playerFleet.totalExperience / 500);
+        const extra = Math.min(5, (this.playerFleet.level - 1) * 0.25);
         this.difficultyMultiplier = 1 + extra;
     }
 
-    private updateExperienceDisplay() {
+    private updateLevelDisplay() {
         if (!this.ui || !this.playerFleet) return;
-        this.ui.updateExperience(
-            this.playerFleet.level,
-            this.playerFleet.xp,
-            this.playerFleet.xpToNextLevel,
-            this.playerFleet.upgradePoints,
-            this.playerFleet.totalExperience,
-            this.difficultyMultiplier
-        );
+        const progress = Math.max(0, Math.min(
+            this.playerFleet.totalMoneyEarned - this.playerFleet.levelThreshold,
+            this.playerFleet.nextLevelThreshold - this.playerFleet.levelThreshold
+        ));
+        const needed = Math.max(1, this.playerFleet.nextLevelThreshold - this.playerFleet.levelThreshold);
+        this.ui.updateLevel(this.playerFleet.level, progress, needed, this.difficultyMultiplier);
     }
 
-    private grantExperienceForKill(victim: Fleet) {
-        if (!this.playerFleet || victim === this.playerFleet) return;
+    private checkLevelUp() {
+        if (!this.playerFleet) return;
 
-        const xpGain = Math.max(5, Math.round(victim.sizeMultiplier * 15));
-        const leveledUp = this.playerFleet.gainExperience(xpGain);
-        this.refreshDifficultyMultiplier();
-        this.updateExperienceDisplay();
-
-        console.log(`Gained ${xpGain} XP (Total ${this.playerFleet.totalExperience})`);
-        if (leveledUp) {
-            console.log(`Level up! Now level ${this.playerFleet.level} with ${this.playerFleet.upgradePoints} upgrade point(s)`);
+        let leveled = false;
+        while (this.playerFleet.totalMoneyEarned >= this.playerFleet.nextLevelThreshold) {
+            this.playerFleet.level++;
+            this.playerFleet.levelThreshold = this.playerFleet.nextLevelThreshold;
+            this.playerFleet.nextLevelThreshold = Math.round(this.playerFleet.nextLevelThreshold * 1.5);
+            leveled = true;
+            console.log(`Level ${this.playerFleet.level} reached (earned ${formatNumber(this.playerFleet.totalMoneyEarned)})`);
         }
+        this.refreshDifficultyMultiplier();
+        this.updateLevelDisplay();
+    }
+
+    public awardPlayerMoney(amount: number) {
+        if (!this.playerFleet || amount <= 0) return;
+        this.playerFleet.money += amount;
+        this.playerFleet.totalMoneyEarned += amount;
+        this.checkLevelUp();
+        this.ui.updateMoney(this.playerFleet.money);
     }
 
     private update(dt: number) {
@@ -520,8 +527,7 @@ export class Game {
                 playerCollectedAny = true;
 
                 // Award money to player
-                playerFleet.money += pickupAmount * 5;
-                this.ui.updateMoney(playerFleet.money);
+                this.awardPlayerMoney(pickupAmount * 5);
 
                 // Remove empty debris
                 if (debris.value <= 0) {
@@ -742,10 +748,6 @@ export class Game {
         for (const winner of winners) {
             winner.state = 'normal';
             winner.currentTarget = null;
-        }
-
-        if (attack.attacker.isPlayer && attack.target.strength <= 0) {
-            this.grantExperienceForKill(attack.target);
         }
 
         // Spawn debris for dead fleets
@@ -1091,18 +1093,14 @@ export class Game {
             this.togglePause();
         }
 
-        const xpInfo = {
-            level: this.playerFleet.level,
-            xp: this.playerFleet.xp,
-            xpToNextLevel: this.playerFleet.xpToNextLevel,
-            upgradePoints: this.playerFleet.upgradePoints,
-            totalExperience: this.playerFleet.totalExperience
-        };
+        const levelProgress = Math.max(0, this.playerFleet.totalMoneyEarned - this.playerFleet.levelThreshold);
+        const levelNeeded = Math.max(1, this.playerFleet.nextLevelThreshold - this.playerFleet.levelThreshold);
+        const levelInfo = `Level ${this.playerFleet.level} (${formatNumber(levelProgress)}/${formatNumber(levelNeeded)} this level)`;
 
         this.modal.showTerraUpgradeDialog(
             this.playerFleet.strength,
             this.playerFleet.money,
-            xpInfo,
+            levelInfo,
             () => {
                 // Upgrade logic
                 const upgradeAmount = Math.floor(this.playerFleet.money / 100);
@@ -1138,23 +1136,7 @@ export class Game {
                     this.showTerraUpgradeDialog();
                 }
             },
-            () => {
-                this.applyXpUpgrade();
-            }
         );
-    }
-
-    private applyXpUpgrade() {
-        if (!this.playerFleet) return;
-        if (!this.playerFleet.spendUpgradePoint()) return;
-        const boost = 15;
-        this.playerFleet.strength += boost;
-        this.ui.updateStrength(this.playerFleet.strength);
-        this.updateExperienceDisplay();
-        console.log(`Spent 1 XP upgrade point for +${boost} strength`);
-
-        // Refresh dialog to show remaining points
-        this.showTerraUpgradeDialog();
     }
 
     private showArrivalDialog(name: string) {
@@ -1184,10 +1166,9 @@ export class Game {
             () => {
                 // Collect reward
                 this.playerFleet.strength += 100;
-                this.playerFleet.money += 5000;
+                this.awardPlayerMoney(5000);
                 body.rewardCollected = true;
                 body.pulsing = false; // Stop pulsing after collection
-                this.ui.updateMoney(this.playerFleet.money);
                 this.ui.updateStrength(this.playerFleet.strength);
                 console.log('Liberation reward collected: +100 strength, +$5000');
                 this.modal.closeModal();

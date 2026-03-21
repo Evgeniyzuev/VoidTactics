@@ -51,7 +51,9 @@ export class Attack {
             const miningRate = this.attacker.strength * 0.1; // $ per second (100x increase)
             const moneyGained = miningRate * dt;
 
-            this.attacker.money += moneyGained;
+            if (this.attacker.isPlayer) {
+                this.game.awardPlayerMoney(moneyGained);
+            }
 
             // Update mining progress (optional visual feedback)
             if (this.target.miningYield > 0) {
@@ -72,7 +74,7 @@ export class Attack {
 
         // Player gets money per fractional damage dealt (continuous feedback)
         if (this.attacker.isPlayer) {
-            this.attacker.money += damage * 50;
+            this.game.awardPlayerMoney(damage * 50);
         }
 
         // Apply integer damage to strength

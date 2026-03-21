@@ -16,7 +16,7 @@ export class UIManager {
 
     private abilityButtons: Record<string, HTMLButtonElement> = {};
     private abilityCooldowns: Record<string, HTMLElement> = {};
-    private xpDisplay!: HTMLElement;
+    private levelDisplay!: HTMLElement;
 
     constructor(
         containerId: string,
@@ -204,16 +204,16 @@ export class UIManager {
         moneyDisplay.textContent = '$: 0';
         panel.appendChild(moneyDisplay);
 
-        const xpDisplay = document.createElement('div');
-        xpDisplay.id = 'xp-display';
-        xpDisplay.className = 'resource-display';
-        xpDisplay.style.color = '#54C7FF';
-        xpDisplay.style.fontSize = '14px';
-        xpDisplay.style.fontWeight = 'bold';
-        xpDisplay.style.fontFamily = 'monospace';
-        xpDisplay.textContent = 'Lv 1 · XP 0/100 · Points 0 · Diff x1.00';
-        panel.appendChild(xpDisplay);
-        this.xpDisplay = xpDisplay;
+        const levelDisplay = document.createElement('div');
+        levelDisplay.id = 'level-display';
+        levelDisplay.className = 'resource-display';
+        levelDisplay.style.color = '#54C7FF';
+        levelDisplay.style.fontSize = '14px';
+        levelDisplay.style.fontWeight = 'bold';
+        levelDisplay.style.fontFamily = 'monospace';
+        levelDisplay.textContent = 'Lv 1 · $0/1000 until next · Diff x1.00';
+        panel.appendChild(levelDisplay);
+        this.levelDisplay = levelDisplay;
 
         const abilities = [
             { id: 'afterburner', icon: '🚀', color: '#FF4400', title: 'Afterburner (Boost Speed)' },
@@ -386,10 +386,10 @@ export class UIManager {
         }
     }
 
-    public updateExperience(level: number, xp: number, xpToNext: number, upgradePoints: number, totalExperience: number, difficultyMultiplier: number) {
-        if (!this.xpDisplay) return;
-        const xpNum = Math.floor(xp);
-        this.xpDisplay.textContent = `Lv ${level} · XP ${xpNum}/${formatNumber(xpToNext)} · Points ${upgradePoints} · Diff x${difficultyMultiplier.toFixed(2)}`;
-        this.xpDisplay.title = `Total XP: ${formatNumber(Math.floor(totalExperience))}`;
+    public updateLevel(level: number, progress: number, needed: number, difficultyMultiplier: number) {
+        if (!this.levelDisplay) return;
+        const prog = Math.floor(progress);
+        this.levelDisplay.textContent = `Lv ${level} · $${formatNumber(prog)}/${formatNumber(needed)} until next · Diff x${difficultyMultiplier.toFixed(2)}`;
+        this.levelDisplay.title = `Level ${level}: ${formatNumber(prog)} / ${formatNumber(needed)} this tier`;
     }
 }

@@ -540,11 +540,10 @@ export class ModalManager {
     showTerraUpgradeDialog(
         currentStrength: number,
         currentMoney: number,
-        xpInfo: { level: number; xp: number; xpToNextLevel: number; upgradePoints: number; totalExperience: number },
+        levelInfo: string,
         onUpgrade: () => void,
         onCancel: () => void,
-        onBuyAbility: (id: string) => void,
-        onSpendExperienceUpgrade: () => void
+        onBuyAbility: (id: string) => void
     ) {
         this.closeModal();
 
@@ -579,40 +578,15 @@ export class ModalManager {
 
         const info = document.createElement('p');
         info.textContent = `Fleet Strength: ${formatNumber(currentStrength)} | Money: $${formatNumber(currentMoney)}`;
-        info.style.margin = '0 0 20px 0';
+        info.style.margin = '0 0 10px 0';
         info.style.fontSize = '14px';
         info.style.color = '#FFD700';
 
-        const xpSection = document.createElement('div');
-        xpSection.style.background = 'rgba(255, 255, 255, 0.05)';
-        xpSection.style.padding = '15px';
-        xpSection.style.borderRadius = '8px';
-        xpSection.style.marginBottom = '20px';
-
-        const xpLabel = document.createElement('div');
-        xpLabel.textContent = `XP PROGRESSION · Level ${xpInfo.level} · XP ${Math.floor(xpInfo.xp)}/${formatNumber(xpInfo.xpToNextLevel)} · Total ${formatNumber(xpInfo.totalExperience)}`;
-        xpLabel.style.fontSize = '12px';
-        xpLabel.style.marginBottom = '10px';
-        xpLabel.style.opacity = '0.7';
-        xpSection.appendChild(xpLabel);
-
-        const xpButton = document.createElement('button');
-        xpButton.textContent = xpInfo.upgradePoints > 0
-            ? `Spend 1 point (${xpInfo.upgradePoints} available) for +15 permanent strength`
-            : 'Earn more XP to unlock station upgrades';
-        xpButton.style.padding = '10px 20px';
-        xpButton.style.width = '100%';
-        xpButton.style.border = 'none';
-        xpButton.style.borderRadius = '6px';
-        xpButton.style.background = xpInfo.upgradePoints > 0 ? '#00C8FF' : '#444444';
-        xpButton.style.color = 'white';
-        xpButton.style.cursor = xpInfo.upgradePoints > 0 ? 'pointer' : 'not-allowed';
-        xpButton.onclick = () => {
-            if (xpInfo.upgradePoints > 0) {
-                onSpendExperienceUpgrade();
-            }
-        };
-        xpSection.appendChild(xpButton);
+        const levelText = document.createElement('p');
+        levelText.textContent = levelInfo;
+        levelText.style.margin = '0 0 20px 0';
+        levelText.style.fontSize = '12px';
+        levelText.style.color = '#AAAAAA';
 
         // --- UPGRADE SECTION ---
         const section1 = document.createElement('div');
@@ -699,7 +673,7 @@ export class ModalManager {
 
         dialog.appendChild(title);
         dialog.appendChild(info);
-        dialog.appendChild(xpSection);
+        dialog.appendChild(levelText);
         dialog.appendChild(section1);
         dialog.appendChild(section2);
         dialog.appendChild(closeBtn);
