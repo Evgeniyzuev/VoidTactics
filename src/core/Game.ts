@@ -169,9 +169,9 @@ export class Game {
             },
             onSaveFleet: () => {
                 if (this.isGameOver) return;
-                SaveSystem.saveFleetSize(this.playerFleet.strength);
+                SaveSystem.saveFleetSize(this.playerFleet.maxStrength);
                 SaveSystem.saveFleetProgress(this.captureProgress());
-                console.log('Fleet size saved:', this.playerFleet.strength);
+                console.log('Fleet size saved:', this.playerFleet.maxStrength);
             },
             onLoadFleet: () => {
                 // Load saved size and start new world with it
@@ -276,6 +276,7 @@ export class Game {
         }
 
         this.playerFleet = new Fleet(spawnX, spawnY, '#00AAFF', true);
+        this.playerFleet.maxStrength = startStrength;
         this.playerFleet.strength = startStrength;
         this.playerFleet.faction = 'player';
 
@@ -370,7 +371,7 @@ export class Game {
             this.update(dt * this.timeScale);
             this.ui.updateAbilities(this.playerFleet);
             this.ui.updateMoney(this.playerFleet.money);
-            this.ui.updateStrength(this.playerFleet.strength);
+            this.ui.updateStrength(this.playerFleet.strength, this.playerFleet.maxStrength);
             this.updateLevelDisplay();
         }
         this.draw();
@@ -436,6 +437,30 @@ export class Game {
         this.updateLevelDisplay();
     }
 
+    private handleRegen(dt: number) {
+        const allFleets = [this.playerFleet, ...this.npcFleets];
+        for (const fleet of allFleets) {
+            if (fleet.strength >= fleet.maxStrength) continue;
+
+            const regenAmount = fleet.maxStrength * 0.01 * dt;
+            if (fleet.isPlayer) {
+                if (this.playerFleet.money < 50) continue;
+                let applied = regenAmount;
+                let cost = applied * 50;
+                if (cost > this.playerFleet.money) {
+                    applied = this.playerFleet.money / 50;
+                    cost = applied * 50;
+                }
+                if (applied <= 0) continue;
+                fleet.strength = Math.min(fleet.maxStrength, fleet.strength + applied);
+                this.playerFleet.money -= cost;
+                this.ui.updateMoney(this.playerFleet.money);
+            } else {
+                fleet.strength = Math.min(fleet.maxStrength, fleet.strength + regenAmount);
+            }
+        }
+    }
+
     public awardPlayerMoney(amount: number) {
         if (!this.playerFleet || amount <= 0) return;
         this.playerFleet.money += amount;
@@ -493,8 +518,11 @@ export class Game {
             }
         }
 
-        // 2. Update Fleet Scaling based on Player Strength
-        const playerStrength = this.playerFleet.strength;
+        // 2. Regen fleets towards max size
+        this.handleRegen(dt);
+
+        // 3. Update Fleet Scaling based on Player Strength
+        const playerStrength = this.playerFleet.maxStrength;
         for (const entity of this.entities) {
             if (entity instanceof Fleet) {
                 const ratio = entity.strength / playerStrength;
@@ -515,7 +543,7 @@ export class Game {
             this.playerFleet.velocity = this.playerFleet.velocity.scale(-0.5);
         }
 
-        // 3. AI & Combat & Abilities
+        // 4. AI & Combat & Abilities
         const allFleets = [this.playerFleet, ...this.npcFleets];
 
         // Update BubbleZones
@@ -922,7 +950,7 @@ export class Game {
                 const isHostile = this.aiController.isHostile(fleet, this.playerFleet);
                 const status = isHostile ? '<span style="color: red;">Hostile</span>' : '<span style="color: green;">Friendly</span>';
                 info += `${status}<br/>`;
-                info += `Size: ${formatNumber(fleet.strength)}<br/>`;
+                info += `Size: ${formatNumber(fleet.strength)} / ${formatNumber(fleet.maxStrength)}<br/>`;
                 info += `Speed: ${fleet.velocity.mag().toFixed(1)}<br/>`;
                 info += `Pos: (${fleet.position.x.toFixed(0)}, ${fleet.position.y.toFixed(0)})`;
             }
@@ -1137,13 +1165,15 @@ export class Game {
                 // Upgrade logic
                 const upgradeAmount = Math.floor(this.playerFleet.money / 100);
                 if (upgradeAmount > 0) {
+                    this.playerFleet.maxStrength += upgradeAmount;
                     this.playerFleet.strength += upgradeAmount;
                     this.playerFleet.money -= upgradeAmount * 100;
                     this.ui.updateMoney(this.playerFleet.money);
+                    this.ui.updateStrength(this.playerFleet.strength, this.playerFleet.maxStrength);
                     console.log('Fleet upgraded by', upgradeAmount, 'to strength:', this.playerFleet.strength);
 
                     // Trigger autosave after upgrade
-                    SaveSystem.saveAutosaveFleetSize(this.playerFleet.strength);
+                    SaveSystem.saveAutosaveFleetSize(this.playerFleet.maxStrength);
                     SaveSystem.saveAutosaveFleetProgress(this.captureProgress());
                     console.log('Autosave created with fleet strength:', this.playerFleet.strength);
 
@@ -1198,11 +1228,12 @@ export class Game {
         this.modal.showLiberationRewardDialog(
             () => {
                 // Collect reward
+                this.playerFleet.maxStrength += 100;
                 this.playerFleet.strength += 100;
                 this.awardPlayerMoney(5000);
                 body.rewardCollected = true;
                 body.pulsing = false; // Stop pulsing after collection
-                this.ui.updateStrength(this.playerFleet.strength);
+                this.ui.updateStrength(this.playerFleet.strength, this.playerFleet.maxStrength);
                 console.log('Liberation reward collected: +100 strength, +$5000');
                 this.modal.closeModal();
                 if (this.isPaused) this.togglePause();
@@ -1470,6 +1501,7 @@ export class Game {
 
         // Store player fleet state before transition
         const playerStrength = this.playerFleet.strength;
+        const playerMaxStrength = this.playerFleet.maxStrength;
         const playerMoney = this.playerFleet.money;
         const playerProgress = this.captureProgress();
 
@@ -1487,9 +1519,10 @@ export class Game {
         }
 
         // Initialize the new system
-        this.initWorld(playerStrength, targetSystemId, spawnNearGate, playerProgress);
+        this.initWorld(playerMaxStrength, targetSystemId, spawnNearGate, playerProgress);
 
         // Restore player fleet state
+        this.playerFleet.maxStrength = playerMaxStrength;
         this.playerFleet.strength = playerStrength;
         this.playerFleet.money = playerMoney;
 

@@ -375,6 +375,7 @@ export class SystemManager {
 
             npc.strength = finalStrength;
         }
+        npc.maxStrength = npc.strength;
 
         // Give initial target to roam
         const celestialBodies = system.entities.filter(e => e instanceof CelestialBody) as CelestialBody[];

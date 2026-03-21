@@ -379,10 +379,14 @@ export class UIManager {
         }
     }
 
-    public updateStrength(strength: number) {
+    public updateStrength(strength: number, maxStrength?: number) {
         const strengthDisplay = document.getElementById('strength-display');
         if (strengthDisplay) {
-            strengthDisplay.textContent = `💪: ${formatNumber(strength)}`;
+            if (maxStrength !== undefined) {
+                strengthDisplay.textContent = `💪: ${formatNumber(strength)} / ${formatNumber(maxStrength)}`;
+            } else {
+                strengthDisplay.textContent = `💪: ${formatNumber(strength)}`;
+            }
         }
     }
 

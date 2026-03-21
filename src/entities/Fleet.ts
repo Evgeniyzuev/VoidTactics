@@ -18,6 +18,7 @@ export class Fleet extends Entity {
     public color: string;
     public isPlayer: boolean = false;
     public strength: number = 10;
+    public maxStrength: number = 10;
     public accumulatedDamage: number = 0;
     public sizeMultiplier: number = 1.0;
     public faction: Faction = 'civilian';
@@ -59,6 +60,7 @@ export class Fleet extends Entity {
         this.isPlayer = isPlayer;
         if (isPlayer) this.faction = 'player';
         this.radius = 8;
+        this.maxStrength = this.strength;
     }
 
     setTarget(pos: Vector2) {
