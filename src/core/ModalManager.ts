@@ -633,7 +633,8 @@ export class ModalManager {
             { id: 'afterburner', name: '🚀 Boost' },
             { id: 'bubble', name: '🫧 Bubble' },
             { id: 'cloak', name: '👻 Cloak' },
-            { id: 'mine', name: '💣 Warp Mine' }
+            { id: 'mine', name: '💣 Warp Mine' },
+            { id: 'medkit', name: '💊 Medkit' }
         ];
 
         const shopGrid = document.createElement('div');

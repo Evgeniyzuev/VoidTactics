@@ -421,7 +421,7 @@ export class Game {
             this.playerFleet.nextLevelThreshold - this.playerFleet.levelThreshold
         ));
         const needed = Math.max(1, this.playerFleet.nextLevelThreshold - this.playerFleet.levelThreshold);
-        this.ui.updateLevel(this.playerFleet.level, progress, needed, this.difficultyMultiplier);
+        this.ui.updateLevel(this.playerFleet.level, progress, needed);
     }
 
     private checkLevelUp() {
@@ -1545,6 +1545,15 @@ export class Game {
         // Check global cooldown (1 second between any ability use)
         if (a.cooldown > 0) {
             console.log(`${id} is still on cooldown`);
+            return;
+        }
+
+        if (id === 'medkit') {
+            a.active = true;
+            a.timer = a.duration;
+            a.cooldown = a.cdMax;
+            a.charges--;
+            console.log('Medkit activated');
             return;
         }
 

@@ -42,7 +42,8 @@ export class Fleet extends Entity {
         afterburner: { active: false, timer: 0, cooldown: 0, duration: 3, cdMax: 10, charges: 0 },
         cloak: { active: false, timer: 0, cooldown: 0, duration: 10, cdMax: 12, charges: 0 },
         bubble: { active: false, timer: 0, cooldown: 0, duration: 10, cdMax: 16, charges: 0 },
-        mine: { active: false, timer: 0, cooldown: 0, duration: 0, cdMax: 5, charges: 0 }
+        mine: { active: false, timer: 0, cooldown: 0, duration: 0, cdMax: 5, charges: 0 },
+        medkit: { active: false, timer: 0, cooldown: 0, duration: 10, cdMax: 20, charges: 0 }
     };
     public isCloaked: boolean = false;
     public isBubbled: boolean = false; // Set by external bubbles
@@ -115,6 +116,11 @@ export class Fleet extends Entity {
                     if (key === 'cloak') this.isCloaked = false;
                 }
             }
+        }
+
+        if (this.abilities.medkit.active) {
+            const healPerSecond = (this.maxStrength * 0.2) / this.abilities.medkit.duration;
+            this.strength = Math.min(this.maxStrength, this.strength + healPerSecond * dt);
         }
 
         if (this.state === 'combat') {

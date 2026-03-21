@@ -211,7 +211,7 @@ export class UIManager {
         levelDisplay.style.fontSize = '14px';
         levelDisplay.style.fontWeight = 'bold';
         levelDisplay.style.fontFamily = 'monospace';
-        levelDisplay.textContent = 'Lv 1 · $0/1000 until next · Diff x1.00';
+        levelDisplay.textContent = 'Lv 1 · $0/1000';
         panel.appendChild(levelDisplay);
         this.levelDisplay = levelDisplay;
 
@@ -219,7 +219,8 @@ export class UIManager {
             { id: 'afterburner', icon: '🚀', color: '#FF4400', title: 'Afterburner (Boost Speed)' },
             { id: 'bubble', icon: '🫧', color: '#00AAFF', title: 'Bubble (Stop Nearby)' },
             { id: 'cloak', icon: '👻', color: '#AAAAAA', title: 'Cloak (Invisibility)' },
-            { id: 'mine', icon: '💣', color: '#FF0000', title: 'Warp Mine (Proximity Trap)' }
+            { id: 'mine', icon: '💣', color: '#FF0000', title: 'Warp Mine (Proximity Trap)' },
+            { id: 'medkit', icon: '💊', color: '#00C8FF', title: 'Medkit (Heal 20% over 10s)' }
         ];
 
         abilities.forEach(ability => {
@@ -390,10 +391,10 @@ export class UIManager {
         }
     }
 
-    public updateLevel(level: number, progress: number, needed: number, difficultyMultiplier: number) {
+    public updateLevel(level: number, progress: number, needed: number) {
         if (!this.levelDisplay) return;
         const prog = Math.floor(progress);
-        this.levelDisplay.textContent = `Lv ${level} · $${formatNumber(prog)}/${formatNumber(needed)} until next · Diff x${difficultyMultiplier.toFixed(2)}`;
-        this.levelDisplay.title = `Level ${level}: ${formatNumber(prog)} / ${formatNumber(needed)} this tier`;
+        this.levelDisplay.textContent = `Lv ${level} · $${formatNumber(prog)}/${formatNumber(needed)}`;
+        this.levelDisplay.title = `Level ${level}: ${formatNumber(prog)} / ${formatNumber(needed)}`;
     }
 }
