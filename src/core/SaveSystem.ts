@@ -10,6 +10,13 @@ export interface SavedFleetState {
     faction: string;
 }
 
+export interface PlayerProgressSave {
+    totalMoneyEarned: number;
+    level: number;
+    levelThreshold: number;
+    nextLevelThreshold: number;
+}
+
 export interface GameSaveData {
     player: SavedFleetState;
     npcs: SavedFleetState[];
@@ -30,6 +37,8 @@ export class SaveSystem {
     static clear() {
         localStorage.removeItem('vt_fleet_size');
         localStorage.removeItem('vt_autosave_fleet_size');
+        localStorage.removeItem('vt_fleet_progress');
+        localStorage.removeItem('vt_autosave_fleet_progress');
     }
 
     static saveFleetSize(size: number) {
@@ -41,6 +50,15 @@ export class SaveSystem {
         return val ? parseInt(val, 10) : null;
     }
 
+    static saveFleetProgress(progress: PlayerProgressSave) {
+        localStorage.setItem('vt_fleet_progress', JSON.stringify(progress));
+    }
+
+    static loadFleetProgress(): PlayerProgressSave | null {
+        const val = localStorage.getItem('vt_fleet_progress');
+        return val ? (JSON.parse(val) as PlayerProgressSave) : null;
+    }
+
     static saveAutosaveFleetSize(size: number) {
         localStorage.setItem('vt_autosave_fleet_size', size.toString());
     }
@@ -50,7 +68,17 @@ export class SaveSystem {
         return val ? parseInt(val, 10) : null;
     }
 
+    static saveAutosaveFleetProgress(progress: PlayerProgressSave) {
+        localStorage.setItem('vt_autosave_fleet_progress', JSON.stringify(progress));
+    }
+
+    static loadAutosaveFleetProgress(): PlayerProgressSave | null {
+        const val = localStorage.getItem('vt_autosave_fleet_progress');
+        return val ? (JSON.parse(val) as PlayerProgressSave) : null;
+    }
+
     static clearAutosave() {
         localStorage.removeItem('vt_autosave_fleet_size');
+        localStorage.removeItem('vt_autosave_fleet_progress');
     }
 }

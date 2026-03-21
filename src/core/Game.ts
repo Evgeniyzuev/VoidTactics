@@ -84,6 +84,7 @@ export class Game {
     private currentSystemId: number = 1; // Current star system (1 = Sol, 2 = Alpha Centauri, etc.)
     private systemManager: SystemManager;
     private difficultyMultiplier: number = 1;
+    private static readonly START_LEVEL_REQUIREMENT = 1000;
 
     constructor(canvas: HTMLCanvasElement) {
         this.renderer = new Renderer(canvas);
@@ -169,17 +170,20 @@ export class Game {
             onSaveFleet: () => {
                 if (this.isGameOver) return;
                 SaveSystem.saveFleetSize(this.playerFleet.strength);
+                SaveSystem.saveFleetProgress(this.captureProgress());
                 console.log('Fleet size saved:', this.playerFleet.strength);
             },
             onLoadFleet: () => {
                 // Load saved size and start new world with it
                 const savedSize = SaveSystem.loadFleetSize();
-                this.initWorld(savedSize || 10);
+                const savedProgress = SaveSystem.loadFleetProgress() || this.getDefaultProgress();
+                this.initWorld(savedSize || 10, undefined, undefined, savedProgress);
             },
             onLoadAuto: () => {
                 // Load autosave size and start new world with it
                 const autosaveSize = SaveSystem.loadAutosaveFleetSize();
-                this.initWorld(autosaveSize || 10);
+                const autosaveProgress = SaveSystem.loadAutosaveFleetProgress() || this.getDefaultProgress();
+                this.initWorld(autosaveSize || 10, undefined, undefined, autosaveProgress);
             }
         }, this.isGameOver);
     }
@@ -227,7 +231,7 @@ export class Game {
         }
     }
 
-    private initWorld(forcedStrength?: number, systemId?: number, spawnNearGate?: Vector2) {
+    private initWorld(forcedStrength?: number, systemId?: number, spawnNearGate?: Vector2, progress?: { totalMoneyEarned: number; level: number; levelThreshold: number; nextLevelThreshold: number }) {
         // Set current system
         this.currentSystemId = systemId || 1;
 
@@ -274,6 +278,9 @@ export class Game {
         this.playerFleet = new Fleet(spawnX, spawnY, '#00AAFF', true);
         this.playerFleet.strength = startStrength;
         this.playerFleet.faction = 'player';
+
+        const appliedProgress = progress ?? this.getDefaultProgress();
+        this.applyProgress(appliedProgress);
 
         // Initial ability charges (1 each for new game/load)
         for (const key in this.playerFleet.abilities) {
@@ -372,6 +379,33 @@ export class Game {
     }
 
     private SYSTEM_RADIUS: number = 8000;
+
+    private getDefaultProgress() {
+        return {
+            totalMoneyEarned: 0,
+            level: 1,
+            levelThreshold: 0,
+            nextLevelThreshold: Game.START_LEVEL_REQUIREMENT
+        };
+    }
+
+    private captureProgress() {
+        return {
+            totalMoneyEarned: this.playerFleet.totalMoneyEarned,
+            level: this.playerFleet.level,
+            levelThreshold: this.playerFleet.levelThreshold,
+            nextLevelThreshold: this.playerFleet.nextLevelThreshold
+        };
+    }
+
+    private applyProgress(progress: { totalMoneyEarned: number; level: number; levelThreshold: number; nextLevelThreshold: number }) {
+        this.playerFleet.totalMoneyEarned = progress.totalMoneyEarned;
+        this.playerFleet.level = progress.level;
+        this.playerFleet.levelThreshold = progress.levelThreshold;
+        this.playerFleet.nextLevelThreshold = progress.nextLevelThreshold;
+        this.refreshDifficultyMultiplier();
+        if (this.ui) this.updateLevelDisplay();
+    }
 
     private refreshDifficultyMultiplier() {
         if (!this.playerFleet) return;
@@ -1110,6 +1144,7 @@ export class Game {
 
                     // Trigger autosave after upgrade
                     SaveSystem.saveAutosaveFleetSize(this.playerFleet.strength);
+                    SaveSystem.saveAutosaveFleetProgress(this.captureProgress());
                     console.log('Autosave created with fleet strength:', this.playerFleet.strength);
 
                     // Update dialog with new values
@@ -1436,6 +1471,7 @@ export class Game {
         // Store player fleet state before transition
         const playerStrength = this.playerFleet.strength;
         const playerMoney = this.playerFleet.money;
+        const playerProgress = this.captureProgress();
 
         // Find the arrival gate position in the target system
         // (gates that lead back to the current system)
@@ -1451,7 +1487,7 @@ export class Game {
         }
 
         // Initialize the new system
-        this.initWorld(playerStrength, targetSystemId, spawnNearGate);
+        this.initWorld(playerStrength, targetSystemId, spawnNearGate, playerProgress);
 
         // Restore player fleet state
         this.playerFleet.strength = playerStrength;
