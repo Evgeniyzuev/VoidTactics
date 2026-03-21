@@ -30,6 +30,13 @@ export class Fleet extends Entity {
     public currentTarget: Fleet | null = null; // Current attack target
     public hostileTo: Set<Fleet> = new Set(); // Persistent hostility to other fleets
 
+    // Experience & progression (player only)
+    public totalExperience: number = 0;
+    public xp: number = 0;
+    public xpToNextLevel: number = 100;
+    public level: number = 1;
+    public upgradePoints: number = 0;
+
     // Abilities State (Player uses charges, others use cooldowns)
     public abilities = {
         afterburner: { active: false, timer: 0, cooldown: 0, duration: 3, cdMax: 10, charges: 0 },
@@ -71,6 +78,27 @@ export class Fleet extends Entity {
         this.followTarget = null;
         this.followMode = null;
         this.target = null;
+    }
+
+    public gainExperience(amount: number): boolean {
+        if (amount <= 0) return false;
+        this.totalExperience += amount;
+        this.xp += amount;
+        let leveledUp = false;
+        while (this.xp >= this.xpToNextLevel) {
+            this.xp -= this.xpToNextLevel;
+            this.level++;
+            this.upgradePoints++;
+            this.xpToNextLevel = Math.max(50, Math.floor(this.xpToNextLevel * 1.25));
+            leveledUp = true;
+        }
+        return leveledUp;
+    }
+
+    public spendUpgradePoint(): boolean {
+        if (this.upgradePoints <= 0) return false;
+        this.upgradePoints--;
+        return true;
     }
 
     update(dt: number) {

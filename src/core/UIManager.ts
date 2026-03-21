@@ -16,6 +16,7 @@ export class UIManager {
 
     private abilityButtons: Record<string, HTMLButtonElement> = {};
     private abilityCooldowns: Record<string, HTMLElement> = {};
+    private xpDisplay!: HTMLElement;
 
     constructor(
         containerId: string,
@@ -203,6 +204,17 @@ export class UIManager {
         moneyDisplay.textContent = '$: 0';
         panel.appendChild(moneyDisplay);
 
+        const xpDisplay = document.createElement('div');
+        xpDisplay.id = 'xp-display';
+        xpDisplay.className = 'resource-display';
+        xpDisplay.style.color = '#54C7FF';
+        xpDisplay.style.fontSize = '14px';
+        xpDisplay.style.fontWeight = 'bold';
+        xpDisplay.style.fontFamily = 'monospace';
+        xpDisplay.textContent = 'Lv 1 · XP 0/100 · Points 0 · Diff x1.00';
+        panel.appendChild(xpDisplay);
+        this.xpDisplay = xpDisplay;
+
         const abilities = [
             { id: 'afterburner', icon: '🚀', color: '#FF4400', title: 'Afterburner (Boost Speed)' },
             { id: 'bubble', icon: '🫧', color: '#00AAFF', title: 'Bubble (Stop Nearby)' },
@@ -372,5 +384,12 @@ export class UIManager {
         if (strengthDisplay) {
             strengthDisplay.textContent = `💪: ${formatNumber(strength)}`;
         }
+    }
+
+    public updateExperience(level: number, xp: number, xpToNext: number, upgradePoints: number, totalExperience: number, difficultyMultiplier: number) {
+        if (!this.xpDisplay) return;
+        const xpNum = Math.floor(xp);
+        this.xpDisplay.textContent = `Lv ${level} · XP ${xpNum}/${formatNumber(xpToNext)} · Points ${upgradePoints} · Diff x${difficultyMultiplier.toFixed(2)}`;
+        this.xpDisplay.title = `Total XP: ${formatNumber(Math.floor(totalExperience))}`;
     }
 }

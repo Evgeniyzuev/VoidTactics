@@ -83,6 +83,7 @@ export class Game {
     // System management
     private currentSystemId: number = 1; // Current star system (1 = Sol, 2 = Alpha Centauri, etc.)
     private systemManager: SystemManager;
+    private difficultyMultiplier: number = 1;
 
     constructor(canvas: HTMLCanvasElement) {
         this.renderer = new Renderer(canvas);
@@ -110,6 +111,9 @@ export class Game {
             onAbility: (id) => this.activateAbility(id),
             onMenu: () => this.showMenu()
         });
+
+        this.refreshDifficultyMultiplier();
+        this.updateExperienceDisplay();
 
         // Setup Modal Manager
         this.modal = new ModalManager();
@@ -235,6 +239,7 @@ export class Game {
         this.mines = [];
         this.debris = [];
         this.isGameOver = false;
+        this.difficultyMultiplier = 1;
 
         // Unpause if paused
         if (this.isPaused) {
@@ -281,7 +286,7 @@ export class Game {
         const initialFleets: Fleet[] = [];
         for (let i = 0; i < 30; i++) {
             const forcedFaction = this.currentSystemId === 2 ? 'raider' : undefined;
-            const fleets = this.systemManager.spawnFleetsForSystem(this.currentSystemId, startStrength, this.npcFleets, forcedFaction);
+            const fleets = this.systemManager.spawnFleetsForSystem(this.currentSystemId, startStrength, this.npcFleets, this.difficultyMultiplier, forcedFaction);
             initialFleets.push(...fleets);
         }
         this.entities.push(...initialFleets);
@@ -359,6 +364,7 @@ export class Game {
             this.ui.updateAbilities(this.playerFleet);
             this.ui.updateMoney(this.playerFleet.money);
             this.ui.updateStrength(this.playerFleet.strength);
+            this.updateExperienceDisplay();
         }
         this.draw();
 
@@ -366,6 +372,38 @@ export class Game {
     }
 
     private SYSTEM_RADIUS: number = 8000;
+
+    private refreshDifficultyMultiplier() {
+        if (!this.playerFleet) return;
+        const extra = Math.min(5, this.playerFleet.totalExperience / 500);
+        this.difficultyMultiplier = 1 + extra;
+    }
+
+    private updateExperienceDisplay() {
+        if (!this.ui || !this.playerFleet) return;
+        this.ui.updateExperience(
+            this.playerFleet.level,
+            this.playerFleet.xp,
+            this.playerFleet.xpToNextLevel,
+            this.playerFleet.upgradePoints,
+            this.playerFleet.totalExperience,
+            this.difficultyMultiplier
+        );
+    }
+
+    private grantExperienceForKill(victim: Fleet) {
+        if (!this.playerFleet || victim === this.playerFleet) return;
+
+        const xpGain = Math.max(5, Math.round(victim.sizeMultiplier * 15));
+        const leveledUp = this.playerFleet.gainExperience(xpGain);
+        this.refreshDifficultyMultiplier();
+        this.updateExperienceDisplay();
+
+        console.log(`Gained ${xpGain} XP (Total ${this.playerFleet.totalExperience})`);
+        if (leveledUp) {
+            console.log(`Level up! Now level ${this.playerFleet.level} with ${this.playerFleet.upgradePoints} upgrade point(s)`);
+        }
+    }
 
     private update(dt: number) {
         if (this.isPaused) return;
@@ -390,8 +428,8 @@ export class Game {
         this.systemManager.updateSpawnTimers(this.currentSystemId, dt);
 
         // Check if we should spawn more fleets
-        if (this.systemManager.shouldSpawnMoreFleets(this.currentSystemId, this.npcFleets)) {
-            const newFleets = this.systemManager.spawnFleetsForSystem(this.currentSystemId, this.playerFleet.strength, this.npcFleets);
+        if (this.systemManager.shouldSpawnMoreFleets(this.currentSystemId, this.npcFleets, this.difficultyMultiplier)) {
+            const newFleets = this.systemManager.spawnFleetsForSystem(this.currentSystemId, this.playerFleet.strength, this.npcFleets, this.difficultyMultiplier);
             // Add new fleets to entities and npcFleets
             for (const fleet of newFleets) {
                 this.entities.push(fleet);
@@ -704,6 +742,10 @@ export class Game {
         for (const winner of winners) {
             winner.state = 'normal';
             winner.currentTarget = null;
+        }
+
+        if (attack.attacker.isPlayer && attack.target.strength <= 0) {
+            this.grantExperienceForKill(attack.target);
         }
 
         // Spawn debris for dead fleets
@@ -1049,9 +1091,18 @@ export class Game {
             this.togglePause();
         }
 
+        const xpInfo = {
+            level: this.playerFleet.level,
+            xp: this.playerFleet.xp,
+            xpToNextLevel: this.playerFleet.xpToNextLevel,
+            upgradePoints: this.playerFleet.upgradePoints,
+            totalExperience: this.playerFleet.totalExperience
+        };
+
         this.modal.showTerraUpgradeDialog(
             this.playerFleet.strength,
             this.playerFleet.money,
+            xpInfo,
             () => {
                 // Upgrade logic
                 const upgradeAmount = Math.floor(this.playerFleet.money / 100);
@@ -1086,8 +1137,24 @@ export class Game {
                     // Refresh dialog to show new counts
                     this.showTerraUpgradeDialog();
                 }
+            },
+            () => {
+                this.applyXpUpgrade();
             }
         );
+    }
+
+    private applyXpUpgrade() {
+        if (!this.playerFleet) return;
+        if (!this.playerFleet.spendUpgradePoint()) return;
+        const boost = 15;
+        this.playerFleet.strength += boost;
+        this.ui.updateStrength(this.playerFleet.strength);
+        this.updateExperienceDisplay();
+        console.log(`Spent 1 XP upgrade point for +${boost} strength`);
+
+        // Refresh dialog to show remaining points
+        this.showTerraUpgradeDialog();
     }
 
     private showArrivalDialog(name: string) {

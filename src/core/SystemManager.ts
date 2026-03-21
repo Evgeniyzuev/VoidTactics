@@ -201,7 +201,7 @@ export class SystemManager {
         return system ? system.name : 'Unknown System';
     }
 
-    public shouldSpawnMoreFleets(systemId: number, currentFleets: Fleet[]): boolean {
+    public shouldSpawnMoreFleets(systemId: number, currentFleets: Fleet[], difficultyMultiplier: number): boolean {
         const system = this.systems.get(systemId);
         if (!system) return false;
 
@@ -210,7 +210,8 @@ export class SystemManager {
         // Check if we have timed spawning (like Alpha Centauri)
         if (rules.spawnInterval) {
             const lastSpawn = this.spawnTimers.get(systemId) || 0;
-            if (lastSpawn < rules.spawnInterval) {
+            const interval = Math.max(0.1, rules.spawnInterval / Math.max(0.1, difficultyMultiplier));
+            if (lastSpawn < interval) {
                 return false; // Not time to spawn yet
             }
             // Time to spawn - reset timer and allow spawn
@@ -220,7 +221,8 @@ export class SystemManager {
 
         // Regular population-based spawning
         const currentCount = currentFleets.length;
-        return currentCount < rules.targetFleetCount;
+        const targetCount = Math.max(1, Math.round(rules.targetFleetCount * Math.max(1, difficultyMultiplier)));
+        return currentCount < targetCount;
     }
 
     public updateSpawnTimers(systemId: number, dt: number) {
@@ -274,11 +276,14 @@ export class SystemManager {
         return true;
     }
 
-    public spawnFleetsForSystem(systemId: number, playerStrength: number, fleets: Fleet[], forcedFaction?: Faction): Fleet[] {
+    public spawnFleetsForSystem(systemId: number, playerStrength: number, fleets: Fleet[], difficultyMultiplier: number, forcedFaction?: Faction): Fleet[] {
         const system = this.systems.get(systemId);
         if (!system) return [];
 
         const rules = system.spawnRules;
+        const strengthScale = Math.max(1, difficultyMultiplier);
+        const adjustedMin = Math.max(1, Math.round(rules.strengthMin * strengthScale));
+        const adjustedMax = Math.max(adjustedMin, Math.round(rules.strengthMax * strengthScale));
 
         // Pick faction based on weights with percentage restrictions
         let selectedFaction: Faction = 'civilian';
@@ -354,22 +359,19 @@ export class SystemManager {
         npc.faction = selectedFaction;
 
         // Set strength based on system rules
-        if (rules.strengthMin === rules.strengthMax) {
-            // Fixed strength range
-            npc.strength = rules.strengthMin + Math.random() * (rules.strengthMax - rules.strengthMin);
+        if (adjustedMin === adjustedMax) {
+            npc.strength = adjustedMin;
         } else {
-            // Dynamic strength based on player (original logic)
             const coefficients = [0.5, 1, 2, 4, 8];
             const coeff = coefficients[Math.floor(Math.random() * coefficients.length)];
+            let baseS = playerStrength * coeff * strengthScale;
 
-            let baseS = playerStrength * coeff;
-
-            // Apply variance and clamp to system limits
             const variance = 0.6 + Math.random() * 0.7;
-            let finalStrength = Math.max(rules.strengthMin, Math.min(rules.strengthMax, Math.round(baseS * variance)));
+            let finalStrength = Math.max(adjustedMin, Math.min(adjustedMax, Math.round(baseS * variance)));
 
-            // Traders are bulkier
-            if (selectedFaction === 'trader') finalStrength *= 2.5;
+            if (selectedFaction === 'trader') {
+                finalStrength = Math.round(finalStrength * 2.5);
+            }
 
             npc.strength = finalStrength;
         }
@@ -384,7 +386,7 @@ export class SystemManager {
             npc.setTarget(new Vector2((Math.random() - 0.5) * 1000, (Math.random() - 0.5) * 1000));
         }
 
-        console.log(`System ${systemId}: Spawning ${selectedFaction} fleet (strength: ${npc.strength})`);
+        console.log(`System ${systemId}: Spawning ${selectedFaction} fleet (strength: ${npc.strength}, difficulty×${difficultyMultiplier.toFixed(2)})`);
         return [npc];
     }
 
