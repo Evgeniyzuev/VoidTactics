@@ -463,7 +463,7 @@ export class Game {
         // Player collection (with animation)
         const playerFleet = this.playerFleet;
         let playerCollectedAny = false;
-        if (playerFleet.state !== 'combat' && playerFleet.velocity.mag() < 20) { // Don't pick up during combat or when moving fast
+        if (playerFleet.state !== 'combat') { // Don't pick up during combat or when moving fast
             const pickupRadius = 75; // Radius for debris pickup
             const pickupRate = dt * (playerFleet.strength / 10); // Units per second
             let remainingPickup = pickupRate;

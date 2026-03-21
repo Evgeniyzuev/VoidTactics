@@ -62,7 +62,7 @@ export class WarpMine extends Entity {
         for (const fleet of fleets) {
             const dist = Vector2.distance(this.position, fleet.position);
             if (dist < 200) { // Same as bubble radius
-                const damage = 3 + (fleet.strength * 0.05);
+                const damage = 10 + (fleet.strength * 0.1);
                 fleet.strength = Math.max(0, fleet.strength - damage);
 
                 // If owner is player, they should get credit/money? 
