@@ -32,6 +32,15 @@ export class Attack {
     }
 
     update(dt: number) {
+        if (this.target.isPlayer && this.target.abilities.shield.active) {
+            this.finished = true;
+            this.attacker.state = 'normal';
+            this.attacker.currentTarget = null;
+            this.target.state = 'normal';
+            this.target.currentTarget = null;
+            return;
+        }
+
         // Check if attack should be interrupted (distance > 2 * interception radius)
         const dist = Vector2.distance(this.attacker.position, this.target.position);
         const maxDist = 200; // 2 * 100 (interception radius)
@@ -69,7 +78,10 @@ export class Attack {
 
         // Normal combat logic for fleet vs fleet
         // Attacker deals damage to target (halved to make battles 2x longer)
-        const damage = this.attacker.strength * 0.05 * dt;
+        let damage = this.attacker.strength * 0.05 * dt;
+        if (this.attacker.abilities.fire.active) {
+            damage *= 2;
+        }
         this.target.accumulatedDamage += damage;
 
         // Player gets money per fractional damage dealt (continuous feedback)

@@ -296,7 +296,10 @@ export class Game {
 
         // Initial ability charges (0 each for new game/load unless provided)
         if (abilityCharges) {
-            this.applyAbilityCharges(abilityCharges);
+            this.applyAbilityCharges({
+                ...this.getDefaultAbilityCharges(),
+                ...abilityCharges
+            });
         } else {
             for (const key in this.playerFleet.abilities) {
                 (this.playerFleet.abilities as any)[key].charges = 0;
@@ -429,20 +432,24 @@ export class Game {
             cloak: this.playerFleet.abilities.cloak.charges,
             bubble: this.playerFleet.abilities.bubble.charges,
             mine: this.playerFleet.abilities.mine.charges,
-            medkit: this.playerFleet.abilities.medkit.charges
+            medkit: this.playerFleet.abilities.medkit.charges,
+            fire: this.playerFleet.abilities.fire.charges,
+            shield: this.playerFleet.abilities.shield.charges
         };
     }
 
     private getDefaultAbilityCharges() {
-        return { afterburner: 0, cloak: 0, bubble: 0, mine: 0, medkit: 0 };
+        return { afterburner: 0, cloak: 0, bubble: 0, mine: 0, medkit: 0, fire: 0, shield: 0 };
     }
 
-    private applyAbilityCharges(charges: { afterburner: number; cloak: number; bubble: number; mine: number; medkit: number }) {
-        this.playerFleet.abilities.afterburner.charges = charges.afterburner;
-        this.playerFleet.abilities.cloak.charges = charges.cloak;
-        this.playerFleet.abilities.bubble.charges = charges.bubble;
-        this.playerFleet.abilities.mine.charges = charges.mine;
-        this.playerFleet.abilities.medkit.charges = charges.medkit;
+    private applyAbilityCharges(charges: { afterburner: number; cloak: number; bubble: number; mine: number; medkit: number; fire: number; shield: number }) {
+        this.playerFleet.abilities.afterburner.charges = Math.max(0, charges.afterburner || 0);
+        this.playerFleet.abilities.cloak.charges = Math.max(0, charges.cloak || 0);
+        this.playerFleet.abilities.bubble.charges = Math.max(0, charges.bubble || 0);
+        this.playerFleet.abilities.mine.charges = Math.max(0, charges.mine || 0);
+        this.playerFleet.abilities.medkit.charges = Math.max(0, charges.medkit || 0);
+        this.playerFleet.abilities.fire.charges = Math.max(0, charges.fire || 0);
+        this.playerFleet.abilities.shield.charges = Math.max(0, charges.shield || 0);
         if (this.ui) this.ui.updateAbilities(this.playerFleet);
     }
 
@@ -495,6 +502,47 @@ export class Game {
                 this.ui.updateMoney(this.playerFleet.money);
             } else {
                 fleet.strength = Math.min(fleet.maxStrength, fleet.strength + regenAmount);
+            }
+        }
+    }
+
+    private findAlternateTarget(attacker: Fleet, allFleets: Fleet[]): Fleet | null {
+        let best: Fleet | null = null;
+        let bestDist = Infinity;
+        for (const candidate of allFleets) {
+            if (candidate === attacker) continue;
+            if (candidate === this.playerFleet) continue;
+            if (candidate.strength <= 0) continue;
+            if (!this.aiController.isHostile(attacker, candidate)) continue;
+            const dist = Vector2.distance(attacker.position, candidate.position);
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = candidate;
+            }
+        }
+        return best;
+    }
+
+    private redirectAttacksFromPlayer(allFleets: Fleet[]) {
+        if (!this.playerFleet.abilities.shield.active) return;
+        for (const attacker of allFleets) {
+            if (attacker === this.playerFleet) continue;
+            if (attacker.currentTarget === this.playerFleet) {
+                attacker.currentTarget = null;
+                attacker.state = 'normal';
+                const alt = this.findAlternateTarget(attacker, allFleets);
+                if (alt) {
+                    attacker.setFollowTarget(alt, 'approach');
+                } else {
+                    attacker.stopFollowing();
+                }
+            } else if (attacker.followTarget === this.playerFleet) {
+                const alt = this.findAlternateTarget(attacker, allFleets);
+                if (alt) {
+                    attacker.setFollowTarget(alt, 'approach');
+                } else {
+                    attacker.stopFollowing();
+                }
             }
         }
     }
@@ -758,6 +806,8 @@ export class Game {
     private processCombat(dt: number) {
         const allFleets = [this.playerFleet, ...this.npcFleets];
 
+        this.redirectAttacksFromPlayer(allFleets);
+
         // 1. Tick and Check for Resolution
         const toRemove: Fleet[] = [];
         for (let i = this.attacks.length - 1; i >= 0; i--) {
@@ -788,6 +838,11 @@ export class Game {
 
                 // Start NEW attack if hostile and not attacking
                 if (this.aiController.isHostile(attacker, target)) {
+                    if (target === this.playerFleet && this.playerFleet.abilities.shield.active) {
+                        const alt = this.findAlternateTarget(attacker, allFleets);
+                        if (alt) attacker.setFollowTarget(alt, 'approach');
+                        continue;
+                    }
                     let triggerDist = baseTriggerDist;
                     if (attacker.followTarget === target) triggerDist = baseTriggerDist * 2; // Double for following
 
@@ -1589,12 +1644,18 @@ export class Game {
             return;
         }
 
-        if (id === 'medkit') {
+        if (id === 'medkit' || id === 'fire' || id === 'shield') {
             a.active = true;
             a.timer = a.duration;
             a.cooldown = a.cdMax;
             a.charges--;
-            console.log('Medkit activated');
+            if (id === 'medkit') {
+                console.log('Medkit activated');
+            } else if (id === 'fire') {
+                console.log('Fire boost activated');
+            } else {
+                console.log('Shield activated');
+            }
             return;
         }
 

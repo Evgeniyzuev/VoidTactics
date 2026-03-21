@@ -221,7 +221,9 @@ export class UIManager {
             { id: 'bubble', icon: '🫧', color: '#00AAFF', title: 'Bubble (Stop Nearby)' },
             { id: 'cloak', icon: '👻', color: '#AAAAAA', title: 'Cloak (Invisibility)' },
             { id: 'mine', icon: '💣', color: '#FF0000', title: 'Warp Mine (Proximity Trap)' },
-            { id: 'medkit', icon: '💊', color: '#00C8FF', title: 'Medkit (Heal 20% over 10s)' }
+            { id: 'medkit', icon: '💊', color: '#00C8FF', title: 'Medkit (Heal 20% over 10s)' },
+            { id: 'fire', icon: '🔥', color: '#FF5500', title: 'Fire (2x damage for 5s)' },
+            { id: 'shield', icon: '🛡', color: '#66CCFF', title: 'Shield (Untargetable 1s)' }
         ];
 
         abilities.forEach(ability => {
@@ -236,7 +238,7 @@ export class UIManager {
             btn.style.fontSize = '20px';
             btn.style.cursor = 'pointer';
             btn.style.position = 'relative';
-            btn.style.overflow = 'hidden';
+            btn.style.overflow = 'visible';
             btn.style.display = 'flex';
             btn.style.alignItems = 'center';
             btn.style.justifyContent = 'center';
@@ -303,18 +305,20 @@ export class UIManager {
                     badge = document.createElement('div');
                     badge.className = 'charge-badge';
                     badge.style.position = 'absolute';
-                    badge.style.top = '-5px';
-                    badge.style.right = '-5px';
+                    badge.style.top = '-8px';
+                    badge.style.right = '-8px';
                     badge.style.background = '#FFD700';
                     badge.style.color = 'black';
-                    badge.style.borderRadius = '50%';
-                    badge.style.width = '16px';
+                    badge.style.borderRadius = '6px';
+                    badge.style.minWidth = '16px';
                     badge.style.height = '16px';
+                    badge.style.padding = '0 3px';
                     badge.style.fontSize = '10px';
                     badge.style.fontWeight = 'bold';
                     badge.style.display = 'flex';
                     badge.style.alignItems = 'center';
                     badge.style.justifyContent = 'center';
+                    badge.style.boxShadow = '0 0 6px rgba(0,0,0,0.5)';
                     badge.style.zIndex = '10';
                     btn.appendChild(badge);
                 }

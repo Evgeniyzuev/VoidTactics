@@ -23,6 +23,8 @@ export interface AbilityChargesSave {
     bubble: number;
     mine: number;
     medkit: number;
+    fire: number;
+    shield: number;
 }
 
 export interface GameSaveData {
