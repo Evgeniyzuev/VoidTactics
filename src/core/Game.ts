@@ -392,12 +392,10 @@ export class Game {
     private checkLevelUp() {
         if (!this.playerFleet) return;
 
-        let leveled = false;
         while (this.playerFleet.totalMoneyEarned >= this.playerFleet.nextLevelThreshold) {
             this.playerFleet.level++;
             this.playerFleet.levelThreshold = this.playerFleet.nextLevelThreshold;
             this.playerFleet.nextLevelThreshold = Math.round(this.playerFleet.nextLevelThreshold * 1.5);
-            leveled = true;
             console.log(`Level ${this.playerFleet.level} reached (earned ${formatNumber(this.playerFleet.totalMoneyEarned)})`);
         }
         this.refreshDifficultyMultiplier();
