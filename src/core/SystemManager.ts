@@ -37,7 +37,7 @@ export class SystemManager {
                 factionWeights: [
                     { type: 'civilian', weight: 0.30 },
                     { type: 'trader', weight: 0.017 },
-                    { type: 'mercenary', weight: 0.05 },
+                    { type: 'mercenary', weight: 0.0 },
                     { type: 'pirate', weight: 0.25 },
                     { type: 'orc', weight: 0.20 },
                     { type: 'military', weight: 0.10 },
@@ -57,7 +57,7 @@ export class SystemManager {
                 targetFleetCount: 50, // Can have more fleets
                 factionWeights: [
                     { type: 'raider', weight: 0.5 },
-                    { type: 'mercenary', weight: 0.15 },
+                    { type: 'mercenary', weight: 0.0 },
                     { type: 'civilian', weight: 0.137 },
                     { type: 'pirate', weight: 0.085 },
                     { type: 'orc', weight: 0.054 },
@@ -252,12 +252,7 @@ export class SystemManager {
         return counts;
     }
 
-    public canFactionSpawn(faction: Faction, fleets: Fleet[]): boolean {
-        // Only apply percentage restrictions to civilian and military
-        if (faction !== 'civilian' && faction !== 'military') {
-            return true;
-        }
-
+    public canFactionSpawn(faction: Faction, fleets: Fleet[], playerLevel: number = 1): boolean {
         const totalFleets = fleets.length;
         if (totalFleets === 0) {
             return true; // Always allow spawning if no fleets exist
@@ -265,12 +260,14 @@ export class SystemManager {
 
         const counts = this.countFleetsByFaction(fleets);
 
+        if (faction === 'military' || faction === 'mercenary') {
+            const maxByLevel = Math.max(0, Math.floor(playerLevel));
+            return counts[faction] < maxByLevel;
+        }
+
         if (faction === 'civilian') {
             const civilianPercentage = (counts.civilian / totalFleets) * 100;
             return civilianPercentage <= 40;
-        } else if (faction === 'military') {
-            const militaryPercentage = (counts.military / totalFleets) * 100;
-            return militaryPercentage <= 20;
         }
 
         return true;
@@ -312,7 +309,7 @@ export class SystemManager {
                 }
 
                 // Check if this faction can spawn within percentage limits
-                if (this.canFactionSpawn(selectedFaction, fleets)) {
+                if (this.canFactionSpawn(selectedFaction, fleets, playerLevel)) {
                     break;
                 }
 
@@ -325,8 +322,8 @@ export class SystemManager {
         }
 
         // If the selected faction still can't spawn (e.g., forced faction), skip
-        if (!this.canFactionSpawn(selectedFaction, fleets)) {
-            console.log(`System ${systemId}: Faction ${selectedFaction} cannot spawn due to percentage limits`);
+        if (!this.canFactionSpawn(selectedFaction, fleets, playerLevel)) {
+            console.log(`System ${systemId}: Faction ${selectedFaction} cannot spawn due to limits`);
             return [];
         }
 
@@ -346,7 +343,7 @@ export class SystemManager {
         const angle = Math.random() * Math.PI * 2;
         let distance: number;
         if (systemId === 1) {
-            if (selectedFaction === 'civilian' || selectedFaction === 'military') {
+            if (selectedFaction === 'civilian' || selectedFaction === 'military' || selectedFaction === 'mercenary') {
                 distance = 500 + Math.random() * 3500; // Inner region: 500-4000
             } else {
                 distance = 4000 + Math.random() * 4000; // Outer region: 4000-8000

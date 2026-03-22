@@ -12,31 +12,18 @@ export class AIController {
 
     processAI() {
         const detectionRadius = 2000;
-        const mercenaryFlipRadius = 1200;
         const giveUpRadius = 2500;
         const backupRadius = 4000;
         const celestialBodies = this.game.getEntities().filter(e => e instanceof CelestialBody) as CelestialBody[];
 
         for (const npc of this.game.getNpcFleets()) {
             const allFleets = [this.game.getPlayerFleet(), ...this.game.getNpcFleets()];
-            const player = this.game.getPlayerFleet();
             const hasNearbyAlly = allFleets.some(f =>
                 f !== npc &&
                 this.isAlly(npc, f) &&
                 Vector2.distance(npc.position, f.position) < 800
             );
-
-            if (npc.faction === 'mercenary' && !npc.mercenaryChecked) {
-                const distToPlayer = Vector2.distance(npc.position, player.position);
-                if (distToPlayer <= mercenaryFlipRadius && player.strength < npc.strength) {
-                    npc.mercenaryChecked = true;
-                    if (Math.random() < 0.3) {
-                        npc.faction = 'pirate';
-                        npc.color = '#FF4444';
-                        npc.decisionTimer = 0;
-                    }
-                }
-            }
+            const isMilitaryLike = npc.faction === 'military' || npc.faction === 'mercenary';
 
             // Ability Usage Logic
             this.handleAbilities(npc);
@@ -83,7 +70,7 @@ export class AIController {
             let minDistHostile = detectionRadius;
 
             // 1. Guardian Instinct / Backup Logic for Military
-            if (npc.faction === 'military') {
+            if (isMilitaryLike) {
                 for (const other of allFleets) {
                     if (this.isAlly(npc, other) && (other.state === 'combat' || other.currentTarget)) {
                         const dist = Vector2.distance(npc.position, other.position);
@@ -128,11 +115,8 @@ export class AIController {
                             closestHostile = other;
                         }
                         let canTarget = false;
-                        if (npc.faction === 'military' || npc.faction === 'raider' || npc.faction === 'orc') {
+                        if (isMilitaryLike || npc.faction === 'raider' || npc.faction === 'orc') {
                             canTarget = true;
-                        } else if (npc.faction === 'mercenary') {
-                            // Mercenaries only target "bad guys" (pirates, orcs, raiders) or attackers
-                            canTarget = ['pirate', 'orc', 'raider'].includes(other.faction) || other.hostileTo.size > 0;
                         } else if (npc.faction === 'pirate') {
                             // Pirates are aggressive; size matters less unless alone vs bigger
                             if (other.strength > npc.strength && !hasNearbyAlly) {
@@ -148,7 +132,7 @@ export class AIController {
                         if (canTarget) {
                             // Calculate scores
                             let strengthRatio = npc.strength / Math.max(0.1, other.strength);
-                            if (npc.faction === 'military' || npc.faction === 'pirate') {
+                            if (isMilitaryLike || npc.faction === 'pirate') {
                                 strengthRatio = 0.5 + strengthRatio * 0.25;
                             }
                             strengthRatio = Math.min(2.5, strengthRatio);
@@ -161,7 +145,7 @@ export class AIController {
 
                             // Raiders ignore strength mostly
                             if ((npc.faction as string) === 'raider') targetScore += 5;
-                            if (npc.faction === 'military') {
+                            if (isMilitaryLike) {
                                 targetScore = 10000 - dist; // Always prioritize the closest hostile
                             }
 
@@ -182,9 +166,9 @@ export class AIController {
             }
 
             // Decide action
-            const isMilitaryWithAllies = npc.faction === 'military' && allFleets.some(f => f !== npc && this.isAlly(npc, f) && Vector2.distance(npc.position, f.position) < 1000);
+            const isMilitaryWithAllies = isMilitaryLike && allFleets.some(f => f !== npc && this.isAlly(npc, f) && Vector2.distance(npc.position, f.position) < 1000);
 
-            if (closestThreat && !['raider', 'orc', 'military'].includes(npc.faction) && !isMilitaryWithAllies) {
+            if (closestThreat && !['raider', 'orc', 'military', 'mercenary'].includes(npc.faction) && !isMilitaryWithAllies) {
                 // Flee! (Military only flees if alone and overwhelmed, Raiders/Orcs never)
                 const runDir = npc.position.sub(closestThreat.position).normalize();
                 npc.setTarget(npc.position.add(runDir.scale(800)));
@@ -229,7 +213,7 @@ export class AIController {
                 // If no debris found, roam normally
                 if (!foundDebris && Math.random() < 0.01 && celestialBodies.length > 0) {
                     let filteredPOIs = celestialBodies;
-                    if (['civilian', 'military'].includes(npc.faction)) {
+                    if (['civilian', 'military', 'mercenary'].includes(npc.faction)) {
                         filteredPOIs = celestialBodies
                             .filter(b => !b.name.includes('Asteroid') && !b.name.includes('Alpha'))
                             .sort((a, b) => a.position.mag() - b.position.mag())
@@ -290,8 +274,8 @@ export class AIController {
             }
         }
 
-        // Military: Bubble to trap fleeing targets
-        if (npc.faction === 'military' && npc.followTarget instanceof Fleet) {
+        // Military/Mercenary: Bubble to trap fleeing targets
+        if ((npc.faction === 'military' || npc.faction === 'mercenary') && npc.followTarget instanceof Fleet) {
             if (npc.followTarget.state === 'flee' && Vector2.distance(npc.position, npc.followTarget.position) < 600) {
                 if (npc.abilities.bubble.cooldown <= 0) {
                     npc.abilities.bubble.active = true;
@@ -328,17 +312,14 @@ export class AIController {
             return ['civilian', 'trader', 'player', 'military', 'mercenary'].includes(f2);
         }
 
-        // Military protects peace
-        if (f1 === 'military') {
+        // Military/Mercenary protect peace
+        if (f1 === 'military' || f1 === 'mercenary') {
             if (['pirate', 'orc', 'raider'].includes(f2)) return true;
             if (b.currentTarget && this.isAlly(a, b.currentTarget)) return true;
             return false;
         }
 
-        // Mercenaries hunt bounties
-        if (f1 === 'mercenary') {
-            return ['pirate', 'orc', 'raider'].includes(f2);
-        }
+        // Mercenaries follow military rules above
 
         // Civilians and Traders only fight back if attacked
         if (f1 === 'civilian' || f1 === 'trader') {
@@ -357,7 +338,7 @@ export class AIController {
         if (f1 === f2) return true;
 
         // The "Law-Abiding" block
-        const lawAbiding = ['military', 'civilian', 'trader', 'player'];
+        const lawAbiding = ['military', 'mercenary', 'civilian', 'trader', 'player'];
         if (lawAbiding.includes(f1) && lawAbiding.includes(f2)) return true;
 
         return false;

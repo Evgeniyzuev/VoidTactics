@@ -904,13 +904,13 @@ export class Game {
                         this.attacks.push(attack);
 
                         // Special case: Player attacking civilian or military triggers hostility
-                        if (attacker.isPlayer && (target.faction === 'civilian' || target.faction === 'military')) {
+                        if (attacker.isPlayer && (target.faction === 'civilian' || target.faction === 'military' || target.faction === 'mercenary')) {
                             const detectionRadius = 2000;
                             const player = attacker;
 
                             // All military in detection radius become hostile to player
                             for (const fleet of allFleets) {
-                                if (fleet.faction === 'military' && Vector2.distance(fleet.position, player.position) <= detectionRadius) {
+                                if ((fleet.faction === 'military' || fleet.faction === 'mercenary') && Vector2.distance(fleet.position, player.position) <= detectionRadius) {
                                     fleet.hostileTo.add(player);
                                 }
                             }
@@ -1242,13 +1242,13 @@ export class Game {
                     this.playerFleet.setFollowTarget(fleet, 'contact');
 
                     // Special case: Player attacking civilian or military triggers hostility
-                    if (fleet.faction === 'civilian' || fleet.faction === 'military') {
+                    if (fleet.faction === 'civilian' || fleet.faction === 'military' || fleet.faction === 'mercenary') {
                         const detectionRadius = 2000;
                         const allFleets = [this.playerFleet, ...this.npcFleets];
 
                         // All military in detection radius become hostile to player
                         for (const f of allFleets) {
-                            if (f.faction === 'military' && Vector2.distance(f.position, this.playerFleet.position) <= detectionRadius) {
+                            if ((f.faction === 'military' || f.faction === 'mercenary') && Vector2.distance(f.position, this.playerFleet.position) <= detectionRadius) {
                                 f.hostileTo.add(this.playerFleet);
                             }
                         }
@@ -1324,6 +1324,9 @@ export class Game {
         const levelProgress = Math.max(0, this.playerFleet.totalMoneyEarned - this.playerFleet.levelThreshold);
         const levelNeeded = Math.max(1, this.playerFleet.nextLevelThreshold - this.playerFleet.levelThreshold);
         const levelInfo = `Level ${this.playerFleet.level} (${formatNumber(levelProgress)}/${formatNumber(levelNeeded)} this level)`;
+        const mercenaryCount = this.npcFleets.filter(f => f.faction === 'mercenary').length;
+        const mercenaryMax = this.playerFleet.level;
+        const mercenaryCost = this.playerFleet.maxStrength;
 
         this.modal.showTerraUpgradeDialog(
             this.playerFleet.strength,
@@ -1368,6 +1371,32 @@ export class Game {
                     // Refresh dialog to show new counts
                     this.showTerraUpgradeDialog();
                 }
+            },
+            mercenaryCount,
+            mercenaryMax,
+            mercenaryCost,
+            () => {
+                const currentCount = this.npcFleets.filter(f => f.faction === 'mercenary').length;
+                const maxCount = this.playerFleet.level;
+                const cost = this.playerFleet.maxStrength;
+                if (currentCount >= maxCount || this.playerFleet.money < cost) return;
+
+                const fleets = this.systemManager.spawnFleetsForSystem(
+                    this.currentSystemId,
+                    this.playerFleet.strength,
+                    this.npcFleets,
+                    this.difficultyMultiplier,
+                    'mercenary',
+                    this.playerFleet.level
+                );
+
+                if (fleets.length === 0) return;
+
+                this.playerFleet.money -= cost;
+                this.ui.updateMoney(this.playerFleet.money);
+                this.entities.push(...fleets);
+                this.npcFleets.push(...fleets);
+                this.showTerraUpgradeDialog();
             },
         );
     }

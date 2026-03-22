@@ -544,7 +544,11 @@ export class ModalManager {
         levelInfo: string,
         onUpgrade: () => boolean,
         onCancel: () => void,
-        onBuyAbility: (id: string) => void
+        onBuyAbility: (id: string) => void,
+        mercenaryCount: number,
+        mercenaryMax: number,
+        mercenaryCost: number,
+        onHireMercenary: () => void
     ) {
         this.closeModal();
 
@@ -679,6 +683,34 @@ export class ModalManager {
         });
         section2.appendChild(shopGrid);
 
+        // --- MERCENARY SECTION ---
+        const section3 = document.createElement('div');
+        section3.style.background = 'rgba(255, 255, 255, 0.05)';
+        section3.style.padding = '15px';
+        section3.style.borderRadius = '8px';
+        section3.style.marginBottom = '20px';
+
+        const mercLabel = document.createElement('div');
+        mercLabel.textContent = `HIRE MERCENARY (${mercenaryCount}/${mercenaryMax} in system)`;
+        mercLabel.style.fontSize = '12px';
+        mercLabel.style.marginBottom = '10px';
+        mercLabel.style.opacity = '0.7';
+
+        const mercBtn = document.createElement('button');
+        const canHire = mercenaryCount < mercenaryMax && currentMoney >= mercenaryCost;
+        mercBtn.textContent = `Hire mercenary (${formatNumber(mercenaryCost)}$)`;
+        mercBtn.style.padding = '10px 20px';
+        mercBtn.style.width = '100%';
+        mercBtn.style.border = '1px solid rgba(255, 200, 0, 0.4)';
+        mercBtn.style.borderRadius = '6px';
+        mercBtn.style.background = canHire ? 'rgba(255, 200, 0, 0.2)' : '#333';
+        mercBtn.style.color = 'white';
+        mercBtn.style.cursor = canHire ? 'pointer' : 'not-allowed';
+        mercBtn.onclick = () => onHireMercenary();
+
+        section3.appendChild(mercLabel);
+        section3.appendChild(mercBtn);
+
         // --- FOOTER ---
         const closeBtn = document.createElement('button');
         closeBtn.textContent = '❌ Close';
@@ -699,6 +731,7 @@ export class ModalManager {
         dialog.appendChild(levelText);
         dialog.appendChild(section1);
         dialog.appendChild(section2);
+        dialog.appendChild(section3);
         dialog.appendChild(closeBtn);
         this.modalContainer.appendChild(dialog);
         document.body.appendChild(this.modalContainer);
