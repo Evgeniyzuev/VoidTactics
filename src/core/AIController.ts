@@ -109,7 +109,7 @@ export class AIController {
                     if (hostileAtoB) {
                         let canTarget = false;
                         if (npc.faction === 'military' || npc.faction === 'raider' || npc.faction === 'orc') {
-                            if ((npc.faction === 'military' || npc.faction === 'pirate') && other.strength > npc.strength && !hasNearbyAlly) {
+                            if (npc.faction === 'military' && other.strength > npc.strength && !hasNearbyAlly) {
                                 canTarget = false;
                             } else {
                                 canTarget = true;
