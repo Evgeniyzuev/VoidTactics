@@ -603,7 +603,7 @@ export class ModalManager {
         upgradeLabel.style.opacity = '0.7';
 
         const upgradeButton = document.createElement('button');
-        const upgradeCost = currentMaxStrength * 10;
+        const upgradeCost = currentMaxStrength + 10;
         upgradeButton.textContent = `Hold to buy strength (${formatNumber(upgradeCost)}$ per 1💪)`;
         upgradeButton.style.padding = '10px 20px';
         upgradeButton.style.width = '100%';
