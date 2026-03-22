@@ -1332,7 +1332,7 @@ export class Game {
             levelInfo,
             () => {
                 // Upgrade logic
-                const upgradeCost = this.playerFleet.maxStrength * 10;
+                const upgradeCost = this.playerFleet.maxStrength + 10;
                 if (this.playerFleet.money >= upgradeCost) {
                     this.playerFleet.maxStrength += 1;
                     this.playerFleet.strength += 1;
