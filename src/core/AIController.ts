@@ -65,6 +65,8 @@ export class AIController {
             let bestTargetScore = -1;
             let closestThreat: Fleet | null = null;
             let minDistThreat = detectionRadius;
+            let closestHostile: Fleet | null = null;
+            let minDistHostile = detectionRadius;
 
             // 1. Guardian Instinct / Backup Logic for Military
             if (npc.faction === 'military') {
@@ -107,13 +109,13 @@ export class AIController {
                     }
 
                     if (hostileAtoB) {
+                        if (dist < minDistHostile) {
+                            minDistHostile = dist;
+                            closestHostile = other;
+                        }
                         let canTarget = false;
                         if (npc.faction === 'military' || npc.faction === 'raider' || npc.faction === 'orc') {
-                            if (npc.faction === 'military' && other.strength > npc.strength && !hasNearbyAlly) {
-                                canTarget = false;
-                            } else {
-                                canTarget = true;
-                            }
+                            canTarget = true;
                         } else if (npc.faction === 'mercenary') {
                             // Mercenaries only target "bad guys" (pirates, orcs, raiders) or attackers
                             canTarget = ['pirate', 'orc', 'raider'].includes(other.faction) || other.hostileTo.size > 0;
@@ -135,14 +137,19 @@ export class AIController {
                             if (npc.faction === 'military' || npc.faction === 'pirate') {
                                 strengthRatio = 0.5 + strengthRatio * 0.25;
                             }
+                            strengthRatio = Math.min(2.5, strengthRatio);
                             const proximityFactor = 1 - (dist / detectionRadius);
+                            const proximityWeight = npc.faction === 'pirate' ? Math.pow(proximityFactor, 2) : proximityFactor;
                             const cargoBonus = (other.faction === 'trader') ? 2.0 : 0;
                             const combatBonus = (other.state === 'combat') ? 1.5 : 0;
 
-                            let targetScore = proximityFactor * (strengthRatio + cargoBonus + combatBonus);
+                            let targetScore = proximityWeight * (strengthRatio + cargoBonus + combatBonus);
 
                             // Raiders ignore strength mostly
                             if ((npc.faction as string) === 'raider') targetScore += 5;
+                            if (npc.faction === 'military') {
+                                targetScore = 10000 - dist; // Always prioritize the closest hostile
+                            }
 
                             if (targetScore > bestTargetScore) {
                                 bestTargetScore = targetScore;
@@ -153,10 +160,17 @@ export class AIController {
                 }
             }
 
+            if (bestTarget && closestHostile) {
+                const bestDist = Vector2.distance(npc.position, bestTarget.position);
+                if (bestDist > minDistHostile * 1.35) {
+                    bestTarget = closestHostile;
+                }
+            }
+
             // Decide action
             const isMilitaryWithAllies = npc.faction === 'military' && allFleets.some(f => f !== npc && this.isAlly(npc, f) && Vector2.distance(npc.position, f.position) < 1000);
 
-            if (closestThreat && !['raider', 'orc'].includes(npc.faction) && !isMilitaryWithAllies) {
+            if (closestThreat && !['raider', 'orc', 'military'].includes(npc.faction) && !isMilitaryWithAllies) {
                 // Flee! (Military only flees if alone and overwhelmed, Raiders/Orcs never)
                 const runDir = npc.position.sub(closestThreat.position).normalize();
                 npc.setTarget(npc.position.add(runDir.scale(800)));
