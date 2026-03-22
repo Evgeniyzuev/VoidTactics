@@ -1781,4 +1781,13 @@ export class Game {
             console.log(`Ability deactivated: ${id}`);
         }
     }
+
+    public dropWarpMine(owner: Fleet): boolean {
+        const a = owner.abilities.mine;
+        if (a.cooldown > 0) return false;
+        const mine = new WarpMine(owner.position.x, owner.position.y, owner);
+        this.mines.push(mine);
+        a.cooldown = a.cdMax;
+        return true;
+    }
 }
