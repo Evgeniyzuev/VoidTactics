@@ -16,6 +16,7 @@ import { SystemManager } from './SystemManager';
 import { formatNumber } from '../utils/NumberFormatter';
 import { WarpMine } from '../entities/WarpMine';
 import { Debris } from '../entities/Debris';
+import { SupplyCrate } from '../entities/SupplyCrate';
 
 
 export class Game {
@@ -35,6 +36,7 @@ export class Game {
     private bubbleZones: BubbleZone[] = [];
     private mines: WarpMine[] = [];
     private debris: Debris[] = [];
+    private crates: SupplyCrate[] = [];
 
     // Getters for AIController
     public getEntities(): Entity[] { return this.entities; }
@@ -43,6 +45,7 @@ export class Game {
     public getAttacks(): Attack[] { return this.attacks; }
     public getBubbleZones(): BubbleZone[] { return this.bubbleZones; }
     public getDebris(): Debris[] { return this.debris; }
+    public getCrates(): SupplyCrate[] { return this.crates; }
     public getSystemRadius(): number { return this.SYSTEM_RADIUS; }
 
     public spawnDebris(x: number, y: number, value: number) {
@@ -59,6 +62,12 @@ export class Game {
         const newDebris = new Debris(x, y, value);
         this.debris.push(newDebris);
         this.entities.push(newDebris);
+    }
+
+    private spawnSupplyCrate(x: number, y: number, abilityId: string) {
+        const crate = new SupplyCrate(x, y, abilityId);
+        this.crates.push(crate);
+        this.entities.push(crate);
     }
 
     private backgroundCanvas: HTMLCanvasElement;
@@ -252,6 +261,7 @@ export class Game {
         this.bubbleZones = [];
         this.mines = [];
         this.debris = [];
+        this.crates = [];
         this.isGameOver = false;
         this.difficultyMultiplier = 1;
 
@@ -506,6 +516,34 @@ export class Game {
         }
     }
 
+    private handleCratePickup() {
+        const pickupRadius = 75;
+        const player = this.playerFleet;
+        if (!player) return;
+
+        for (let i = this.crates.length - 1; i >= 0; i--) {
+            const crate = this.crates[i];
+            const dist = Vector2.distance(player.position, crate.position);
+            if (dist > pickupRadius) continue;
+
+            const ability = (player.abilities as any)[crate.abilityId];
+            if (!ability) {
+                this.crates.splice(i, 1);
+                const eidx = this.entities.indexOf(crate);
+                if (eidx !== -1) this.entities.splice(eidx, 1);
+                continue;
+            }
+
+            if (ability.charges < 10) {
+                ability.charges++;
+                this.ui.updateAbilities(player);
+                this.crates.splice(i, 1);
+                const eidx = this.entities.indexOf(crate);
+                if (eidx !== -1) this.entities.splice(eidx, 1);
+            }
+        }
+    }
+
     private findAlternateTarget(attacker: Fleet, allFleets: Fleet[]): Fleet | null {
         let best: Fleet | null = null;
         let bestDist = Infinity;
@@ -699,6 +737,8 @@ export class Game {
             this.isCollectingDebris = false;
             this.collectionAnimationTime = 0;
         }
+
+        this.handleCratePickup();
 
         // NPC debris collection - all NPCs collect at any speed
         for (const npc of this.npcFleets) {
@@ -912,6 +952,18 @@ export class Game {
                 if (debrisValue > 0) {
                     this.spawnDebris(d.position.x, d.position.y, debrisValue);
                 }
+                const dropCount = Math.floor(Math.random() * 4);
+                if (dropCount > 0) {
+                    const abilityIds = ['afterburner', 'bubble', 'cloak', 'mine', 'medkit', 'fire', 'shield'];
+                    for (let i = 0; i < dropCount; i++) {
+                        const abilityId = abilityIds[Math.floor(Math.random() * abilityIds.length)];
+                        const angle = Math.random() * Math.PI * 2;
+                        const dist = 15 + Math.random() * 25;
+                        const x = d.position.x + Math.cos(angle) * dist;
+                        const y = d.position.y + Math.sin(angle) * dist;
+                        this.spawnSupplyCrate(x, y, abilityId);
+                    }
+                }
             toRemove.push(d);
         }
 
@@ -939,6 +991,12 @@ export class Game {
                 } else if (e instanceof Fleet) {
                     // Interaction radius: at least 40 pixels on screen or 20 world units
                     const interactionRadius = Math.max(20, 40 / this.camera.zoom);
+                    if (dist <= interactionRadius) {
+                        closestEntity = e;
+                        minDist = dist;
+                    }
+                } else if (e instanceof SupplyCrate) {
+                    const interactionRadius = Math.max(15, 30 / this.camera.zoom);
                     if (dist <= interactionRadius) {
                         closestEntity = e;
                         minDist = dist;
@@ -1057,6 +1115,11 @@ export class Game {
             info = `<strong>Space Debris</strong><br/>`;
             info += `Value: ${formatNumber(debris.value)} units<br/>`;
             info += `Pos: (${debris.position.x.toFixed(0)}, ${debris.position.y.toFixed(0)})`;
+        } else if (entity instanceof SupplyCrate) {
+            const crate = entity as SupplyCrate;
+            info = `<strong>Supply Crate</strong><br/>`;
+            info += `Charge: ${crate.abilityId}<br/>`;
+            info += `Pos: (${crate.position.x.toFixed(0)}, ${crate.position.y.toFixed(0)})`;
         }
 
         header.innerHTML = info;
