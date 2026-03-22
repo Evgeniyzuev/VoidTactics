@@ -542,6 +542,19 @@ export class Game {
                 if (eidx !== -1) this.entities.splice(eidx, 1);
             }
         }
+
+        // NPC pickup (no effect, just clears crate)
+        for (const npc of this.npcFleets) {
+            if (npc.state === 'combat') continue;
+            for (let i = this.crates.length - 1; i >= 0; i--) {
+                const crate = this.crates[i];
+                const dist = Vector2.distance(npc.position, crate.position);
+                if (dist > pickupRadius) continue;
+                this.crates.splice(i, 1);
+                const eidx = this.entities.indexOf(crate);
+                if (eidx !== -1) this.entities.splice(eidx, 1);
+            }
+        }
     }
 
     private findAlternateTarget(attacker: Fleet, allFleets: Fleet[]): Fleet | null {
@@ -952,7 +965,7 @@ export class Game {
                 if (debrisValue > 0) {
                     this.spawnDebris(d.position.x, d.position.y, debrisValue);
                 }
-                const dropCount = Math.floor(Math.random() * 4);
+                const dropCount = Math.random() < 0.5 ? 1 : 0;
                 if (dropCount > 0) {
                     const abilityIds = ['afterburner', 'bubble', 'cloak', 'mine', 'medkit', 'fire', 'shield'];
                     for (let i = 0; i < dropCount; i++) {
@@ -1118,7 +1131,6 @@ export class Game {
         } else if (entity instanceof SupplyCrate) {
             const crate = entity as SupplyCrate;
             info = `<strong>Supply Crate</strong><br/>`;
-            info += `Charge: ${crate.abilityId}<br/>`;
             info += `Pos: (${crate.position.x.toFixed(0)}, ${crate.position.y.toFixed(0)})`;
         }
 

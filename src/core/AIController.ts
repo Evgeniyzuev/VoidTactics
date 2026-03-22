@@ -160,11 +160,19 @@ export class AIController {
                 let foundDebris = false;
                 if (npc.faction === 'trader' ||
                     (['pirate', 'civilian'].includes(npc.faction) && minDistThreat > 1000)) { // Traders always, others when safe
+                    const nearbyCrates = this.game.getCrates()
+                        .filter((c: any) => Vector2.distance(npc.position, c.position) < (npc.faction === 'trader' ? 1500 : 1200))
+                        .sort((a: any, b: any) => Vector2.distance(npc.position, a.position) - Vector2.distance(npc.position, b.position));
                     const nearbyDebris = this.game.getDebris()
                         .filter((d: any) => Vector2.distance(npc.position, d.position) < (npc.faction === 'trader' ? 1500 : 1200)) // Traders have longer range
                         .sort((a: any, b: any) => Vector2.distance(npc.position, a.position) - Vector2.distance(npc.position, b.position));
 
-                    if (nearbyDebris.length > 0) {
+                    if (nearbyCrates.length > 0) {
+                        const targetCrate = nearbyCrates[0];
+                        npc.setFollowTarget(targetCrate, 'approach');
+                        foundDebris = true;
+                        npc.decisionTimer = npc.faction === 'trader' ? 6.0 : 4.0;
+                    } else if (nearbyDebris.length > 0) {
                         const targetDebris = nearbyDebris[0];
                         npc.setFollowTarget(targetDebris, 'approach');
                         foundDebris = true;

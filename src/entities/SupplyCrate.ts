@@ -16,30 +16,22 @@ export class SupplyCrate extends Entity {
 
     draw(ctx: CanvasRenderingContext2D, camera: Camera): void {
         const screenPos = camera.worldToScreen(this.position);
-        const pulse = 0.5 + 0.5 * Math.sin(Date.now() * 0.006);
 
         ctx.save();
         ctx.translate(screenPos.x, screenPos.y);
 
-        // Outer glow
+        // Draw like debris bubble, but green and pulsing
+        const pulse = 0.6 + 0.4 * Math.sin(Date.now() * 0.006);
+        const pileRadius = this.radius * (0.8 + 0.2 * pulse);
+
         ctx.beginPath();
-        ctx.arc(0, 0, this.radius * 1.4, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(0, 255, 120, ${0.15 + pulse * 0.2})`;
+        ctx.arc(0, 0, pileRadius, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(0, 220, 120, ${0.6 + pulse * 0.2})`;
         ctx.fill();
 
-        // Crate body
         ctx.beginPath();
-        ctx.rect(-this.radius, -this.radius, this.radius * 2, this.radius * 2);
-        ctx.fillStyle = `rgba(0, 180, 80, ${0.6 + pulse * 0.3})`;
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(0, 255, 160, 0.9)';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        // Inner highlight
-        ctx.beginPath();
-        ctx.rect(-this.radius * 0.5, -this.radius * 0.5, this.radius, this.radius);
-        ctx.fillStyle = `rgba(120, 255, 190, ${0.2 + pulse * 0.2})`;
+        ctx.arc(-pileRadius * 0.3, -pileRadius * 0.3, pileRadius * 0.35, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(170, 255, 210, ${0.6 + pulse * 0.2})`;
         ctx.fill();
 
         ctx.restore();
