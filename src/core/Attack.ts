@@ -101,9 +101,16 @@ export class Attack {
             }
 
             // NPC deploys bubble if conditions met (skip for asteroids)
+            const toAttacker = this.attacker.position.sub(this.target.position);
+            const toAttackerDir = toAttacker.mag() > 0 ? toAttacker.normalize() : new Vector2(0, 0);
+            const targetVel = this.target.velocity.mag() > 1 ? this.target.velocity.normalize() : new Vector2(0, 0);
+            const towardScore = targetVel.x * toAttackerDir.x + targetVel.y * toAttackerDir.y;
+            const movingTowardAttacker = towardScore > 0.3 || dist < 60;
+
             if (!this.attacker.isPlayer &&
                 this.attacker.abilities.bubble.cooldown <= 0 &&
-                dist < 80 &&
+                dist < 120 &&
+                movingTowardAttacker &&
                 (!this.target.isBubbled || this.target.bubbleDistance > 180) &&
                 this.attacker.strength > this.target.strength) {
                 this.createBubbleForAttacker();
