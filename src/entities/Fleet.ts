@@ -30,6 +30,7 @@ export class Fleet extends Entity {
     public lastAcceleration: Vector2 = new Vector2(0, 0);
     public currentTarget: Fleet | null = null; // Current attack target
     public hostileTo: Set<Fleet> = new Set(); // Persistent hostility to other fleets
+    public mercenaryChecked: boolean = false;
 
     // Money-based progression
     public totalMoneyEarned: number = 0;

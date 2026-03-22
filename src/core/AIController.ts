@@ -12,17 +12,31 @@ export class AIController {
 
     processAI() {
         const detectionRadius = 2000;
+        const mercenaryFlipRadius = 1200;
         const giveUpRadius = 2500;
         const backupRadius = 4000;
         const celestialBodies = this.game.getEntities().filter(e => e instanceof CelestialBody) as CelestialBody[];
 
         for (const npc of this.game.getNpcFleets()) {
             const allFleets = [this.game.getPlayerFleet(), ...this.game.getNpcFleets()];
+            const player = this.game.getPlayerFleet();
             const hasNearbyAlly = allFleets.some(f =>
                 f !== npc &&
                 this.isAlly(npc, f) &&
                 Vector2.distance(npc.position, f.position) < 800
             );
+
+            if (npc.faction === 'mercenary' && !npc.mercenaryChecked) {
+                const distToPlayer = Vector2.distance(npc.position, player.position);
+                if (distToPlayer <= mercenaryFlipRadius && player.strength < npc.strength) {
+                    npc.mercenaryChecked = true;
+                    if (Math.random() < 0.3) {
+                        npc.faction = 'pirate';
+                        npc.color = '#FF4444';
+                        npc.decisionTimer = 0;
+                    }
+                }
+            }
 
             // Ability Usage Logic
             this.handleAbilities(npc);

@@ -36,7 +36,7 @@ export class SystemManager {
                 targetFleetCount: 60,
                 factionWeights: [
                     { type: 'civilian', weight: 0.30 },
-                    { type: 'trader', weight: 0.05 },
+                    { type: 'trader', weight: 0.017 },
                     { type: 'mercenary', weight: 0.05 },
                     { type: 'pirate', weight: 0.25 },
                     { type: 'orc', weight: 0.20 },
@@ -276,7 +276,7 @@ export class SystemManager {
         return true;
     }
 
-    public spawnFleetsForSystem(systemId: number, playerStrength: number, fleets: Fleet[], difficultyMultiplier: number, forcedFaction?: Faction): Fleet[] {
+    public spawnFleetsForSystem(systemId: number, playerStrength: number, fleets: Fleet[], difficultyMultiplier: number, forcedFaction?: Faction, playerLevel: number = 1): Fleet[] {
         const system = this.systems.get(systemId);
         if (!system) return [];
 
@@ -284,6 +284,7 @@ export class SystemManager {
         const strengthScale = Math.max(1, difficultyMultiplier);
         const adjustedMin = Math.max(1, Math.round(rules.strengthMin * strengthScale));
         const adjustedMax = Math.max(adjustedMin, Math.round(rules.strengthMax * strengthScale));
+        const levelAdjustedWeights = this.getLevelAdjustedWeights(rules.factionWeights, playerLevel);
 
         // Pick faction based on weights with percentage restrictions
         let selectedFaction: Faction = 'civilian';
@@ -298,10 +299,11 @@ export class SystemManager {
         } else {
             // Try to find a faction that can spawn within percentage limits
             while (attempts < maxAttempts) {
-                let rand = Math.random();
+                const totalWeight = levelAdjustedWeights.reduce((sum, w) => sum + w.weight, 0);
+                let rand = Math.random() * Math.max(0.0001, totalWeight);
                 selectedFaction = 'civilian'; // default fallback
 
-                for (const factionWeight of rules.factionWeights) {
+                for (const factionWeight of levelAdjustedWeights) {
                     if (rand < factionWeight.weight) {
                         selectedFaction = factionWeight.type;
                         break;
@@ -389,6 +391,25 @@ export class SystemManager {
 
         console.log(`System ${systemId}: Spawning ${selectedFaction} fleet (strength: ${npc.strength}, difficulty×${difficultyMultiplier.toFixed(2)})`);
         return [npc];
+    }
+
+    private getLevelAdjustedWeights(baseWeights: { type: Faction, weight: number }[], playerLevel: number): { type: Faction, weight: number }[] {
+        if (!playerLevel || playerLevel <= 1) return baseWeights;
+        const levelFactor = Math.min(1, (playerLevel - 1) / 20);
+
+        return baseWeights.map((entry) => {
+            let weight = entry.weight;
+            if (entry.type === 'civilian') {
+                weight = Math.max(0.12, weight * (1 - 0.5 * levelFactor));
+            } else if (entry.type === 'military') {
+                weight = Math.max(0.1, weight * (1 - 0.5 * levelFactor));
+            } else if (entry.type === 'pirate') {
+                weight = Math.min(0.35, weight * (1 + 0.35 * levelFactor));
+            } else if (entry.type === 'orc') {
+                weight = Math.min(0.30, weight * (1 + 0.30 * levelFactor));
+            }
+            return { type: entry.type, weight };
+        });
     }
 
     public getTargetFleetCount(systemId: number): number {
