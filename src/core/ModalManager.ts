@@ -539,9 +539,10 @@ export class ModalManager {
      */
     showTerraUpgradeDialog(
         currentStrength: number,
+        currentMaxStrength: number,
         currentMoney: number,
         levelInfo: string,
-        onUpgrade: () => void,
+        onUpgrade: () => boolean,
         onCancel: () => void,
         onBuyAbility: (id: string) => void
     ) {
@@ -577,7 +578,7 @@ export class ModalManager {
         title.style.color = '#00C8FF';
 
         const info = document.createElement('p');
-        info.textContent = `Fleet Strength: ${formatNumber(currentStrength)} | Money: $${formatNumber(currentMoney)}`;
+        info.textContent = `Fleet Strength: ${formatNumber(currentStrength)} / ${formatNumber(currentMaxStrength)} | Money: $${formatNumber(currentMoney)}`;
         info.style.margin = '0 0 10px 0';
         info.style.fontSize = '14px';
         info.style.color = '#FFD700';
@@ -602,15 +603,34 @@ export class ModalManager {
         upgradeLabel.style.opacity = '0.7';
 
         const upgradeButton = document.createElement('button');
-        upgradeButton.textContent = 'Buy strength with all money (100$ per 1💪)';
+        const upgradeCost = currentMaxStrength * 10;
+        upgradeButton.textContent = `Hold to buy strength (${formatNumber(upgradeCost)}$ per 1💪)`;
         upgradeButton.style.padding = '10px 20px';
         upgradeButton.style.width = '100%';
         upgradeButton.style.border = 'none';
         upgradeButton.style.borderRadius = '6px';
-        upgradeButton.style.background = currentMoney >= 100 ? '#00AA00' : '#444444';
+        upgradeButton.style.background = currentMoney >= upgradeCost ? '#00AA00' : '#444444';
         upgradeButton.style.color = 'white';
-        upgradeButton.style.cursor = currentMoney >= 100 ? 'pointer' : 'not-allowed';
-        upgradeButton.onclick = () => onUpgrade();
+        upgradeButton.style.cursor = currentMoney >= upgradeCost ? 'pointer' : 'not-allowed';
+        let upgradeInterval: any = null;
+        const stopUpgrade = () => {
+            if (upgradeInterval) {
+                clearInterval(upgradeInterval);
+                upgradeInterval = null;
+            }
+        };
+        const startUpgrade = () => {
+            if (upgradeInterval || currentMoney < upgradeCost) return;
+            // 20 times per second
+            upgradeInterval = setInterval(() => {
+                const ok = onUpgrade();
+                if (!ok) stopUpgrade();
+            }, 50);
+        };
+        upgradeButton.onpointerdown = () => startUpgrade();
+        upgradeButton.onpointerup = () => stopUpgrade();
+        upgradeButton.onpointerleave = () => stopUpgrade();
+        upgradeButton.onpointercancel = () => stopUpgrade();
 
         section1.appendChild(upgradeLabel);
         section1.appendChild(upgradeButton);

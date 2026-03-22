@@ -1327,28 +1327,28 @@ export class Game {
 
         this.modal.showTerraUpgradeDialog(
             this.playerFleet.strength,
+            this.playerFleet.maxStrength,
             this.playerFleet.money,
             levelInfo,
             () => {
                 // Upgrade logic
-                const upgradeAmount = Math.floor(this.playerFleet.money / 100);
-                if (upgradeAmount > 0) {
-                    this.playerFleet.maxStrength += upgradeAmount;
-                    this.playerFleet.strength += upgradeAmount;
-                    this.playerFleet.money -= upgradeAmount * 100;
+                const upgradeCost = this.playerFleet.maxStrength * 10;
+                if (this.playerFleet.money >= upgradeCost) {
+                    this.playerFleet.maxStrength += 1;
+                    this.playerFleet.strength += 1;
+                    this.playerFleet.money -= upgradeCost;
                     this.ui.updateMoney(this.playerFleet.money);
                     this.ui.updateStrength(this.playerFleet.strength, this.playerFleet.maxStrength);
-                    console.log('Fleet upgraded by', upgradeAmount, 'to strength:', this.playerFleet.strength);
+                    console.log('Fleet upgraded by 1 to strength:', this.playerFleet.strength);
 
                     // Trigger autosave after upgrade
                     SaveSystem.saveAutosaveFleetSize(this.playerFleet.maxStrength);
                     SaveSystem.saveAutosaveFleetProgress(this.captureProgress());
                     SaveSystem.saveAutosaveFleetAbilityCharges(this.captureAbilityCharges());
                     console.log('Autosave created with fleet strength:', this.playerFleet.strength);
-
-                    // Update dialog with new values
-                    this.showTerraUpgradeDialog();
+                    return true;
                 }
+                return false;
             },
             () => {
                 console.log('Terra upgrade cancelled');
