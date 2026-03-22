@@ -623,7 +623,7 @@ export class ModalManager {
         section2.style.marginBottom = '20px';
 
         const shopLabel = document.createElement('div');
-        shopLabel.textContent = 'EQUIPMENT SHOP (50$ per unit, max 10)';
+        shopLabel.textContent = 'EQUIPMENT SHOP (200$ per unit, max 10)';
         shopLabel.style.fontSize = '12px';
         shopLabel.style.marginBottom = '10px';
         shopLabel.style.opacity = '0.7';
@@ -648,11 +648,11 @@ export class ModalManager {
             const btn = document.createElement('button');
             btn.textContent = ability.name;
             btn.style.padding = '8px';
-            btn.style.background = currentMoney >= 50 ? 'rgba(0, 200, 255, 0.2)' : '#333';
+            btn.style.background = currentMoney >= 200 ? 'rgba(0, 200, 255, 0.2)' : '#333';
             btn.style.border = '1px solid rgba(0, 200, 255, 0.4)';
             btn.style.color = 'white';
             btn.style.borderRadius = '4px';
-            btn.style.cursor = currentMoney >= 50 ? 'pointer' : 'not-allowed';
+            btn.style.cursor = currentMoney >= 200 ? 'pointer' : 'not-allowed';
             btn.style.fontSize = '12px';
             btn.onclick = () => onBuyAbility(ability.id);
             shopGrid.appendChild(btn);

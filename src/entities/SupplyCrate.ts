@@ -7,7 +7,7 @@ export class SupplyCrate extends Entity {
     constructor(x: number, y: number, abilityId: string) {
         super(x, y);
         this.abilityId = abilityId;
-        this.radius = 6;
+        this.radius = 3;
     }
 
     update(_dt: number): void {

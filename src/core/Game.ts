@@ -94,7 +94,7 @@ export class Game {
     private systemManager: SystemManager;
     private difficultyMultiplier: number = 1;
     private static readonly START_LEVEL_REQUIREMENT = 1000;
-    private static readonly START_MONEY = 150;
+    private static readonly START_MONEY = 0;
 
     constructor(canvas: HTMLCanvasElement) {
         this.renderer = new Renderer(canvas);
@@ -1359,8 +1359,8 @@ export class Game {
             // Ability Purchase Logic
             (abilityId: string) => {
                 const a = (this.playerFleet.abilities as any)[abilityId];
-                if (a && this.playerFleet.money >= 50 && a.charges < 10) {
-                    this.playerFleet.money -= 50;
+                if (a && this.playerFleet.money >= 200 && a.charges < 10) {
+                    this.playerFleet.money -= 200;
                     a.charges++;
                     this.ui.updateMoney(this.playerFleet.money);
                     this.ui.updateAbilities(this.playerFleet);
