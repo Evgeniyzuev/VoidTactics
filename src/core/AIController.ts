@@ -174,7 +174,7 @@ export class AIController {
                 // Flee! (Military only flees if alone and overwhelmed, Raiders/Orcs never)
                 const runDir = npc.position.sub(closestThreat.position).normalize();
                 npc.setTarget(npc.position.add(runDir.scale(800)));
-                if (npc.abilities.mine.cooldown <= 0 && Math.random() < 0.5) {
+                if (npc.abilities.mine.cooldown <= 0 && Math.random() < 0.2) {
                     this.game.dropWarpMine(npc);
                 }
                 npc.state = 'flee';
