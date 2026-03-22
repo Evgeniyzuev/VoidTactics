@@ -261,7 +261,7 @@ export class SystemManager {
         const counts = this.countFleetsByFaction(fleets);
 
         if (faction === 'military' || faction === 'mercenary') {
-            const maxByLevel = Math.max(0, Math.floor(playerLevel));
+            const maxByLevel = Math.max(0, Math.floor(playerLevel) + 5);
             return counts[faction] < maxByLevel;
         }
 

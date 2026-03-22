@@ -1325,7 +1325,7 @@ export class Game {
         const levelNeeded = Math.max(1, this.playerFleet.nextLevelThreshold - this.playerFleet.levelThreshold);
         const levelInfo = `Level ${this.playerFleet.level} (${formatNumber(levelProgress)}/${formatNumber(levelNeeded)} this level)`;
         const mercenaryCount = this.npcFleets.filter(f => f.faction === 'mercenary').length;
-        const mercenaryMax = this.playerFleet.level;
+        const mercenaryMax = this.playerFleet.level + 5;
         const mercenaryCost = this.playerFleet.maxStrength;
 
         this.modal.showTerraUpgradeDialog(
@@ -1377,7 +1377,7 @@ export class Game {
             mercenaryCost,
             () => {
                 const currentCount = this.npcFleets.filter(f => f.faction === 'mercenary').length;
-                const maxCount = this.playerFleet.level;
+                const maxCount = this.playerFleet.level + 5;
                 const cost = this.playerFleet.maxStrength;
                 if (currentCount >= maxCount || this.playerFleet.money < cost) return;
 
