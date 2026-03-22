@@ -362,7 +362,7 @@ export class SystemManager {
         if (adjustedMin === adjustedMax) {
             npc.strength = adjustedMin;
         } else {
-            const coefficients = [0.5, 1, 2, 4, 8];
+            const coefficients = [0.5, 0.75, 1, 1.5, 2, 4, 8];
             const coeff = coefficients[Math.floor(Math.random() * coefficients.length)];
             let baseS = playerStrength * coeff * strengthScale;
 
