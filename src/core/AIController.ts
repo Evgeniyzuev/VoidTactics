@@ -17,6 +17,12 @@ export class AIController {
         const celestialBodies = this.game.getEntities().filter(e => e instanceof CelestialBody) as CelestialBody[];
 
         for (const npc of this.game.getNpcFleets()) {
+            const allFleets = [this.game.getPlayerFleet(), ...this.game.getNpcFleets()];
+            const hasNearbyAlly = allFleets.some(f =>
+                f !== npc &&
+                this.isAlly(npc, f) &&
+                Vector2.distance(npc.position, f.position) < 800
+            );
 
             // Ability Usage Logic
             this.handleAbilities(npc);
@@ -40,7 +46,7 @@ export class AIController {
                         }
                     }
 
-                    if (dist > giveUpRadius || (dist > 1200 && npc.faction === 'pirate' && npc.strength < npc.followTarget.strength)) {
+                    if (dist > giveUpRadius || (dist > 1200 && npc.faction === 'pirate' && npc.strength < npc.followTarget.strength && !hasNearbyAlly)) {
                         npc.stopFollowing();
                         if (celestialBodies.length > 0) {
                             const poi = celestialBodies[Math.floor(Math.random() * celestialBodies.length)];
@@ -59,8 +65,6 @@ export class AIController {
             let bestTargetScore = -1;
             let closestThreat: Fleet | null = null;
             let minDistThreat = detectionRadius;
-
-            const allFleets = [this.game.getPlayerFleet(), ...this.game.getNpcFleets()];
 
             // 1. Guardian Instinct / Backup Logic for Military
             if (npc.faction === 'military') {
@@ -105,13 +109,21 @@ export class AIController {
                     if (hostileAtoB) {
                         let canTarget = false;
                         if (npc.faction === 'military' || npc.faction === 'raider' || npc.faction === 'orc') {
-                            canTarget = true;
+                            if ((npc.faction === 'military' || npc.faction === 'pirate') && other.strength > npc.strength && !hasNearbyAlly) {
+                                canTarget = false;
+                            } else {
+                                canTarget = true;
+                            }
                         } else if (npc.faction === 'mercenary') {
                             // Mercenaries only target "bad guys" (pirates, orcs, raiders) or attackers
                             canTarget = ['pirate', 'orc', 'raider'].includes(other.faction) || other.hostileTo.size > 0;
                         } else if (npc.faction === 'pirate') {
-                            // Pirates are opportunistic, target weak or already fighting
-                            canTarget = other.strength < npc.strength * 1.2 || other.state === 'combat';
+                            // Pirates are aggressive; size matters less unless alone vs bigger
+                            if (other.strength > npc.strength && !hasNearbyAlly) {
+                                canTarget = false;
+                            } else {
+                                canTarget = true;
+                            }
                         } else if (npc.faction === 'civilian' || npc.faction === 'trader') {
                             // Only target if very weak (self-defense)
                             canTarget = other.strength < npc.strength * 0.4;
@@ -119,7 +131,10 @@ export class AIController {
 
                         if (canTarget) {
                             // Calculate scores
-                            const strengthRatio = npc.strength / Math.max(0.1, other.strength);
+                            let strengthRatio = npc.strength / Math.max(0.1, other.strength);
+                            if (npc.faction === 'military' || npc.faction === 'pirate') {
+                                strengthRatio = 0.5 + strengthRatio * 0.25;
+                            }
                             const proximityFactor = 1 - (dist / detectionRadius);
                             const cargoBonus = (other.faction === 'trader') ? 2.0 : 0;
                             const combatBonus = (other.state === 'combat') ? 1.5 : 0;
