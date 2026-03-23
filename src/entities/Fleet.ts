@@ -45,7 +45,7 @@ export class Fleet extends Entity {
         mine: { active: false, timer: 0, cooldown: 0, duration: 0, cdMax: 5, charges: 0 },
         medkit: { active: false, timer: 0, cooldown: 0, duration: 10, cdMax: 10, charges: 0 },
         fire: { active: false, timer: 0, cooldown: 0, duration: 5, cdMax: 10, charges: 0 },
-        shield: { active: false, timer: 0, cooldown: 0, duration: 1, cdMax: 10, charges: 0 }
+        shield: { active: false, timer: 0, cooldown: 0, duration: 1, cdMax: 5, charges: 0 }
     };
     public isCloaked: boolean = false;
     public isBubbled: boolean = false; // Set by external bubbles

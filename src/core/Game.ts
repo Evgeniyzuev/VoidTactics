@@ -951,7 +951,7 @@ export class Game {
                 if (debrisValue > 0) {
                     this.spawnDebris(d.position.x, d.position.y, debrisValue);
                 }
-                const dropCount = Math.random() < 0.5 ? 1 : 0;
+                const dropCount = Math.random() < 0.5 ? 1 : 2;
                 if (dropCount > 0) {
                     const abilityIds = ['afterburner', 'bubble', 'cloak', 'mine', 'medkit', 'fire', 'shield'];
                     for (let i = 0; i < dropCount; i++) {
