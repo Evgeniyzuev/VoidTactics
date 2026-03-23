@@ -213,17 +213,7 @@ export class UIManager {
         moneyDisplay.textContent = '$: 0';
         panel.appendChild(moneyDisplay);
 
-        const levelDisplay = document.createElement('div');
-        levelDisplay.id = 'level-display';
-        levelDisplay.className = 'resource-display';
-        levelDisplay.style.color = '#54C7FF';
-        levelDisplay.style.fontSize = isCompact ? '11px' : '14px';
-        levelDisplay.style.fontWeight = 'bold';
-        levelDisplay.style.fontFamily = 'monospace';
-        levelDisplay.style.whiteSpace = 'nowrap';
-        levelDisplay.textContent = 'Lv 1 · $0/1000';
-        panel.appendChild(levelDisplay);
-        this.levelDisplay = levelDisplay;
+        // Level display removed from bottom panel by request
 
         const abilities = [
             { id: 'afterburner', icon: '🚀', color: '#FF4400', title: 'Afterburner (Boost Speed)' },

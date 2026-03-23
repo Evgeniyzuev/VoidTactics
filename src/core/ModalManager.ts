@@ -538,19 +538,23 @@ export class ModalManager {
      * Show Terra upgrade dialog
      */
     showTerraUpgradeDialog(
-        currentStrength: number,
-        currentMaxStrength: number,
-        currentMoney: number,
-        levelInfo: string,
+        getState: () => {
+            currentStrength: number,
+            currentMaxStrength: number,
+            currentMoney: number,
+            levelInfo: string,
+            mercenaryCount: number,
+            mercenaryMax: number,
+            mercenaryCost: number
+        },
         onUpgrade: () => boolean,
         onCancel: () => void,
-        onBuyAbility: (id: string) => void,
-        mercenaryCount: number,
-        mercenaryMax: number,
-        mercenaryCost: number,
-        onHireMercenary: () => void
+        onBuyAbility: (id: string) => boolean,
+        onHireMercenary: () => boolean
     ) {
         this.closeModal();
+
+        const state = getState();
 
         this.modalContainer = document.createElement('div');
         this.modalContainer.style.position = 'fixed';
@@ -582,13 +586,13 @@ export class ModalManager {
         title.style.color = '#00C8FF';
 
         const info = document.createElement('p');
-        info.textContent = `Fleet Strength: ${formatNumber(currentStrength)} / ${formatNumber(currentMaxStrength)} | Money: $${formatNumber(currentMoney)}`;
+        info.textContent = `Fleet Strength: ${formatNumber(state.currentStrength)} / ${formatNumber(state.currentMaxStrength)} | Money: $${formatNumber(state.currentMoney)}`;
         info.style.margin = '0 0 10px 0';
         info.style.fontSize = '14px';
         info.style.color = '#FFD700';
 
         const levelText = document.createElement('p');
-        levelText.textContent = levelInfo;
+        levelText.textContent = state.levelInfo;
         levelText.style.margin = '0 0 20px 0';
         levelText.style.fontSize = '12px';
         levelText.style.color = '#AAAAAA';
@@ -607,15 +611,15 @@ export class ModalManager {
         upgradeLabel.style.opacity = '0.7';
 
         const upgradeButton = document.createElement('button');
-        const upgradeCost = currentMaxStrength + 10;
+        const upgradeCost = state.currentMaxStrength + 10;
         upgradeButton.textContent = `Hold to buy strength (${formatNumber(upgradeCost)}$ per 1💪)`;
         upgradeButton.style.padding = '10px 20px';
         upgradeButton.style.width = '100%';
         upgradeButton.style.border = 'none';
         upgradeButton.style.borderRadius = '6px';
-        upgradeButton.style.background = currentMoney >= upgradeCost ? '#00AA00' : '#444444';
+        upgradeButton.style.background = state.currentMoney >= upgradeCost ? '#00AA00' : '#444444';
         upgradeButton.style.color = 'white';
-        upgradeButton.style.cursor = currentMoney >= upgradeCost ? 'pointer' : 'not-allowed';
+        upgradeButton.style.cursor = state.currentMoney >= upgradeCost ? 'pointer' : 'not-allowed';
         let upgradeInterval: any = null;
         const stopUpgrade = () => {
             if (upgradeInterval) {
@@ -624,11 +628,12 @@ export class ModalManager {
             }
         };
         const startUpgrade = () => {
-            if (upgradeInterval || currentMoney < upgradeCost) return;
+            if (upgradeInterval || state.currentMoney < upgradeCost) return;
             // 20 times per second
             upgradeInterval = setInterval(() => {
                 const ok = onUpgrade();
                 if (!ok) stopUpgrade();
+                updateUi();
             }, 50);
         };
         upgradeButton.onpointerdown = () => startUpgrade();
@@ -668,18 +673,23 @@ export class ModalManager {
         shopGrid.style.gridTemplateColumns = '1fr 1fr';
         shopGrid.style.gap = '8px';
 
+        const abilityButtons: HTMLButtonElement[] = [];
         abilities.forEach(ability => {
             const btn = document.createElement('button');
             btn.textContent = ability.name;
             btn.style.padding = '8px';
-            btn.style.background = currentMoney >= 200 ? 'rgba(0, 200, 255, 0.2)' : '#333';
+            btn.style.background = state.currentMoney >= 200 ? 'rgba(0, 200, 255, 0.2)' : '#333';
             btn.style.border = '1px solid rgba(0, 200, 255, 0.4)';
             btn.style.color = 'white';
             btn.style.borderRadius = '4px';
-            btn.style.cursor = currentMoney >= 200 ? 'pointer' : 'not-allowed';
+            btn.style.cursor = state.currentMoney >= 200 ? 'pointer' : 'not-allowed';
             btn.style.fontSize = '12px';
-            btn.onclick = () => onBuyAbility(ability.id);
+            btn.onclick = () => {
+                const ok = onBuyAbility(ability.id);
+                if (ok) updateUi();
+            };
             shopGrid.appendChild(btn);
+            abilityButtons.push(btn);
         });
         section2.appendChild(shopGrid);
 
@@ -691,14 +701,14 @@ export class ModalManager {
         section3.style.marginBottom = '20px';
 
         const mercLabel = document.createElement('div');
-        mercLabel.textContent = `HIRE MERCENARY (${mercenaryCount}/${mercenaryMax} in system)`;
+        mercLabel.textContent = `HIRE MERCENARY (${state.mercenaryCount}/${state.mercenaryMax} in system)`;
         mercLabel.style.fontSize = '12px';
         mercLabel.style.marginBottom = '10px';
         mercLabel.style.opacity = '0.7';
 
         const mercBtn = document.createElement('button');
-        const canHire = mercenaryCount < mercenaryMax && currentMoney >= mercenaryCost;
-        mercBtn.textContent = `Hire mercenary (${formatNumber(mercenaryCost)}$)`;
+        const canHire = state.mercenaryCount < state.mercenaryMax && state.currentMoney >= state.mercenaryCost;
+        mercBtn.textContent = `Hire mercenary (${formatNumber(state.mercenaryCost)}$)`;
         mercBtn.style.padding = '10px 20px';
         mercBtn.style.width = '100%';
         mercBtn.style.border = '1px solid rgba(255, 200, 0, 0.4)';
@@ -706,7 +716,10 @@ export class ModalManager {
         mercBtn.style.background = canHire ? 'rgba(255, 200, 0, 0.2)' : '#333';
         mercBtn.style.color = 'white';
         mercBtn.style.cursor = canHire ? 'pointer' : 'not-allowed';
-        mercBtn.onclick = () => onHireMercenary();
+        mercBtn.onclick = () => {
+            const ok = onHireMercenary();
+            if (ok) updateUi();
+        };
 
         section3.appendChild(mercLabel);
         section3.appendChild(mercBtn);
@@ -735,6 +748,30 @@ export class ModalManager {
         dialog.appendChild(closeBtn);
         this.modalContainer.appendChild(dialog);
         document.body.appendChild(this.modalContainer);
+
+        const updateUi = () => {
+            const next = getState();
+            info.textContent = `Fleet Strength: ${formatNumber(next.currentStrength)} / ${formatNumber(next.currentMaxStrength)} | Money: $${formatNumber(next.currentMoney)}`;
+            levelText.textContent = next.levelInfo;
+
+            const nextUpgradeCost = next.currentMaxStrength + 10;
+            upgradeButton.textContent = `Hold to buy strength (${formatNumber(nextUpgradeCost)}$ per 1💪)`;
+            upgradeButton.style.background = next.currentMoney >= nextUpgradeCost ? '#00AA00' : '#444444';
+            upgradeButton.style.cursor = next.currentMoney >= nextUpgradeCost ? 'pointer' : 'not-allowed';
+
+            for (const btn of abilityButtons) {
+                btn.style.background = next.currentMoney >= 200 ? 'rgba(0, 200, 255, 0.2)' : '#333';
+                btn.style.cursor = next.currentMoney >= 200 ? 'pointer' : 'not-allowed';
+            }
+
+            mercLabel.textContent = `HIRE MERCENARY (${next.mercenaryCount}/${next.mercenaryMax} in system)`;
+            const nextCanHire = next.mercenaryCount < next.mercenaryMax && next.currentMoney >= next.mercenaryCost;
+            mercBtn.textContent = `Hire mercenary (${formatNumber(next.mercenaryCost)}$)`;
+            mercBtn.style.background = nextCanHire ? 'rgba(255, 200, 0, 0.2)' : '#333';
+            mercBtn.style.cursor = nextCanHire ? 'pointer' : 'not-allowed';
+        };
+
+        updateUi();
     }
 
     /**

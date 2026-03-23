@@ -1307,18 +1307,20 @@ export class Game {
             this.togglePause();
         }
 
-        const levelProgress = Math.max(0, this.playerFleet.totalMoneyEarned - this.playerFleet.levelThreshold);
-        const levelNeeded = Math.max(1, this.playerFleet.nextLevelThreshold - this.playerFleet.levelThreshold);
-        const levelInfo = `Level ${this.playerFleet.level} (${formatNumber(levelProgress)}/${formatNumber(levelNeeded)} this level)`;
-        const mercenaryCount = this.npcFleets.filter(f => f.faction === 'mercenary').length;
-        const mercenaryMax = this.playerFleet.level + 5;
-        const mercenaryCost = this.playerFleet.maxStrength;
-
         this.modal.showTerraUpgradeDialog(
-            this.playerFleet.strength,
-            this.playerFleet.maxStrength,
-            this.playerFleet.money,
-            levelInfo,
+            () => {
+                const levelProgress = Math.max(0, this.playerFleet.totalMoneyEarned - this.playerFleet.levelThreshold);
+                const levelNeeded = Math.max(1, this.playerFleet.nextLevelThreshold - this.playerFleet.levelThreshold);
+                return {
+                    currentStrength: this.playerFleet.strength,
+                    currentMaxStrength: this.playerFleet.maxStrength,
+                    currentMoney: this.playerFleet.money,
+                    levelInfo: `Level ${this.playerFleet.level} (${formatNumber(levelProgress)}/${formatNumber(levelNeeded)} this level)`,
+                    mercenaryCount: this.npcFleets.filter(f => f.faction === 'mercenary').length,
+                    mercenaryMax: this.playerFleet.level + 5,
+                    mercenaryCost: this.playerFleet.maxStrength
+                };
+            },
             () => {
                 // Upgrade logic
                 const upgradeCost = this.playerFleet.maxStrength + 10;
@@ -1354,18 +1356,15 @@ export class Game {
                     this.ui.updateMoney(this.playerFleet.money);
                     this.ui.updateAbilities(this.playerFleet);
                     SaveSystem.saveAutosaveFleetAbilityCharges(this.captureAbilityCharges());
-                    // Refresh dialog to show new counts
-                    this.showTerraUpgradeDialog();
+                    return true;
                 }
+                return false;
             },
-            mercenaryCount,
-            mercenaryMax,
-            mercenaryCost,
             () => {
                 const currentCount = this.npcFleets.filter(f => f.faction === 'mercenary').length;
                 const maxCount = this.playerFleet.level + 5;
                 const cost = this.playerFleet.maxStrength;
-                if (currentCount >= maxCount || this.playerFleet.money < cost) return;
+                if (currentCount >= maxCount || this.playerFleet.money < cost) return false;
 
                 const fleets = this.systemManager.spawnFleetsForSystem(
                     this.currentSystemId,
@@ -1376,13 +1375,13 @@ export class Game {
                     this.playerFleet.level
                 );
 
-                if (fleets.length === 0) return;
+                if (fleets.length === 0) return false;
 
                 this.playerFleet.money -= cost;
                 this.ui.updateMoney(this.playerFleet.money);
                 this.entities.push(...fleets);
                 this.npcFleets.push(...fleets);
-                this.showTerraUpgradeDialog();
+                return true;
             },
         );
     }
