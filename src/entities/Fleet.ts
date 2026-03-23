@@ -43,7 +43,7 @@ export class Fleet extends Entity {
         cloak: { active: false, timer: 0, cooldown: 0, duration: 10, cdMax: 12, charges: 0 },
         bubble: { active: false, timer: 0, cooldown: 0, duration: 10, cdMax: 16, charges: 0 },
         mine: { active: false, timer: 0, cooldown: 0, duration: 0, cdMax: 5, charges: 0 },
-        medkit: { active: false, timer: 0, cooldown: 0, duration: 10, cdMax: 20, charges: 0 },
+        medkit: { active: false, timer: 0, cooldown: 0, duration: 10, cdMax: 10, charges: 0 },
         fire: { active: false, timer: 0, cooldown: 0, duration: 5, cdMax: 10, charges: 0 },
         shield: { active: false, timer: 0, cooldown: 0, duration: 1, cdMax: 10, charges: 0 }
     };

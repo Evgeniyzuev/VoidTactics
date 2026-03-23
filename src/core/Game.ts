@@ -497,22 +497,8 @@ export class Game {
         for (const fleet of allFleets) {
             if (fleet.strength >= fleet.maxStrength) continue;
 
-            const regenAmount = fleet.maxStrength * 0.01 * dt;
-            if (fleet.isPlayer) {
-                if (this.playerFleet.money <= 0) continue;
-                let applied = regenAmount;
-                let cost = applied * 50;
-                if (cost > this.playerFleet.money) {
-                    applied = this.playerFleet.money / 50;
-                    cost = applied * 50;
-                }
-                if (applied <= 0) continue;
-                fleet.strength = Math.min(fleet.maxStrength, fleet.strength + applied);
-                this.playerFleet.money -= cost;
-                this.ui.updateMoney(this.playerFleet.money);
-            } else {
-                fleet.strength = Math.min(fleet.maxStrength, fleet.strength + regenAmount);
-            }
+            const regenAmount = fleet.maxStrength * 0.005 * dt;
+            fleet.strength = Math.min(fleet.maxStrength, fleet.strength + regenAmount);
         }
     }
 
