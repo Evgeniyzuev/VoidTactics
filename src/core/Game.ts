@@ -947,6 +947,11 @@ export class Game {
         if (attack.attacker.strength <= 0) dead.push(attack.attacker);
         if (attack.target.strength <= 0) dead.push(attack.target);
         for (const d of dead) {
+                if (d.lootDropped) {
+                    toRemove.push(d);
+                    continue;
+                }
+                d.lootDropped = true;
                 const debrisValue = Math.floor(d.strength / 20); // Reduced by half
                 if (debrisValue > 0) {
                     this.spawnDebris(d.position.x, d.position.y, debrisValue);
