@@ -188,6 +188,11 @@ export class AIController {
 
                 // Traders always seek debris, pirates and civilians seek when safe
                 let foundDebris = false;
+                if (npc.faction === 'mercenary') {
+                    npc.setFollowTarget(this.game.getPlayerFleet(), 'approach');
+                    npc.decisionTimer = 2.5;
+                    foundDebris = true;
+                }
                 if (npc.faction === 'trader' ||
                     (['pirate', 'civilian'].includes(npc.faction) && minDistThreat > 1000)) { // Traders always, others when safe
                     const nearbyCrates = this.game.getCrates()

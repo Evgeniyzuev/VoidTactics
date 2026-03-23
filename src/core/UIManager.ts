@@ -192,25 +192,23 @@ export class UIManager {
         // Strength display
         const strengthDisplay = document.createElement('div');
         strengthDisplay.id = 'strength-display';
-        strengthDisplay.className = 'resource-display';
         strengthDisplay.style.color = '#FFFFFF';
-        strengthDisplay.style.fontSize = isCompact ? '12px' : '16px';
+        strengthDisplay.style.fontSize = isCompact ? '11px' : '14px';
         strengthDisplay.style.fontWeight = 'bold';
         strengthDisplay.style.fontFamily = 'monospace';
         strengthDisplay.style.whiteSpace = 'nowrap';
-        strengthDisplay.textContent = '💪: 10';
+        strengthDisplay.textContent = '10/10';
         panel.appendChild(strengthDisplay);
 
         // Money display
         const moneyDisplay = document.createElement('div');
         moneyDisplay.id = 'money-display';
-        moneyDisplay.className = 'resource-display';
         moneyDisplay.style.color = '#FFD700';
-        moneyDisplay.style.fontSize = isCompact ? '12px' : '16px';
+        moneyDisplay.style.fontSize = isCompact ? '11px' : '14px';
         moneyDisplay.style.fontWeight = 'bold';
         moneyDisplay.style.fontFamily = 'monospace';
         moneyDisplay.style.whiteSpace = 'nowrap';
-        moneyDisplay.textContent = '$: 0';
+        moneyDisplay.textContent = '$0';
         panel.appendChild(moneyDisplay);
 
         // Level display removed from bottom panel by request
@@ -382,7 +380,7 @@ export class UIManager {
     public updateMoney(money: number) {
         const moneyDisplay = document.getElementById('money-display');
         if (moneyDisplay) {
-            moneyDisplay.textContent = `$: ${formatNumber(Math.floor(money))}`;
+            moneyDisplay.textContent = `$${formatNumber(Math.floor(money))}`;
         }
     }
 
@@ -390,9 +388,9 @@ export class UIManager {
         const strengthDisplay = document.getElementById('strength-display');
         if (strengthDisplay) {
             if (maxStrength !== undefined) {
-                strengthDisplay.textContent = `💪: ${formatNumber(strength)} / ${formatNumber(maxStrength)}`;
+                strengthDisplay.textContent = `${formatNumber(strength)}/${formatNumber(maxStrength)}`;
             } else {
-                strengthDisplay.textContent = `💪: ${formatNumber(strength)}`;
+                strengthDisplay.textContent = `${formatNumber(strength)}`;
             }
         }
     }
