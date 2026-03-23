@@ -165,6 +165,7 @@ export class UIManager {
     }
 
     private renderAbilityPanel() {
+        const isCompact = window.innerWidth <= 600;
         const panel = document.createElement('div');
         panel.id = 'ability-panel';
         panel.style.position = 'absolute';
@@ -173,24 +174,30 @@ export class UIManager {
         panel.style.transform = 'translateX(-50%)';
         panel.style.zIndex = '50';
         panel.style.display = 'flex';
-        panel.style.gap = '8px';
+        panel.style.gap = isCompact ? '4px' : '8px';
         panel.style.alignItems = 'center';
-        panel.style.flexWrap = 'wrap';
-        panel.style.padding = '6px 12px';
+        panel.style.flexWrap = isCompact ? 'nowrap' : 'wrap';
+        panel.style.padding = isCompact ? '4px 8px' : '6px 12px';
         panel.style.background = 'rgba(0, 0, 0, 0.6)';
         panel.style.backdropFilter = 'blur(10px)';
-        panel.style.borderRadius = '30px';
+        panel.style.borderRadius = isCompact ? '18px' : '30px';
         panel.style.border = '1px solid rgba(255, 255, 255, 0.2)';
         panel.style.pointerEvents = 'auto';
+        if (isCompact) {
+            panel.style.maxWidth = '96%';
+            panel.style.overflowX = 'auto';
+            (panel.style as any).webkitOverflowScrolling = 'touch';
+        }
 
         // Strength display
         const strengthDisplay = document.createElement('div');
         strengthDisplay.id = 'strength-display';
         strengthDisplay.className = 'resource-display';
         strengthDisplay.style.color = '#FFFFFF';
-        strengthDisplay.style.fontSize = '16px';
+        strengthDisplay.style.fontSize = isCompact ? '12px' : '16px';
         strengthDisplay.style.fontWeight = 'bold';
         strengthDisplay.style.fontFamily = 'monospace';
+        strengthDisplay.style.whiteSpace = 'nowrap';
         strengthDisplay.textContent = '💪: 10';
         panel.appendChild(strengthDisplay);
 
@@ -199,9 +206,10 @@ export class UIManager {
         moneyDisplay.id = 'money-display';
         moneyDisplay.className = 'resource-display';
         moneyDisplay.style.color = '#FFD700';
-        moneyDisplay.style.fontSize = '16px';
+        moneyDisplay.style.fontSize = isCompact ? '12px' : '16px';
         moneyDisplay.style.fontWeight = 'bold';
         moneyDisplay.style.fontFamily = 'monospace';
+        moneyDisplay.style.whiteSpace = 'nowrap';
         moneyDisplay.textContent = '$: 0';
         panel.appendChild(moneyDisplay);
 
@@ -209,9 +217,10 @@ export class UIManager {
         levelDisplay.id = 'level-display';
         levelDisplay.className = 'resource-display';
         levelDisplay.style.color = '#54C7FF';
-        levelDisplay.style.fontSize = '14px';
+        levelDisplay.style.fontSize = isCompact ? '11px' : '14px';
         levelDisplay.style.fontWeight = 'bold';
         levelDisplay.style.fontFamily = 'monospace';
+        levelDisplay.style.whiteSpace = 'nowrap';
         levelDisplay.textContent = 'Lv 1 · $0/1000';
         panel.appendChild(levelDisplay);
         this.levelDisplay = levelDisplay;
@@ -229,13 +238,13 @@ export class UIManager {
         abilities.forEach(ability => {
             const btn = document.createElement('button');
             btn.className = 'ability-btn';
-            btn.style.width = '40px';
-            btn.style.height = '40px';
+            btn.style.width = isCompact ? '32px' : '40px';
+            btn.style.height = isCompact ? '32px' : '40px';
             btn.style.borderRadius = '50%';
             btn.style.border = '2px solid rgba(255, 255, 255, 0.1)';
             btn.style.background = 'rgba(20, 20, 25, 0.8)';
             btn.style.color = 'white';
-            btn.style.fontSize = '20px';
+            btn.style.fontSize = isCompact ? '16px' : '20px';
             btn.style.cursor = 'pointer';
             btn.style.position = 'relative';
             btn.style.overflow = 'visible';
@@ -293,6 +302,7 @@ export class UIManager {
     }
 
     public updateAbilities(fleet: any) {
+        const isCompact = window.innerWidth <= 600;
         for (const key in fleet.abilities) {
             const a = fleet.abilities[key];
             const btn = this.abilityButtons[key];
@@ -305,15 +315,15 @@ export class UIManager {
                     badge = document.createElement('div');
                     badge.className = 'charge-badge';
                     badge.style.position = 'absolute';
-                    badge.style.top = '-8px';
-                    badge.style.right = '-8px';
+                    badge.style.top = isCompact ? '-6px' : '-8px';
+                    badge.style.right = isCompact ? '-6px' : '-8px';
                     badge.style.background = '#FFD700';
                     badge.style.color = 'black';
                     badge.style.borderRadius = '6px';
-                    badge.style.minWidth = '16px';
-                    badge.style.height = '16px';
-                    badge.style.padding = '0 3px';
-                    badge.style.fontSize = '10px';
+                    badge.style.minWidth = isCompact ? '14px' : '16px';
+                    badge.style.height = isCompact ? '14px' : '16px';
+                    badge.style.padding = isCompact ? '0 2px' : '0 3px';
+                    badge.style.fontSize = isCompact ? '9px' : '10px';
                     badge.style.fontWeight = 'bold';
                     badge.style.display = 'flex';
                     badge.style.alignItems = 'center';
