@@ -852,6 +852,21 @@ export class Game {
         for (let i = this.attacks.length - 1; i >= 0; i--) {
             const a = this.attacks[i];
 
+            if (this.playerFleet.abilities.shield.active && a.target === this.playerFleet) {
+                a.attacker.state = 'normal';
+                a.attacker.currentTarget = null;
+                this.playerFleet.state = 'normal';
+                this.playerFleet.currentTarget = null;
+                const alt = this.findAlternateTarget(a.attacker, allFleets);
+                if (alt) {
+                    a.attacker.setFollowTarget(alt, 'approach');
+                } else {
+                    a.attacker.stopFollowing();
+                }
+                this.attacks.splice(i, 1);
+                continue;
+            }
+
             a.update(dt);
             if (a.finished) {
                 this.resolveAttack(a, toRemove);

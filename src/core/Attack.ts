@@ -32,15 +32,6 @@ export class Attack {
     }
 
     update(dt: number) {
-        if (this.target.isPlayer && this.target.abilities.shield.active) {
-            this.finished = true;
-            this.attacker.state = 'normal';
-            this.attacker.currentTarget = null;
-            this.target.state = 'normal';
-            this.target.currentTarget = null;
-            return;
-        }
-
         // Check if attack should be interrupted (distance > 2 * interception radius)
         const dist = Vector2.distance(this.attacker.position, this.target.position);
         const maxDist = 200; // 2 * 100 (interception radius)
