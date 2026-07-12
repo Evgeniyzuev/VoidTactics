@@ -306,9 +306,9 @@ export class AIController {
         if ((f1 as string) === 'raider') return f2 !== 'raider';
         if ((f2 as string) === 'raider') return f1 !== 'raider';
 
-        // Orcs are chaotic
+        // Orc hostility is deterministic; tactical decisions must not flicker frame-to-frame.
         if (f1 === 'orc') {
-            if (f2 === 'orc') return Math.random() < 0.1;
+            if (f2 === 'orc') return false;
             return true;
         }
 

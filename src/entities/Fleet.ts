@@ -1,10 +1,16 @@
 import { Entity } from './Entity';
 import { Camera } from '../renderer/Camera';
 import { Vector2 } from '../utils/Vector2';
+import { Ship, createStarterShips } from '../tactical/Ship';
+import { DEFAULT_FORMATION, type DamageType, type FleetOrderType } from '../tactical/ShipDefinitions';
 
 export type Faction = 'civilian' | 'pirate' | 'orc' | 'military' | 'player' | 'raider' | 'trader' | 'mercenary';
 
 export class Fleet extends Entity {
+    public ships: Ship[] = [];
+    public selectedShipId: string | null = null;
+    public formation = DEFAULT_FORMATION;
+    private tacticalClock = 0;
     public target: Vector2 | null = null;
     public followTarget: Entity | null = null; // Entity to follow
     public followDistance: number = 100; // Distance to maintain when following
@@ -65,6 +71,47 @@ export class Fleet extends Entity {
         if (isPlayer) this.faction = 'player';
         this.radius = 8;
         this.maxStrength = this.strength;
+        this.ships = isPlayer ? createStarterShips() : [];
+        this.selectedShipId = this.ships[0]?.id || null;
+        if (isPlayer) this.syncLegacyStrength();
+    }
+
+    public ensureComposition() {
+        if (this.ships.length > 0) return;
+        const rating = Math.max(1, this.strength);
+        const hullId = rating > 180 ? 'bulwark' : rating > 70 ? 'lance' : 'specter';
+        const weaponIds = hullId === 'bulwark' ? ['autocannon', 'autocannon'] : hullId === 'lance' ? ['pulse', 'missile'] : ['jammer'];
+        const ship = new Ship({ hullId, weaponIds, moduleIds: hullId === 'specter' ? ['electronicSuite'] : [] });
+        const scale = Math.max(0.35, rating / ship.definition.tacticalValue);
+        ship.hull *= scale; ship.armor *= scale; ship.shield *= scale;
+        this.ships = [ship]; this.selectedShipId = ship.id;
+    }
+
+    public issueOrder(type: FleetOrderType, shipId?: string) {
+        const targets = shipId ? this.ships.filter(ship => ship.id === shipId) : this.ships.filter(ship => ship.role !== 'flagship');
+        for (const ship of targets) ship.order = { type, issuedAt: this.tacticalClock };
+    }
+
+    public receiveTacticalDamage(amount: number, type: DamageType = 'energy'): number {
+        this.ensureComposition();
+        const alive = this.ships.filter(ship => ship.alive);
+        if (!alive.length) return 0;
+        const ordered = [...alive].sort((a, b) => {
+            const defenderA = a.role === 'defender' && a.order.type === 'protect' ? -1 : 0;
+            const defenderB = b.role === 'defender' && b.order.type === 'protect' ? -1 : 0;
+            return defenderA - defenderB || a.integrity - b.integrity;
+        });
+        const dealt = ordered[0].applyDamage(amount, type);
+        this.syncLegacyStrength(); return dealt;
+    }
+
+    public get flagship() { return this.ships.find(ship => ship.role === 'flagship' && ship.alive) || this.ships.find(ship => ship.alive); }
+
+    private syncLegacyStrength() {
+        const rating = this.ships.reduce((sum, ship) => sum + ship.combatRating, 0);
+        const maxRating = this.ships.reduce((sum, ship) => sum + ship.definition.tacticalValue, 0);
+        this.strength = Math.max(0, rating); this.maxStrength = Math.max(this.maxStrength, maxRating);
+        this.sizeMultiplier = Math.max(0.8, Math.sqrt(Math.max(1, this.ships.filter(ship => ship.alive).length)) * 0.8);
     }
 
     setTarget(pos: Vector2) {
@@ -86,6 +133,14 @@ export class Fleet extends Entity {
     }
 
     update(dt: number) {
+        this.tacticalClock += dt; this.ensureComposition();
+        for (const ship of this.ships) ship.update(dt);
+        const support = this.ships.find(ship => ship.alive && ship.role === 'support' && ship.order.type === 'repair');
+        if (support) {
+            const patient = this.ships.filter(ship => ship.alive && ship !== support).sort((a, b) => a.integrity - b.integrity)[0];
+            if (patient) patient.restore(dt * 2.5);
+        }
+        this.syncLegacyStrength();
         // Sanitize position and velocity to prevent NaN errors
         if (!isFinite(this.position.x) || !isFinite(this.position.y)) this.position = new Vector2(0, 0);
         if (!isFinite(this.velocity.x) || !isFinite(this.velocity.y)) this.velocity = new Vector2(0, 0);
@@ -304,6 +359,8 @@ export class Fleet extends Entity {
             ctx.globalAlpha = 0.1;
         }
 
+        if (this.ships.length) { this.drawTacticalFleet(ctx, camera); ctx.restore(); return; }
+
         ctx.rotate(this.rotation + Math.PI / 2); // +90deg because drawing points up
 
         // Draw Ship (Perfect Warp Bubble)
@@ -423,5 +480,52 @@ export class Fleet extends Entity {
             ctx.arc(tPos.x, tPos.y, 2, 0, Math.PI * 2);
             ctx.fill();
         }
+    }
+
+    private drawTacticalFleet(ctx: CanvasRenderingContext2D, camera: Camera) {
+        const alive = this.ships.filter(ship => ship.alive);
+        const zoomScale = Math.max(0.7, Math.min(1.35, camera.zoom));
+        const velocityAngle = this.velocity.mag() > 1 ? Math.atan2(this.velocity.y, this.velocity.x) + Math.PI / 2 : this.rotation + Math.PI / 2;
+        alive.forEach((ship, index) => {
+            const slot = this.formation.slots[index] || { x: (index % 3) - 1, y: Math.floor(index / 3) + 1 };
+            const spacing = this.formation.spacing * zoomScale;
+            const ox = slot.x * spacing, oy = slot.y * spacing, cos = Math.cos(velocityAngle), sin = Math.sin(velocityAngle);
+            const x = ox * cos - oy * sin, y = ox * sin + oy * cos;
+            ctx.save(); ctx.translate(x, y); ctx.rotate(velocityAngle);
+            this.drawShipSilhouette(ctx, ship.role, ship.id === this.selectedShipId, ship.hitFlash);
+            if (ship.shieldFlash > 0) {
+                ctx.strokeStyle = `rgba(80, 210, 255, ${ship.shieldFlash * 0.85})`; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.ellipse(0, 0, 13, 18, 0, 0, Math.PI * 2); ctx.stroke();
+            }
+            if (this.velocity.mag() > 20) {
+                const flicker = 4 + 2 * Math.sin(this.tacticalClock * 17 + index * 2.1);
+                ctx.strokeStyle = this.color; ctx.lineWidth = 2; ctx.beginPath();
+                ctx.moveTo(-4, 10); ctx.lineTo(-3, 10 + flicker); ctx.moveTo(4, 10); ctx.lineTo(3, 10 + flicker); ctx.stroke();
+            }
+            ctx.restore();
+        });
+        if (this.currentTarget && !this.currentTarget.isCloaked) {
+            const targetScreen = camera.worldToScreen(this.currentTarget.position);
+            const originScreen = camera.worldToScreen(this.position);
+            const tx = targetScreen.x - originScreen.x, ty = targetScreen.y - originScreen.y;
+            const phase = (this.tacticalClock * 1.7) % 1;
+            ctx.strokeStyle = 'rgba(255,100,60,.28)'; ctx.setLineDash([3, 10]);
+            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(tx, ty); ctx.stroke(); ctx.setLineDash([]);
+            ctx.fillStyle = '#ffe0a8'; ctx.shadowColor = '#ff5a2a'; ctx.shadowBlur = 10;
+            ctx.beginPath(); ctx.arc(tx * phase, ty * phase, 2.5, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+        }
+    }
+
+    private drawShipSilhouette(ctx: CanvasRenderingContext2D, role: Ship['role'], selected: boolean, hitFlash: number) {
+        ctx.beginPath();
+        if (role === 'defender') { ctx.moveTo(0, -13); ctx.lineTo(11, -4); ctx.lineTo(9, 10); ctx.lineTo(0, 7); ctx.lineTo(-9, 10); ctx.lineTo(-11, -4); }
+        else if (role === 'artillery') { ctx.moveTo(0, -18); ctx.lineTo(5, -6); ctx.lineTo(7, 12); ctx.lineTo(0, 8); ctx.lineTo(-7, 12); ctx.lineTo(-5, -6); }
+        else if (role === 'scout') { ctx.moveTo(0, -11); ctx.lineTo(7, 8); ctx.lineTo(0, 5); ctx.lineTo(-7, 8); }
+        else if (role === 'support') { ctx.moveTo(0, -10); ctx.lineTo(9, -1); ctx.lineTo(7, 11); ctx.lineTo(-7, 11); ctx.lineTo(-9, -1); }
+        else if (role === 'striker') { ctx.moveTo(0, -15); ctx.lineTo(8, 10); ctx.lineTo(0, 6); ctx.lineTo(-8, 10); }
+        else { ctx.moveTo(0, -16); ctx.lineTo(10, 7); ctx.lineTo(5, 11); ctx.lineTo(0, 7); ctx.lineTo(-5, 11); ctx.lineTo(-10, 7); }
+        ctx.closePath(); ctx.fillStyle = hitFlash > 0 ? '#fff' : '#182434'; ctx.strokeStyle = selected ? '#fff' : this.color;
+        ctx.lineWidth = selected ? 2.4 : 1.5; ctx.shadowColor = this.color; ctx.shadowBlur = selected ? 12 : 5;
+        ctx.fill(); ctx.stroke(); ctx.shadowBlur = 0; ctx.fillStyle = this.color; ctx.fillRect(-2, -3, 4, 7);
     }
 }

@@ -67,28 +67,30 @@ export class Attack {
             return; // Skip normal combat logic for asteroids
         }
 
-        // Normal combat logic for fleet vs fleet
-        // Attacker deals damage to target (halved to make battles 2x longer)
-        let damage = this.attacker.strength * 0.05 * dt;
+        // Tactical damage is produced by the surviving ships and resolved through
+        // shields, armor and hull instead of subtracting an abstract fleet number.
+        this.attacker.ensureComposition();
+        this.target.ensureComposition();
+        const activeWeapons = this.attacker.ships
+            .filter(ship => ship.alive && ship.order.type !== 'retreat' && ship.order.type !== 'repair')
+            .flatMap(ship => ship.weapons);
+        const weaponPower = activeWeapons.reduce((sum, weapon) => sum + weapon.damage / weapon.cooldown, 0);
+        let damage = Math.max(1, weaponPower) * 0.045 * dt;
         if (this.attacker.abilities.fire.active) {
             damage *= 2;
         }
+        const primaryDamageType = activeWeapons[0]?.damageType || 'energy';
         this.target.accumulatedDamage += damage;
-
-        // Player gets money per fractional damage dealt (continuous feedback)
-        if (this.attacker.isPlayer) {
-            this.game.awardPlayerMoney(damage * 50);
-        }
 
         // Apply integer damage to strength
         const integerDamage = Math.floor(this.target.accumulatedDamage);
         if (integerDamage > 0) {
-            this.target.strength = Math.max(0, this.target.strength - integerDamage);
+            const hullDamage = this.target.receiveTacticalDamage(integerDamage, primaryDamageType);
             this.target.accumulatedDamage -= integerDamage;
 
             // Spawn debris for each damage point
-            if (integerDamage > 0) {
-                this.game.spawnDebris(this.target.position.x, this.target.position.y, integerDamage);
+            if (hullDamage > 0) {
+                this.game.spawnDebris(this.target.position.x, this.target.position.y, Math.max(1, Math.ceil(hullDamage / 4)));
             }
 
             // NPC deploys bubble if conditions met (skip for asteroids)

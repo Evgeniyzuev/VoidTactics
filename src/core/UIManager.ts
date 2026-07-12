@@ -1,4 +1,6 @@
 import { formatNumber } from '../utils/NumberFormatter';
+import type { Fleet } from '../entities/Fleet';
+import type { FleetOrderType } from '../tactical/ShipDefinitions';
 
 export class UIManager {
     private container: HTMLElement;
@@ -7,6 +9,8 @@ export class UIManager {
     private onCameraToggle: (follow: boolean) => void;
     private onAbility: (ability: string) => void;
     private onMenu: () => void;
+    private onOrder: (order: FleetOrderType) => void;
+    private fleetPanel!: HTMLElement;
 
     private playBtn!: HTMLButtonElement;
     private cameraFollowBtn!: HTMLButtonElement;
@@ -25,7 +29,8 @@ export class UIManager {
             onSpeedChange: (speed: number) => void,
             onCameraToggle: (follow: boolean) => void,
             onAbility: (ability: string) => void,
-            onMenu: () => void
+            onMenu: () => void,
+            onOrder: (order: FleetOrderType) => void
         }
     ) {
         const el = document.getElementById(containerId);
@@ -36,6 +41,7 @@ export class UIManager {
         this.onCameraToggle = callbacks.onCameraToggle;
         this.onAbility = callbacks.onAbility;
         this.onMenu = callbacks.onMenu;
+        this.onOrder = callbacks.onOrder;
 
         this.render();
     }
@@ -162,6 +168,44 @@ export class UIManager {
 
         // Ability Panel (Bottom Center)
         this.renderAbilityPanel();
+        this.renderFleetPanel();
+    }
+
+    private renderFleetPanel() {
+        const panel = document.createElement('aside');
+        panel.id = 'fleet-panel';
+        panel.innerHTML = '<header><span>TACTICAL FLEET</span><small>WEDGE</small></header><div class="ship-roster"></div><div class="order-bar"></div>';
+        const orders: { type: FleetOrderType, label: string }[] = [
+            { type: 'attack', label: 'ATK' }, { type: 'escort', label: 'ESC' },
+            { type: 'hold', label: 'HOLD' }, { type: 'protect', label: 'GUARD' },
+            { type: 'suppress', label: 'EW' }, { type: 'repair', label: 'REPAIR' },
+            { type: 'retreat', label: 'FALL BACK' }
+        ];
+        const bar = panel.querySelector('.order-bar')!;
+        for (const order of orders) {
+            const button = document.createElement('button');
+            button.textContent = order.label;
+            button.title = order.type;
+            button.onclick = event => { event.stopPropagation(); this.onOrder(order.type); };
+            bar.appendChild(button);
+        }
+        panel.addEventListener('pointerdown', event => event.stopPropagation());
+        this.container.appendChild(panel);
+        this.fleetPanel = panel;
+    }
+
+    public updateFleet(fleet: Fleet) {
+        const roster = this.fleetPanel?.querySelector('.ship-roster');
+        if (!roster) return;
+        roster.innerHTML = '';
+        for (const ship of fleet.ships) {
+            const row = document.createElement('button');
+            row.className = `ship-row role-${ship.role}${ship.id === fleet.selectedShipId ? ' selected' : ''}${ship.alive ? '' : ' destroyed'}`;
+            const hp = Math.max(0, Math.round(ship.integrity * 100));
+            row.innerHTML = `<i></i><span><b>${ship.definition.name}</b><small>${ship.role} · ${ship.order.type}</small></span><em>${hp}%</em>`;
+            row.onclick = event => { event.stopPropagation(); fleet.selectedShipId = ship.id; };
+            roster.appendChild(row);
+        }
     }
 
     private renderAbilityPanel() {

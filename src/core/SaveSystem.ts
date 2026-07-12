@@ -1,4 +1,5 @@
 import { Fleet } from '../entities/Fleet';
+import { Ship, type ShipSnapshot } from '../tactical/Ship';
 
 export interface SavedFleetState {
     x: number;
@@ -28,20 +29,42 @@ export interface AbilityChargesSave {
 }
 
 export interface GameSaveData {
+    version: 2;
     player: SavedFleetState;
     npcs: SavedFleetState[];
+    playerShips: ShipSnapshot[];
     lastSaveTime: number;
 }
 
 export class SaveSystem {
-    static save(_player: Fleet, _npcs: Fleet[]) {
-        // Saving to local cache is disabled.
-        // Data persists only during the current session.
+    static save(player: Fleet, npcs: Fleet[]) {
+        const serializeFleet = (fleet: Fleet): SavedFleetState => ({
+            x: fleet.position.x, y: fleet.position.y, vx: fleet.velocity.x, vy: fleet.velocity.y,
+            color: fleet.color, strength: fleet.strength, faction: fleet.faction
+        });
+        const data: GameSaveData = {
+            version: 2,
+            player: serializeFleet(player),
+            npcs: npcs.map(serializeFleet),
+            playerShips: player.ships.map(ship => ship.snapshot()),
+            lastSaveTime: Date.now()
+        };
+        localStorage.setItem('vt_save_v2', JSON.stringify(data));
     }
 
     static load(): GameSaveData | null {
-        // Skip loading from local storage.
-        return null;
+        const raw = localStorage.getItem('vt_save_v2');
+        if (!raw) return null;
+        try {
+            const data = JSON.parse(raw) as GameSaveData;
+            return data.version === 2 ? data : null;
+        } catch { return null; }
+    }
+
+    static restoreShips(fleet: Fleet, snapshots: ShipSnapshot[]) {
+        if (!snapshots?.length) return;
+        fleet.ships = snapshots.map(snapshot => Ship.fromSnapshot(snapshot));
+        fleet.selectedShipId = fleet.ships.find(ship => ship.role === 'flagship')?.id || fleet.ships[0]?.id || null;
     }
 
     static clear() {
@@ -51,6 +74,7 @@ export class SaveSystem {
         localStorage.removeItem('vt_autosave_fleet_progress');
         localStorage.removeItem('vt_fleet_ability_charges');
         localStorage.removeItem('vt_autosave_fleet_ability_charges');
+        localStorage.removeItem('vt_save_v2');
     }
 
     static saveFleetSize(size: number) {

@@ -120,7 +120,8 @@ export class Game {
             onSpeedChange: (speed) => this.setTimeScale(speed),
             onCameraToggle: (follow) => this.setCameraFollow(follow),
             onAbility: (id) => this.activateAbility(id),
-            onMenu: () => this.showMenu()
+            onMenu: () => this.showMenu(),
+            onOrder: (order) => this.playerFleet.issueOrder(order, this.playerFleet.selectedShipId || undefined)
         });
 
         this.refreshDifficultyMultiplier();
@@ -179,6 +180,7 @@ export class Game {
             },
             onSaveFleet: () => {
                 if (this.isGameOver) return;
+                SaveSystem.save(this.playerFleet, this.npcFleets);
                 SaveSystem.saveFleetSize(this.playerFleet.maxStrength);
                 SaveSystem.saveFleetProgress(this.captureProgress());
                 SaveSystem.saveFleetAbilityCharges(this.captureAbilityCharges());
@@ -190,6 +192,8 @@ export class Game {
                 const savedProgress = SaveSystem.loadFleetProgress() || this.getDefaultProgress();
                 const savedCharges = SaveSystem.loadFleetAbilityCharges() || this.getDefaultAbilityCharges();
                 this.initWorld(savedSize || 10, undefined, undefined, savedProgress, savedCharges);
+                const tacticalSave = SaveSystem.load();
+                if (tacticalSave) SaveSystem.restoreShips(this.playerFleet, tacticalSave.playerShips);
             },
             onLoadAuto: () => {
                 // Load autosave size and start new world with it
@@ -197,6 +201,8 @@ export class Game {
                 const autosaveProgress = SaveSystem.loadAutosaveFleetProgress() || this.getDefaultProgress();
                 const autosaveCharges = SaveSystem.loadAutosaveFleetAbilityCharges() || this.getDefaultAbilityCharges();
                 this.initWorld(autosaveSize || 10, undefined, undefined, autosaveProgress, autosaveCharges);
+                const tacticalSave = SaveSystem.load();
+                if (tacticalSave) SaveSystem.restoreShips(this.playerFleet, tacticalSave.playerShips);
             }
         }, this.isGameOver);
     }
@@ -400,6 +406,7 @@ export class Game {
             this.ui.updateAbilities(this.playerFleet);
             this.ui.updateMoney(this.playerFleet.money);
             this.ui.updateStrength(this.playerFleet.strength, this.playerFleet.maxStrength);
+            this.ui.updateFleet(this.playerFleet);
             this.updateLevelDisplay();
         }
         this.draw();
