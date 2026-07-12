@@ -23,6 +23,7 @@ export class Ship {
     public weaponCooldowns: number[];
     public shieldFlash = 0;
     public hitFlash = 0;
+    public shieldRechargeDelay = 0;
 
     constructor(loadout: ShipLoadout, id = `ship-${nextShipId++}`) {
         this.id = id;
@@ -46,7 +47,10 @@ export class Ship {
 
     update(dt: number) {
         this.energy = Math.min(this.maxEnergy, this.energy + dt * 8);
-        this.shield = Math.min(this.definition.shield, this.shield + dt * 1.5);
+        this.shieldRechargeDelay = Math.max(0, this.shieldRechargeDelay - dt);
+        if (this.shieldRechargeDelay <= 0) {
+            this.shield = Math.min(this.definition.shield, this.shield + dt * 2.5);
+        }
         this.shieldFlash = Math.max(0, this.shieldFlash - dt * 3);
         this.hitFlash = Math.max(0, this.hitFlash - dt * 4);
         this.weaponCooldowns = this.weaponCooldowns.map(value => Math.max(0, value - dt));
@@ -55,6 +59,7 @@ export class Ship {
     applyDamage(amount: number, type: DamageType): number {
         let remaining = amount;
         if (this.shield > 0) {
+            this.shieldRechargeDelay = 4;
             const modifier = type === 'energy' ? 1.15 : type === 'kinetic' ? 0.8 : 1;
             const absorbed = Math.min(this.shield, remaining * modifier);
             this.shield -= absorbed;

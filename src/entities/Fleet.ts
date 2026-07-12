@@ -484,26 +484,21 @@ export class Fleet extends Entity {
 
     private drawTacticalFleet(ctx: CanvasRenderingContext2D, camera: Camera) {
         const alive = this.ships.filter(ship => ship.alive);
-        const zoomScale = Math.max(0.7, Math.min(1.35, camera.zoom));
         const velocityAngle = this.velocity.mag() > 1 ? Math.atan2(this.velocity.y, this.velocity.x) + Math.PI / 2 : this.rotation + Math.PI / 2;
-        alive.forEach((ship, index) => {
-            const slot = this.formation.slots[index] || { x: (index % 3) - 1, y: Math.floor(index / 3) + 1 };
-            const spacing = this.formation.spacing * zoomScale;
-            const ox = slot.x * spacing, oy = slot.y * spacing, cos = Math.cos(velocityAngle), sin = Math.sin(velocityAngle);
-            const x = ox * cos - oy * sin, y = ox * sin + oy * cos;
-            ctx.save(); ctx.translate(x, y); ctx.rotate(velocityAngle);
-            this.drawShipSilhouette(ctx, ship.role, ship.id === this.selectedShipId, ship.hitFlash);
-            if (ship.shieldFlash > 0) {
-                ctx.strokeStyle = `rgba(80, 210, 255, ${ship.shieldFlash * 0.85})`; ctx.lineWidth = 2;
+        const iconShip = this.flagship || alive[0];
+        if (!iconShip) return;
+        ctx.save(); ctx.rotate(velocityAngle);
+        this.drawShipSilhouette(ctx, iconShip.role, this.isPlayer, iconShip.hitFlash);
+        if (iconShip.shieldFlash > 0) {
+                ctx.strokeStyle = `rgba(80, 210, 255, ${iconShip.shieldFlash * 0.85})`; ctx.lineWidth = 2;
                 ctx.beginPath(); ctx.ellipse(0, 0, 13, 18, 0, 0, Math.PI * 2); ctx.stroke();
-            }
-            if (this.velocity.mag() > 20) {
-                const flicker = 4 + 2 * Math.sin(this.tacticalClock * 17 + index * 2.1);
+        }
+        if (this.velocity.mag() > 20) {
+                const flicker = 4 + 2 * Math.sin(this.tacticalClock * 17);
                 ctx.strokeStyle = this.color; ctx.lineWidth = 2; ctx.beginPath();
                 ctx.moveTo(-4, 10); ctx.lineTo(-3, 10 + flicker); ctx.moveTo(4, 10); ctx.lineTo(3, 10 + flicker); ctx.stroke();
-            }
-            ctx.restore();
-        });
+        }
+        ctx.restore();
         if (this.currentTarget && !this.currentTarget.isCloaked) {
             const targetScreen = camera.worldToScreen(this.currentTarget.position);
             const originScreen = camera.worldToScreen(this.position);

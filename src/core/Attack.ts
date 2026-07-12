@@ -75,22 +75,23 @@ export class Attack {
             .filter(ship => ship.alive && ship.order.type !== 'retreat' && ship.order.type !== 'repair')
             .flatMap(ship => ship.weapons);
         const weaponPower = activeWeapons.reduce((sum, weapon) => sum + weapon.damage / weapon.cooldown, 0);
-        let damage = Math.max(1, weaponPower) * 0.045 * dt;
+        // Roughly 8-15 seconds to break a comparable ship's defenses.
+        let damage = Math.max(1, weaponPower) * 0.14 * dt;
         if (this.attacker.abilities.fire.active) {
             damage *= 2;
         }
         const primaryDamageType = activeWeapons[0]?.damageType || 'energy';
-        this.target.accumulatedDamage += damage;
+        // Damage is continuous: fractional frame damage is meaningful and no
+        // longer gets cancelled by shield regeneration between integer ticks.
+        const hullDamage = this.target.receiveTacticalDamage(damage, primaryDamageType);
+        this.target.accumulatedDamage += hullDamage;
 
-        // Apply integer damage to strength
-        const integerDamage = Math.floor(this.target.accumulatedDamage);
-        if (integerDamage > 0) {
-            const hullDamage = this.target.receiveTacticalDamage(integerDamage, primaryDamageType);
-            this.target.accumulatedDamage -= integerDamage;
+        if (damage > 0) {
 
             // Spawn debris for each damage point
-            if (hullDamage > 0) {
-                this.game.spawnDebris(this.target.position.x, this.target.position.y, Math.max(1, Math.ceil(hullDamage / 4)));
+            if (this.target.accumulatedDamage >= 4) {
+                this.game.spawnDebris(this.target.position.x, this.target.position.y, Math.max(1, Math.floor(this.target.accumulatedDamage / 4)));
+                this.target.accumulatedDamage %= 4;
             }
 
             // NPC deploys bubble if conditions met (skip for asteroids)
