@@ -8,6 +8,7 @@ export interface ShipSnapshot {
     shield: number;
     energy: number;
     order: FleetOrder;
+    statScale?: number;
 }
 
 let nextShipId = 1;
@@ -24,6 +25,7 @@ export class Ship {
     public shieldFlash = 0;
     public hitFlash = 0;
     public shieldRechargeDelay = 0;
+    public statScale = 1;
 
     constructor(loadout: ShipLoadout, id = `ship-${nextShipId++}`) {
         this.id = id;
@@ -41,15 +43,18 @@ export class Ship {
     get weapons() { return this.loadout.weaponIds.map(id => WEAPONS[id]).filter(Boolean); }
     get modules() { return this.loadout.moduleIds.map(id => MODULES[id]).filter(Boolean); }
     get alive() { return this.hull > 0; }
-    get maxEnergy() { return this.definition.energy + this.modules.reduce((sum, module) => sum + (module.energyModifier || 0), 0); }
-    get integrity() { return this.hull / this.definition.hull; }
+    get maxHull() { return this.definition.hull * this.statScale; }
+    get maxArmor() { return this.definition.armor * this.statScale; }
+    get maxShield() { return this.definition.shield * this.statScale; }
+    get maxEnergy() { return (this.definition.energy + this.modules.reduce((sum, module) => sum + (module.energyModifier || 0), 0)) * this.statScale; }
+    get integrity() { return this.hull / this.maxHull; }
     get combatRating() { return this.alive ? this.definition.tacticalValue * (0.35 + this.integrity * 0.65) : 0; }
 
     update(dt: number) {
         this.energy = Math.min(this.maxEnergy, this.energy + dt * 8);
         this.shieldRechargeDelay = Math.max(0, this.shieldRechargeDelay - dt);
         if (this.shieldRechargeDelay <= 0) {
-            this.shield = Math.min(this.definition.shield, this.shield + dt * 2.5);
+            this.shield = Math.min(this.maxShield, this.shield + dt * 2.5 * this.statScale);
         }
         this.shieldFlash = Math.max(0, this.shieldFlash - dt * 3);
         this.hitFlash = Math.max(0, this.hitFlash - dt * 4);
@@ -81,14 +86,22 @@ export class Ship {
         return 0;
     }
 
-    restore(amount: number) { this.hull = Math.min(this.definition.hull, this.hull + amount); }
+    setStatScale(scale: number) {
+        const next = Math.max(0.35, scale);
+        const ratio = next / this.statScale;
+        this.statScale = next;
+        this.hull *= ratio; this.armor *= ratio; this.shield *= ratio; this.energy *= ratio;
+    }
+
+    restore(amount: number) { this.hull = Math.min(this.maxHull, this.hull + amount); }
 
     snapshot(): ShipSnapshot {
-        return { id: this.id, loadout: this.loadout, hull: this.hull, armor: this.armor, shield: this.shield, energy: this.energy, order: this.order };
+        return { id: this.id, loadout: this.loadout, hull: this.hull, armor: this.armor, shield: this.shield, energy: this.energy, order: this.order, statScale: this.statScale };
     }
 
     static fromSnapshot(data: ShipSnapshot) {
         const ship = new Ship(data.loadout, data.id);
+        ship.statScale = data.statScale || 1;
         ship.hull = data.hull;
         ship.armor = data.armor;
         ship.shield = data.shield;

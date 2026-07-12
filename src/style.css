@@ -155,6 +155,7 @@ canvas {
 .ship-row:hover,.ship-row.selected { border-color:rgba(118,213,255,.55); background:rgba(64,170,230,.12); }
 .ship-row i { width:4px; height:26px; border-radius:3px; background:#58bfff; box-shadow:0 0 8px currentColor; }
 .ship-row span { display:flex; flex-direction:column; min-width:0; }.ship-row b { font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }.ship-row small { font-size:9px; color:#7f97aa; text-transform:uppercase; }
+.ship-row .defense-stats { color:#83cfee; letter-spacing:-.04em; text-transform:none; }
 .ship-row em { font-style:normal; font-size:10px; color:#8de6bd; }.ship-row.destroyed { opacity:.3; filter:grayscale(1); }
 .role-defender i { background:#68a8ff; }.role-striker i { background:#ff695b; }.role-artillery i { background:#ffba5b; }.role-scout i { background:#bb7cff; }.role-support i { background:#64e0a0; }
 .order-bar { display:flex; gap:4px; margin-top:8px; overflow-x:auto; padding-bottom:2px; }

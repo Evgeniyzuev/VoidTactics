@@ -71,10 +71,11 @@ export class Attack {
         // shields, armor and hull instead of subtracting an abstract fleet number.
         this.attacker.ensureComposition();
         this.target.ensureComposition();
-        const activeWeapons = this.attacker.ships
-            .filter(ship => ship.alive && ship.order.type !== 'retreat' && ship.order.type !== 'repair')
-            .flatMap(ship => ship.weapons);
-        const weaponPower = activeWeapons.reduce((sum, weapon) => sum + weapon.damage / weapon.cooldown, 0);
+        const firingShips = this.attacker.ships
+            .filter(ship => ship.alive && ship.order.type !== 'retreat' && ship.order.type !== 'repair');
+        const activeWeapons = firingShips.flatMap(ship => ship.weapons);
+        const weaponPower = firingShips.reduce((fleetPower, ship) => fleetPower +
+            ship.weapons.reduce((shipPower, weapon) => shipPower + weapon.damage / weapon.cooldown, 0) * ship.statScale, 0);
         // Roughly 8-15 seconds to break a comparable ship's defenses.
         let damage = Math.max(1, weaponPower) * 0.14 * dt;
         if (this.attacker.abilities.fire.active) {

@@ -1128,6 +1128,15 @@ export class Game {
                 const status = isHostile ? '<span style="color: red;">Hostile</span>' : '<span style="color: green;">Friendly</span>';
                 info += `${status}<br/>`;
                 info += `Size: ${formatNumber(fleet.strength)} / ${formatNumber(fleet.maxStrength)}<br/>`;
+                fleet.ensureComposition();
+                const defenses = fleet.ships.filter(ship => ship.alive).reduce((total, ship) => ({
+                    shield: total.shield + ship.shield, maxShield: total.maxShield + ship.maxShield,
+                    armor: total.armor + ship.armor, maxArmor: total.maxArmor + ship.maxArmor,
+                    hull: total.hull + ship.hull, maxHull: total.maxHull + ship.maxHull
+                }), { shield: 0, maxShield: 0, armor: 0, maxArmor: 0, hull: 0, maxHull: 0 });
+                info += `<span style="color:#66ccff">Shield: ${formatNumber(Math.ceil(defenses.shield))} / ${formatNumber(Math.ceil(defenses.maxShield))}</span><br/>`;
+                info += `<span style="color:#d6b26e">Armor: ${formatNumber(Math.ceil(defenses.armor))} / ${formatNumber(Math.ceil(defenses.maxArmor))}</span><br/>`;
+                info += `<span style="color:#8de6bd">Hull: ${formatNumber(Math.ceil(defenses.hull))} / ${formatNumber(Math.ceil(defenses.maxHull))}</span><br/>`;
                 info += `Speed: ${fleet.velocity.mag().toFixed(1)}<br/>`;
                 info += `Pos: (${fleet.position.x.toFixed(0)}, ${fleet.position.y.toFixed(0)})`;
             }

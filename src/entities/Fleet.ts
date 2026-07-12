@@ -83,7 +83,7 @@ export class Fleet extends Entity {
         const weaponIds = hullId === 'bulwark' ? ['autocannon', 'autocannon'] : hullId === 'lance' ? ['pulse', 'missile'] : ['jammer'];
         const ship = new Ship({ hullId, weaponIds, moduleIds: hullId === 'specter' ? ['electronicSuite'] : [] });
         const scale = Math.max(0.35, rating / ship.definition.tacticalValue);
-        ship.hull *= scale; ship.armor *= scale; ship.shield *= scale;
+        ship.setStatScale(scale);
         this.ships = [ship]; this.selectedShipId = ship.id;
     }
 

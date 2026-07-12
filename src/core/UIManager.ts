@@ -202,7 +202,10 @@ export class UIManager {
             const row = document.createElement('button');
             row.className = `ship-row role-${ship.role}${ship.id === fleet.selectedShipId ? ' selected' : ''}${ship.alive ? '' : ' destroyed'}`;
             const hp = Math.max(0, Math.round(ship.integrity * 100));
-            row.innerHTML = `<i></i><span><b>${ship.definition.name}</b><small>${ship.role} · ${ship.order.type}</small></span><em>${hp}%</em>`;
+            const shield = Math.max(0, Math.ceil(ship.shield));
+            const armor = Math.max(0, Math.ceil(ship.armor));
+            const hull = Math.max(0, Math.ceil(ship.hull));
+            row.innerHTML = `<i></i><span><b>${ship.definition.name}</b><small>${ship.role} · ${ship.order.type}</small><small class="defense-stats">S ${shield}/${Math.ceil(ship.maxShield)} · A ${armor}/${Math.ceil(ship.maxArmor)} · H ${hull}/${Math.ceil(ship.maxHull)}</small></span><em>${hp}%</em>`;
             row.onclick = event => { event.stopPropagation(); fleet.selectedShipId = ship.id; };
             roster.appendChild(row);
         }
