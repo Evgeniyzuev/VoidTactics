@@ -11,6 +11,26 @@ const LOADOUTS: Record<ShipRole, ShipLoadout> = {
     support: { hullId: 'tender', weaponIds: ['pulse'], moduleIds: ['repairDrones'] }
 };
 
+export interface ShopShipDefinition {
+    id: string;
+    name: string;
+    role: ShipRole;
+    loadout: ShipLoadout;
+    price: number;
+    requiredLevel: number;
+    description: string;
+    size: 'small' | 'medium' | 'large';
+}
+
+export const SHOP_SHIPS: ShopShipDefinition[] = [
+    { id: 'flagship', name: 'Command Cruiser', role: 'flagship', loadout: LOADOUTS.flagship, price: 1200, requiredLevel: 1, size: 'large', description: 'Command link and balanced weapons.' },
+    { id: 'defender', name: 'Bulwark', role: 'defender', loadout: LOADOUTS.defender, price: 850, requiredLevel: 1, size: 'large', description: 'Intercepts attacks and anchors the formation.' },
+    { id: 'striker', name: 'Lance', role: 'striker', loadout: LOADOUTS.striker, price: 900, requiredLevel: 1, size: 'medium', description: 'Short and medium range damage dealer.' },
+    { id: 'support', name: 'Tender', role: 'support', loadout: LOADOUTS.support, price: 1000, requiredLevel: 1, size: 'large', description: 'Repairs hulls and stabilizes disabled ships.' },
+    { id: 'scout', name: 'Specter', role: 'scout', loadout: LOADOUTS.scout, price: 1100, requiredLevel: 2, size: 'small', description: 'Detection and electronic warfare.' },
+    { id: 'artillery', name: 'Siege', role: 'artillery', loadout: LOADOUTS.artillery, price: 1400, requiredLevel: 3, size: 'large', description: 'Long-range firepower; needs reconnaissance.' }
+];
+
 const DOCTRINES: Record<Faction, ShipRole[]> = {
     player: ['flagship', 'defender', 'striker', 'support', 'scout', 'artillery'],
     civilian: ['support', 'scout', 'defender', 'striker'],

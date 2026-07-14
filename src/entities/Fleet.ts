@@ -7,6 +7,15 @@ import { FleetGenerator } from '../tactical/FleetGenerator';
 import { RepairService } from '../tactical/RepairService';
 
 export type Faction = 'civilian' | 'pirate' | 'orc' | 'military' | 'player' | 'raider' | 'trader' | 'mercenary';
+export type FleetSkillId = 'leadership' | 'logistics' | 'engineering' | 'sensors' | 'navigation' | 'tactics';
+export const FLEET_SKILLS: Record<FleetSkillId, { name: string; description: string; max: number }> = {
+    leadership: { name: 'Leadership', description: '+3 command capacity per level', max: 5 },
+    logistics: { name: 'Logistics', description: '+10 supply capacity and better readiness', max: 5 },
+    engineering: { name: 'Engineering', description: 'Faster field repairs', max: 5 },
+    sensors: { name: 'Sensors', description: 'Lower fleet signature', max: 5 },
+    navigation: { name: 'Navigation', description: 'Higher strategic speed', max: 5 },
+    tactics: { name: 'Tactics', description: 'More defender intercept charges', max: 5 }
+};
 
 export class Fleet extends Entity {
     public ships: Ship[] = [];
@@ -17,6 +26,8 @@ export class Fleet extends Entity {
     public commandCapacity = 24;
     public supplies = 30;
     public maxSupplies = 30;
+    public skillPoints = 0;
+    public skills: Record<FleetSkillId, number> = { leadership: 0, logistics: 0, engineering: 0, sensors: 0, navigation: 0, tactics: 0 };
     public stabilizationProgress = 0;
     public doctrine: FleetDoctrine = { targetPriority: 'nearest', preferredRange: 'balanced', aggression: 'balanced' };
     public interceptCharges = 0;
@@ -91,7 +102,17 @@ export class Fleet extends Entity {
         const fuelFactor = active.reduce((sum, ship) => sum + Math.min(1, ship.fuel / Math.max(1, ship.definition.fuel)), 0) / active.length;
         return Math.max(0.2, supplyFactor * (0.5 + ammoFactor * 0.25 + fuelFactor * 0.25));
     }
-    public get signature() { return this.ships.filter(ship => ship.state !== 'destroyed').reduce((sum, ship) => sum + ship.definition.signature, 0); }
+    public get signature() { return this.ships.filter(ship => ship.state !== 'destroyed').reduce((sum, ship) => sum + ship.definition.signature, 0) * Math.max(0.6, 1 - this.skills.sensors * 0.08); }
+    public getSkillLevel(skill: FleetSkillId) { return this.skills[skill] || 0; }
+    public canLearnSkill(skill: FleetSkillId) { return this.skillPoints > 0 && this.getSkillLevel(skill) < FLEET_SKILLS[skill].max; }
+    public learnSkill(skill: FleetSkillId) {
+        if (!this.canLearnSkill(skill)) return false;
+        this.skillPoints--;
+        this.skills[skill]++;
+        if (skill === 'leadership') this.commandCapacity += 3;
+        if (skill === 'logistics') { this.maxSupplies += 10; this.supplies += 10; }
+        return true;
+    }
     /** Compatibility adapter while old economy and AI callers are migrated. */
     public get strength() { return this.ships.length ? this.threatRating : this.legacyBudget; }
     public set strength(value: number) { if (!this.ships.length) this.legacyBudget = Math.max(1, value); }
@@ -128,7 +149,8 @@ export class Fleet extends Entity {
 
     private refreshFleetState(dt = 0) {
         const defenders = this.ships.filter(ship => ship.alive && ship.role === 'defender' && ship.order.type === 'protect').length;
-        this.interceptCharges = Math.min(defenders * 3, this.interceptCharges + defenders * dt * 0.75);
+        const cap = defenders * (3 + this.skills.tactics);
+        this.interceptCharges = Math.min(cap, this.interceptCharges + defenders * (0.75 + this.skills.tactics * 0.15) * dt);
     }
 
     setTarget(pos: Vector2) {
@@ -212,7 +234,7 @@ export class Fleet extends Entity {
             return;
         }
 
-        let currentMaxSpeed = this.maxSpeed;
+        let currentMaxSpeed = this.maxSpeed * (this.isPlayer ? 1 + this.skills.navigation * 0.04 : 1);
 
         // Ability modifiers
         if (this.abilities.afterburner.active) {

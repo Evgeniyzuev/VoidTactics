@@ -1,5 +1,7 @@
 # VoidTactics Development Documentation
 
+Игровые правила текущей вертикальной срезки, прогрессия, роли и FAQ описаны в [src/PROGRESSION.md](src/PROGRESSION.md).
+
 ## 1. Technology Stack
 *   **Language**: TypeScript (Strict typing for reliability).
 *   **Bundler**: Vite (Fast startup, HMR).

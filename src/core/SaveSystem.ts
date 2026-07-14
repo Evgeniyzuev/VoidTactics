@@ -1,4 +1,4 @@
-import { Fleet } from '../entities/Fleet';
+import { Fleet, type FleetSkillId } from '../entities/Fleet';
 import { Ship, type ShipSnapshot } from '../tactical/Ship';
 import type { FleetDoctrine } from '../tactical/ShipDefinitions';
 
@@ -37,7 +37,10 @@ export interface GameSaveData {
     commandCapacity: number;
     supplies: number;
     maxSupplies: number;
+    money: number;
     doctrine: FleetDoctrine;
+    skillPoints: number;
+    skills: Record<FleetSkillId, number>;
     lastSaveTime: number;
 }
 
@@ -55,7 +58,10 @@ export class SaveSystem {
             commandCapacity: player.commandCapacity,
             supplies: player.supplies,
             maxSupplies: player.maxSupplies,
+            money: player.money,
             doctrine: player.doctrine,
+            skillPoints: player.skillPoints,
+            skills: player.skills,
             lastSaveTime: Date.now()
         };
         localStorage.setItem('vt_save_v3', JSON.stringify(data));
@@ -74,7 +80,10 @@ export class SaveSystem {
             return {
                 version: 3, player: old.player, npcs: old.npcs, playerShips: old.playerShips || [],
                 commandCapacity: 24, supplies: 30, maxSupplies: 30,
+                money: 0,
                 doctrine: { targetPriority: 'nearest', preferredRange: 'balanced', aggression: 'balanced' },
+                skillPoints: 0,
+                skills: { leadership: 0, logistics: 0, engineering: 0, sensors: 0, navigation: 0, tactics: 0 },
                 lastSaveTime: old.lastSaveTime
             };
         } catch { return null; }
@@ -91,7 +100,10 @@ export class SaveSystem {
         fleet.commandCapacity = data.commandCapacity;
         fleet.supplies = data.supplies;
         fleet.maxSupplies = data.maxSupplies;
+        if (typeof data.money === 'number') fleet.money = data.money;
         fleet.doctrine = data.doctrine;
+        fleet.skillPoints = data.skillPoints || 0;
+        fleet.skills = { ...fleet.skills, ...(data.skills || {}) };
     }
 
     static clear() {

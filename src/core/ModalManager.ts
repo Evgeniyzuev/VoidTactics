@@ -1,5 +1,8 @@
 import { formatNumber } from '../utils/NumberFormatter';
 import { SaveSystem } from './SaveSystem';
+import type { FleetSkillId } from '../entities/Fleet';
+import { FLEET_SKILLS } from '../entities/Fleet';
+import { SHOP_SHIPS } from '../tactical/FleetGenerator';
 
 export class ModalManager {
     private modalContainer: HTMLDivElement | null = null;
@@ -759,6 +762,109 @@ export class ModalManager {
         };
 
         updateUi();
+    }
+
+    showFAQDialog(onClose: () => void) {
+        this.closeModal();
+        this.modalContainer = this.createOverlay();
+        const dialog = this.createDialog('VOIDTACTICS · СПРАВКА', 720);
+        const sections = [
+            ['Как понять угрозу?', 'Threat — компактная оценка боевой опасности флота: корпус кораблей, оружие и поддержка. Это не запас здоровья. DEF в панели — текущие щиты + броня + корпус.'],
+            ['Почему щит не пробивается?', 'Урон проходит слоями: щит → броня → корпус. Щит восстанавливается после паузы, броня и корпус — только поддержкой, припасами или на станции. Поэтому фокусируйте огонь и следите за DPS.'],
+            ['Что означает форма и цвет?', 'Силуэт показывает роль флагмана флота: широкий — защитник, длинный — артиллерия, компактный — разведка. Цвет кольца — относительная угроза: зелёный ниже половины вашей, жёлтый близкий, оранжевый выше, красный значительно выше.'],
+            ['Как растёт флот?', 'Деньги зачисляются только за урон по корпусу. За кредиты во вкладке ⚓ покупаются конкретные корабли; их command cost должен помещаться в лимит. Навык Leadership даёт +3 command capacity за уровень.'],
+            ['Зачем нужны роли?', 'Defender перехватывает часть атак, striker наносит урон, artillery стреляет издалека, scout раскрывает цели и ставит помехи, support ремонтирует и стабилизирует disabled-корабли, flagship задаёт командование.'],
+            ['Как работают уровни и навыки?', 'Каждые 1000 заработанных кредитов открывают уровень (следующий порог растёт в 1,5 раза) и дают очко навыка. Logistics увеличивает припасы, Engineering ускоряет ремонт, Sensors уменьшает заметность, Navigation ускоряет перелёт, Tactics усиливает перехваты.'],
+            ['Что делать после боя?', 'Проверьте disabled-корабли, прикажите REPAIR и пополните припасы. На станции можно полностью восстановить флот. Бой можно покинуть — повреждения и трофеи сохраняются.']
+        ];
+        for (const [title, body] of sections) {
+            const item = document.createElement('section');
+            item.style.marginBottom = '14px';
+            item.innerHTML = `<h3 style="margin:0 0 5px;color:#62d8ff;font-size:14px">${title}</h3><p style="margin:0;color:#c8d5e2;line-height:1.45;font-size:12px">${body}</p>`;
+            dialog.appendChild(item);
+        }
+        const close = this.makeButton('Закрыть', '#475569', () => { onClose(); this.closeModal(); });
+        dialog.appendChild(close);
+        this.modalContainer.appendChild(dialog);
+        document.body.appendChild(this.modalContainer);
+    }
+
+    showFleetManagementDialog(
+        getState: () => { money: number; commandUsed: number; commandCapacity: number; level: number; skillPoints: number; skills: Record<FleetSkillId, number>; ships: { name: string; role: string; commandCost: number }[] },
+        onBuy: (id: string) => boolean,
+        onSkill: (skill: FleetSkillId) => boolean,
+        onClose: () => void
+    ) {
+        this.closeModal();
+        this.modalContainer = this.createOverlay();
+        const dialog = this.createDialog('ФЛОТ · ВЕРФЬ · НАВЫКИ', 760);
+        const summary = document.createElement('div');
+        summary.style.cssText = 'color:#ffd166;font:13px monospace;margin-bottom:12px';
+        dialog.appendChild(summary);
+        const content = document.createElement('div');
+        content.style.cssText = 'max-height:65vh;overflow:auto;text-align:left;padding-right:4px';
+        dialog.appendChild(content);
+
+        const update = () => {
+            const state = getState();
+            summary.textContent = `Кредиты $${formatNumber(Math.floor(state.money))}  ·  Командование ${state.commandUsed}/${state.commandCapacity}  ·  Уровень ${state.level}  ·  Очки навыков ${state.skillPoints}`;
+            content.innerHTML = '';
+            const skillTitle = document.createElement('h3');
+            skillTitle.textContent = 'НАВЫКИ ФЛОТА';
+            skillTitle.style.cssText = 'color:#62d8ff;margin:4px 0 8px;font-size:14px';
+            content.appendChild(skillTitle);
+            (Object.keys(FLEET_SKILLS) as FleetSkillId[]).forEach(skill => {
+                const def = FLEET_SKILLS[skill];
+                const row = document.createElement('div');
+                row.style.cssText = 'display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,.08);padding:7px 0';
+                const label = document.createElement('span');
+                label.style.cssText = 'flex:1;color:#e2e8f0;font-size:12px';
+                label.innerHTML = `<b>${def.name}</b> ${state.skills[skill] || 0}/${def.max}<small style="display:block;color:#94a3b8">${def.description}</small>`;
+                const btn = this.makeButton('+1', '#0b7285', () => { if (onSkill(skill)) update(); });
+                btn.disabled = state.skillPoints <= 0 || (state.skills[skill] || 0) >= def.max;
+                btn.style.opacity = btn.disabled ? '0.4' : '1';
+                row.append(label, btn); content.appendChild(row);
+            });
+            const shipTitle = document.createElement('h3');
+            shipTitle.textContent = 'ВЕРФЬ · КОРАБЛИ';
+            shipTitle.style.cssText = 'color:#62d8ff;margin:18px 0 8px;font-size:14px';
+            content.appendChild(shipTitle);
+            const grid = document.createElement('div');
+            grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px';
+            for (const ship of SHOP_SHIPS) {
+                const card = document.createElement('div');
+                card.style.cssText = 'background:rgba(255,255,255,.05);border:1px solid rgba(98,216,255,.18);border-radius:6px;padding:9px';
+                const can = state.money >= ship.price && state.commandUsed + (ship.loadout.hullId ? ({ command: 4, bulwark: 4, lance: 3, siege: 4, specter: 2, tender: 3 } as Record<string, number>)[ship.loadout.hullId] : 99) <= state.commandCapacity && state.level >= ship.requiredLevel;
+                card.innerHTML = `<b style="color:#f8fafc">${ship.name}</b><small style="display:block;color:#94a3b8">${ship.size} · ${ship.role} · ${ship.description}</small><span style="display:block;color:#ffd166;margin:5px 0">$${formatNumber(ship.price)} · command ${({ command: 4, bulwark: 4, lance: 3, siege: 4, specter: 2, tender: 3 } as Record<string, number>)[ship.loadout.hullId]}</span>`;
+                const buy = this.makeButton(can ? 'Купить' : (state.level < ship.requiredLevel ? `Нужен Lv ${ship.requiredLevel}` : 'Недоступно'), can ? '#167c80' : '#334155', () => { if (onBuy(ship.id)) update(); });
+                buy.disabled = !can; buy.style.opacity = can ? '1' : '0.55'; buy.style.width = '100%'; card.appendChild(buy); grid.appendChild(card);
+            }
+            content.appendChild(grid);
+        };
+        update();
+        dialog.appendChild(this.makeButton('Закрыть', '#475569', () => { onClose(); this.closeModal(); }));
+        this.modalContainer.appendChild(dialog);
+        document.body.appendChild(this.modalContainer);
+    }
+
+    private createOverlay() {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(2,6,23,.82);display:flex;align-items:center;justify-content:center;z-index:10000;padding:12px';
+        return overlay;
+    }
+
+    private createDialog(titleText: string, maxWidth: number) {
+        const dialog = document.createElement('div');
+        dialog.style.cssText = `background:linear-gradient(135deg,#0f1b2d,#111827);border:1px solid rgba(98,216,255,.45);border-radius:10px;box-shadow:0 12px 45px rgba(0,0,0,.55);color:white;font-family:monospace;text-align:left;width:min(100%,${maxWidth}px);max-height:92vh;overflow:auto;padding:20px`;
+        const title = document.createElement('h2');
+        title.textContent = titleText; title.style.cssText = 'margin:0 0 16px;color:#62d8ff;font-size:18px';
+        dialog.appendChild(title); return dialog;
+    }
+
+    private makeButton(text: string, color: string, callback: () => void) {
+        const button = document.createElement('button');
+        button.textContent = text; button.style.cssText = `padding:7px 12px;border:1px solid rgba(255,255,255,.18);border-radius:5px;background:${color};color:white;font:12px monospace;cursor:pointer`;
+        button.onclick = event => { event.stopPropagation(); callback(); }; return button;
     }
 
     /**

@@ -3,7 +3,7 @@ import { Renderer } from '../renderer/Renderer';
 import { Camera } from '../renderer/Camera';
 import { Vector2 } from '../utils/Vector2';
 import { CelestialBody } from '../entities/CelestialBody';
-import { Fleet } from '../entities/Fleet';
+import { Fleet, type FleetSkillId } from '../entities/Fleet';
 import { Entity } from '../entities/Entity';
 import { BubbleZone } from '../entities/BubbleZone';
 import { WarpGate } from '../entities/WarpGate';
@@ -20,6 +20,7 @@ import { SupplyCrate } from '../entities/SupplyCrate';
 import { Ship } from '../tactical/Ship';
 import { RepairService } from '../tactical/RepairService';
 import { WorldEvent } from '../entities/WorldEvent';
+import { SHOP_SHIPS } from '../tactical/FleetGenerator';
 
 
 export class Game {
@@ -126,7 +127,9 @@ export class Game {
             onAbility: (id) => this.activateAbility(id),
             onMenu: () => this.showMenu(),
             onOrder: (order) => this.playerFleet.issueOrder(order, this.playerFleet.selectedShipId || undefined),
-            onDoctrine: (priority) => { this.playerFleet.doctrine.targetPriority = priority; }
+            onDoctrine: (priority) => { this.playerFleet.doctrine.targetPriority = priority; },
+            onFaq: () => this.showFAQ(),
+            onFleet: () => this.showFleetManagement()
         });
 
         this.refreshDifficultyMultiplier();
@@ -498,6 +501,7 @@ export class Game {
             this.playerFleet.level++;
             this.playerFleet.levelThreshold = this.playerFleet.nextLevelThreshold;
             this.playerFleet.nextLevelThreshold = Math.round(this.playerFleet.nextLevelThreshold * 1.5);
+            this.playerFleet.skillPoints++;
             console.log(`Level ${this.playerFleet.level} reached (earned ${formatNumber(this.playerFleet.totalMoneyEarned)})`);
         }
         this.refreshDifficultyMultiplier();
@@ -1366,6 +1370,53 @@ export class Game {
         this.attacks.push(miningAttack);
     }
 
+    private showFAQ() {
+        if (!this.isPaused) this.togglePause();
+        this.modal.showFAQDialog(() => {
+            this.modal.closeModal();
+            if (this.isPaused) this.togglePause();
+        });
+    }
+
+    private showFleetManagement() {
+        if (!this.isPaused) this.togglePause();
+        this.modal.showFleetManagementDialog(
+            () => ({
+                money: this.playerFleet.money,
+                commandUsed: this.playerFleet.commandUsed,
+                commandCapacity: this.playerFleet.commandCapacity,
+                level: this.playerFleet.level,
+                skillPoints: this.playerFleet.skillPoints,
+                skills: { ...this.playerFleet.skills },
+                ships: this.playerFleet.ships.map(ship => ({ name: ship.definition.name, role: ship.role, commandCost: ship.definition.commandCost }))
+            }),
+            (id) => {
+                const offer = SHOP_SHIPS.find(ship => ship.id === id);
+                if (!offer || this.playerFleet.level < offer.requiredLevel) return false;
+                const ship = new Ship({ ...offer.loadout, weaponIds: [...offer.loadout.weaponIds], moduleIds: [...offer.loadout.moduleIds] });
+                if (this.playerFleet.money < offer.price || this.playerFleet.commandUsed + ship.definition.commandCost > this.playerFleet.commandCapacity) return false;
+                this.playerFleet.money -= offer.price;
+                this.playerFleet.ships.push(ship);
+                this.ui.updateMoney(this.playerFleet.money);
+                this.ui.updateFleet(this.playerFleet);
+                SaveSystem.save(this.playerFleet, this.npcFleets);
+                return true;
+            },
+            (skill: FleetSkillId) => {
+                const learned = this.playerFleet.learnSkill(skill);
+                if (learned) {
+                    this.ui.updateFleet(this.playerFleet);
+                    SaveSystem.save(this.playerFleet, this.npcFleets);
+                }
+                return learned;
+            },
+            () => {
+                this.modal.closeModal();
+                if (this.isPaused) this.togglePause();
+            }
+        );
+    }
+
     private showTerraUpgradeDialog() {
         console.log('Showing Terra upgrade dialog');
         RepairService.restoreAtStation(this.playerFleet);
@@ -1403,7 +1454,7 @@ export class Game {
                 ];
                 const loadout = choices[this.playerFleet.ships.length % choices.length];
                 const ship = new Ship(loadout);
-                if (this.playerFleet.money >= upgradeCost && this.playerFleet.ships.length < 8 && this.playerFleet.commandUsed + ship.definition.commandCost <= this.playerFleet.commandCapacity) {
+                if (this.playerFleet.money >= upgradeCost && this.playerFleet.commandUsed + ship.definition.commandCost <= this.playerFleet.commandCapacity) {
                     this.playerFleet.ships.push(ship);
                     this.playerFleet.money -= upgradeCost;
                     this.ui.updateMoney(this.playerFleet.money);
@@ -1775,6 +1826,8 @@ export class Game {
         const supplies = this.playerFleet.supplies;
         const maxSupplies = this.playerFleet.maxSupplies;
         const doctrine = { ...this.playerFleet.doctrine };
+        const skillPoints = this.playerFleet.skillPoints;
+        const skills = { ...this.playerFleet.skills };
         const playerMoney = this.playerFleet.money;
         const playerProgress = this.captureProgress();
         const playerCharges = this.captureAbilityCharges();
@@ -1802,6 +1855,8 @@ export class Game {
         this.playerFleet.supplies = supplies;
         this.playerFleet.maxSupplies = maxSupplies;
         this.playerFleet.doctrine = doctrine;
+        this.playerFleet.skillPoints = skillPoints;
+        this.playerFleet.skills = skills;
         this.playerFleet.money = playerMoney;
 
         // Update UI

@@ -21,7 +21,8 @@ export class RepairService {
         if (!damaged) return;
         if (inCombat && support.order.type !== 'repair') return;
 
-        const rate = inCombat ? 0.8 : 4;
+        const engineeringBonus = 1 + fleet.getSkillLevel('engineering') * 0.2;
+        const rate = (inCombat ? 0.8 : 4) * engineeringBonus;
         const repair = Math.min(rate * dt, damaged.maxHull - damaged.hull, fleet.supplies * 5);
         damaged.restore(repair);
         fleet.supplies = Math.max(0, fleet.supplies - repair / 5);

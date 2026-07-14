@@ -11,6 +11,8 @@ export class UIManager {
     private onMenu: () => void;
     private onOrder: (order: FleetOrderType) => void;
     private onDoctrine: (priority: TargetPriority) => void;
+    private onFaq: () => void;
+    private onFleet: () => void;
     private fleetPanel!: HTMLElement;
     private eventLog!: HTMLElement;
 
@@ -33,7 +35,9 @@ export class UIManager {
             onAbility: (ability: string) => void,
             onMenu: () => void,
             onOrder: (order: FleetOrderType) => void,
-            onDoctrine: (priority: TargetPriority) => void
+            onDoctrine: (priority: TargetPriority) => void,
+            onFaq: () => void,
+            onFleet: () => void
         }
     ) {
         const el = document.getElementById(containerId);
@@ -46,6 +50,8 @@ export class UIManager {
         this.onMenu = callbacks.onMenu;
         this.onOrder = callbacks.onOrder;
         this.onDoctrine = callbacks.onDoctrine;
+        this.onFaq = callbacks.onFaq;
+        this.onFleet = callbacks.onFleet;
 
         this.render();
     }
@@ -161,9 +167,23 @@ export class UIManager {
         this.cameraFollowBtn.title = 'Camera Follow';
         this.cameraFollowBtn.onclick = () => this.toggleCameraFollow();
 
+        const fleetBtn = document.createElement('button');
+        fleetBtn.className = 'control-btn';
+        fleetBtn.innerText = '⚓';
+        fleetBtn.title = 'Fleet management and shipyard';
+        fleetBtn.onclick = () => this.onFleet();
+
+        const faqBtn = document.createElement('button');
+        faqBtn.className = 'control-btn';
+        faqBtn.innerText = '?';
+        faqBtn.title = 'FAQ / Help';
+        faqBtn.onclick = () => this.onFaq();
+
         hud.appendChild(this.playBtn);
         hud.appendChild(speedContainer);
         hud.appendChild(this.cameraFollowBtn);
+        hud.appendChild(fleetBtn);
+        hud.appendChild(faqBtn);
         hud.appendChild(menuBtn);
         this.container.appendChild(hud);
 
@@ -236,7 +256,7 @@ export class UIManager {
         const defenses = fleet.ships.reduce((sum, ship) => sum + ship.effectiveHealth, 0);
         const maxDefenses = fleet.ships.reduce((sum, ship) => sum + ship.maxEffectiveHealth, 0);
         const dps = fleet.ships.filter(ship => ship.alive && ship.order.type !== 'repair').reduce((sum, ship) => sum + ship.weaponDps * fleet.readiness * COMBAT_BALANCE.damageScale, 0);
-        if (summary) summary.textContent = `T ${Math.round(fleet.threatRating)} · DEF ${Math.ceil(defenses)}/${Math.ceil(maxDefenses)} · DPS ${dps.toFixed(0)} · ${active}A/${disabled}D · C ${fleet.commandUsed}/${fleet.commandCapacity} · R ${Math.round(fleet.readiness * 100)}%`;
+        if (summary) summary.textContent = `T ${Math.round(fleet.threatRating)} · DEF ${Math.ceil(defenses)}/${Math.ceil(maxDefenses)} · DPS ${dps.toFixed(0)} · ${active}A/${disabled}D · C ${fleet.commandUsed}/${fleet.commandCapacity} · R ${Math.round(fleet.readiness * 100)}%${fleet.isPlayer ? ` · Lv ${fleet.level} · SP ${fleet.skillPoints}` : ''}`;
         this.fleetPanel.querySelectorAll<HTMLButtonElement>('.doctrine-bar button').forEach(button => button.classList.toggle('active', button.dataset.priority === fleet.doctrine.targetPriority));
         roster.innerHTML = '';
         for (const ship of fleet.ships) {
