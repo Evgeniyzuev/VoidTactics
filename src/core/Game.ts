@@ -1526,6 +1526,13 @@ export class Game {
         const ctx = this.renderer.getContext();
         for (const e of this.entities) e.draw(ctx, this.camera);
 
+        // Threat rings are deliberately separate from the ship silhouette:
+        // hull shape communicates role, ring color communicates danger.
+        const threatReference = Math.max(1, this.playerFleet.threatRating);
+        for (const fleet of [this.playerFleet, ...this.npcFleets]) {
+            fleet.drawThreatIndicator(ctx, this.camera, threatReference);
+        }
+
         // Draw debris collection animation
         if (this.isCollectingDebris) {
             const playerPos = this.camera.worldToScreen(this.playerFleet.position);

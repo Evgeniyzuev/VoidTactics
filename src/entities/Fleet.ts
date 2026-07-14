@@ -529,6 +529,35 @@ export class Fleet extends Entity {
         }
     }
 
+    public drawThreatIndicator(ctx: CanvasRenderingContext2D, camera: Camera, referenceThreat: number) {
+        if (!this.ships.some(ship => ship.state !== 'destroyed')) return;
+        const screen = camera.worldToScreen(this.position);
+        const ratio = this.isPlayer ? 1 : this.threatRating / Math.max(1, referenceThreat);
+        const level = this.isPlayer ? 0 : ratio < 0.5 ? 1 : ratio < 0.9 ? 2 : ratio < 1.3 ? 3 : 4;
+        const color = this.isPlayer ? '#55d8ff' : level === 1 ? '#67dc88' : level === 2 ? '#ffe06b' : level === 3 ? '#ffad5c' : '#ff5f63';
+        const progress = this.isPlayer ? 1 : Math.min(1, ratio / 1.5);
+        const radius = 19 * Math.max(0.85, Math.min(1.15, camera.zoom));
+
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = 'rgba(4, 10, 18, .82)';
+        ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(screen.x, screen.y, radius, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = color; ctx.shadowBlur = 6;
+        ctx.beginPath(); ctx.arc(screen.x, screen.y, radius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress); ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        if (!this.isPlayer && camera.zoom > 0.45) {
+            ctx.fillStyle = color;
+            ctx.font = '700 9px ui-monospace, monospace';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(`T${level}`, screen.x + radius - 1, screen.y - radius + 2);
+        }
+        ctx.restore();
+    }
+
     private drawShipSilhouette(ctx: CanvasRenderingContext2D, role: Ship['role'], selected: boolean, hitFlash: number) {
         ctx.beginPath();
         if (role === 'defender') { ctx.moveTo(0, -13); ctx.lineTo(11, -4); ctx.lineTo(9, 10); ctx.lineTo(0, 7); ctx.lineTo(-9, 10); ctx.lineTo(-11, -4); }

@@ -108,6 +108,11 @@ export class Attack {
         this.target.accumulatedDamage += totalHullDamage;
 
         if (totalDamage > 0) {
+            // Combat income replaces the old strength-based reward. Shield,
+            // armor and hull damage all count, while NPCs never receive money.
+            if (this.attacker.isPlayer) {
+                this.game.awardPlayerMoney(totalDamage * 50);
+            }
 
             // Spawn debris for each damage point
             if (this.target.accumulatedDamage >= 4) {
