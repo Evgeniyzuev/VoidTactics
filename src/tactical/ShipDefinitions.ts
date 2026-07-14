@@ -1,6 +1,14 @@
 export type ShipRole = 'flagship' | 'defender' | 'striker' | 'artillery' | 'scout' | 'support';
 export type DamageType = 'kinetic' | 'energy' | 'explosive';
 export type FleetOrderType = 'attack' | 'escort' | 'hold' | 'retreat' | 'protect' | 'suppress' | 'repair';
+export type TargetPriority = 'nearest' | 'artillery' | 'support' | 'scout' | 'damaged';
+export type ShipState = 'active' | 'disabled' | 'destroyed';
+
+export interface FleetDoctrine {
+    targetPriority: TargetPriority;
+    preferredRange: 'close' | 'balanced' | 'long';
+    aggression: 'cautious' | 'balanced' | 'aggressive';
+}
 
 export interface HullDefinition {
     id: string;
@@ -23,6 +31,7 @@ export interface HullDefinition {
     weaponSlots: number;
     systemSlots: number;
     tacticalValue: number;
+    commandCost: number;
 }
 
 export interface WeaponDefinition {
@@ -65,12 +74,12 @@ export interface FormationDefinition {
 }
 
 export const HULLS: Record<string, HullDefinition> = {
-    command: { id: 'command', name: 'Aegis Command', role: 'flagship', hull: 140, armor: 80, shield: 100, energy: 120, maxSpeed: 480, acceleration: 1.2, mass: 18, turnRate: 2.2, sensorRange: 1300, signature: 1, crew: 35, fuel: 100, ammunition: 80, cargo: 30, weaponSlots: 3, systemSlots: 2, tacticalValue: 36 },
-    bulwark: { id: 'bulwark', name: 'Bulwark', role: 'defender', hull: 180, armor: 140, shield: 70, energy: 75, maxSpeed: 390, acceleration: 0.85, mass: 28, turnRate: 1.5, sensorRange: 900, signature: 1.35, crew: 42, fuel: 85, ammunition: 100, cargo: 15, weaponSlots: 3, systemSlots: 1, tacticalValue: 34 },
-    lance: { id: 'lance', name: 'Lance', role: 'striker', hull: 90, armor: 45, shield: 55, energy: 90, maxSpeed: 570, acceleration: 1.65, mass: 12, turnRate: 2.8, sensorRange: 1000, signature: 0.9, crew: 22, fuel: 90, ammunition: 120, cargo: 10, weaponSlots: 3, systemSlots: 1, tacticalValue: 29 },
-    siege: { id: 'siege', name: 'Longbow', role: 'artillery', hull: 75, armor: 35, shield: 35, energy: 110, maxSpeed: 340, acceleration: 0.7, mass: 20, turnRate: 1.25, sensorRange: 1150, signature: 1.2, crew: 28, fuel: 80, ammunition: 160, cargo: 12, weaponSlots: 2, systemSlots: 1, tacticalValue: 31 },
-    specter: { id: 'specter', name: 'Specter EW', role: 'scout', hull: 60, armor: 20, shield: 45, energy: 125, maxSpeed: 650, acceleration: 2, mass: 8, turnRate: 3.5, sensorRange: 1750, signature: 0.45, crew: 12, fuel: 120, ammunition: 40, cargo: 8, weaponSlots: 1, systemSlots: 2, tacticalValue: 25 },
-    tender: { id: 'tender', name: 'Tender', role: 'support', hull: 105, armor: 55, shield: 60, energy: 130, maxSpeed: 370, acceleration: 0.8, mass: 24, turnRate: 1.4, sensorRange: 1050, signature: 1.1, crew: 30, fuel: 180, ammunition: 180, cargo: 90, weaponSlots: 1, systemSlots: 3, tacticalValue: 28 }
+    command: { id: 'command', name: 'Aegis Command', role: 'flagship', hull: 140, armor: 80, shield: 100, energy: 120, maxSpeed: 480, acceleration: 1.2, mass: 18, turnRate: 2.2, sensorRange: 1300, signature: 1, crew: 35, fuel: 100, ammunition: 80, cargo: 30, weaponSlots: 3, systemSlots: 2, tacticalValue: 36, commandCost: 4 },
+    bulwark: { id: 'bulwark', name: 'Bulwark', role: 'defender', hull: 180, armor: 140, shield: 70, energy: 75, maxSpeed: 390, acceleration: 0.85, mass: 28, turnRate: 1.5, sensorRange: 900, signature: 1.35, crew: 42, fuel: 85, ammunition: 100, cargo: 15, weaponSlots: 3, systemSlots: 1, tacticalValue: 34, commandCost: 4 },
+    lance: { id: 'lance', name: 'Lance', role: 'striker', hull: 90, armor: 45, shield: 55, energy: 90, maxSpeed: 570, acceleration: 1.65, mass: 12, turnRate: 2.8, sensorRange: 1000, signature: 0.9, crew: 22, fuel: 90, ammunition: 120, cargo: 10, weaponSlots: 3, systemSlots: 1, tacticalValue: 29, commandCost: 3 },
+    siege: { id: 'siege', name: 'Longbow', role: 'artillery', hull: 75, armor: 35, shield: 35, energy: 110, maxSpeed: 340, acceleration: 0.7, mass: 20, turnRate: 1.25, sensorRange: 1150, signature: 1.2, crew: 28, fuel: 80, ammunition: 160, cargo: 12, weaponSlots: 2, systemSlots: 1, tacticalValue: 31, commandCost: 4 },
+    specter: { id: 'specter', name: 'Specter EW', role: 'scout', hull: 60, armor: 20, shield: 45, energy: 125, maxSpeed: 650, acceleration: 2, mass: 8, turnRate: 3.5, sensorRange: 1750, signature: 0.45, crew: 12, fuel: 120, ammunition: 40, cargo: 8, weaponSlots: 1, systemSlots: 2, tacticalValue: 25, commandCost: 2 },
+    tender: { id: 'tender', name: 'Tender', role: 'support', hull: 105, armor: 55, shield: 60, energy: 130, maxSpeed: 370, acceleration: 0.8, mass: 24, turnRate: 1.4, sensorRange: 1050, signature: 1.1, crew: 30, fuel: 180, ammunition: 180, cargo: 90, weaponSlots: 1, systemSlots: 3, tacticalValue: 28, commandCost: 3 }
 };
 
 export const WEAPONS: Record<string, WeaponDefinition> = {

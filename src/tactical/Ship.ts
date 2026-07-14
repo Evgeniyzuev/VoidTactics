@@ -1,4 +1,4 @@
-import { HULLS, MODULES, WEAPONS, type DamageType, type FleetOrder, type ShipLoadout } from './ShipDefinitions';
+import { HULLS, MODULES, WEAPONS, type DamageType, type FleetOrder, type ShipLoadout, type ShipState } from './ShipDefinitions';
 
 export interface ShipSnapshot {
     id: string;
@@ -9,6 +9,12 @@ export interface ShipSnapshot {
     energy: number;
     order: FleetOrder;
     statScale?: number;
+    state?: ShipState;
+    flux?: number;
+    targetShipId?: string | null;
+    ammunition?: number;
+    fuel?: number;
+    crew?: number;
 }
 
 let nextShipId = 1;
@@ -26,6 +32,15 @@ export class Ship {
     public hitFlash = 0;
     public shieldRechargeDelay = 0;
     public statScale = 1;
+    public state: ShipState = 'active';
+    public flux = 0;
+    public targetShipId: string | null = null;
+    public targetLockTimer = 0;
+    public disabledDamage = 0;
+    public damagedSystems: ('engines' | 'weapons' | 'sensors' | 'command')[] = [];
+    public ammunition: number;
+    public fuel: number;
+    public crew: number;
 
     constructor(loadout: ShipLoadout, id = `ship-${nextShipId++}`) {
         this.id = id;
@@ -36,22 +51,32 @@ export class Ship {
         this.shield = hull.shield;
         this.energy = hull.energy + this.modules.reduce((sum, module) => sum + (module.energyModifier || 0), 0);
         this.weaponCooldowns = loadout.weaponIds.map(() => 0);
+        this.ammunition = hull.ammunition;
+        this.fuel = hull.fuel;
+        this.crew = hull.crew;
     }
 
     get definition() { return HULLS[this.loadout.hullId] || HULLS.command; }
     get role() { return this.definition.role; }
     get weapons() { return this.loadout.weaponIds.map(id => WEAPONS[id]).filter(Boolean); }
     get modules() { return this.loadout.moduleIds.map(id => MODULES[id]).filter(Boolean); }
-    get alive() { return this.hull > 0; }
+    get alive() { return this.state === 'active'; }
     get maxHull() { return this.definition.hull * this.statScale; }
     get maxArmor() { return this.definition.armor * this.statScale; }
     get maxShield() { return this.definition.shield * this.statScale; }
     get maxEnergy() { return (this.definition.energy + this.modules.reduce((sum, module) => sum + (module.energyModifier || 0), 0)) * this.statScale; }
+    get maxFlux() { return this.maxEnergy * 1.5; }
     get integrity() { return this.hull / this.maxHull; }
-    get combatRating() { return this.alive ? this.definition.tacticalValue * (0.35 + this.integrity * 0.65) : 0; }
+    get combatRating() {
+        if (this.state !== 'active') return 0;
+        const defenses = (this.shield / Math.max(1, this.maxShield) + this.armor / Math.max(1, this.maxArmor) + this.integrity) / 3;
+        return this.definition.tacticalValue * (0.35 + Math.max(0, defenses) * 0.65);
+    }
 
     update(dt: number) {
         this.energy = Math.min(this.maxEnergy, this.energy + dt * 8);
+        this.flux = Math.max(0, this.flux - dt * this.maxFlux * 0.08);
+        this.targetLockTimer = Math.max(0, this.targetLockTimer - dt);
         this.shieldRechargeDelay = Math.max(0, this.shieldRechargeDelay - dt);
         if (this.shieldRechargeDelay <= 0) {
             this.shield = Math.min(this.maxShield, this.shield + dt * 2.5 * this.statScale);
@@ -62,6 +87,12 @@ export class Ship {
     }
 
     applyDamage(amount: number, type: DamageType): number {
+        if (this.state === 'destroyed') return 0;
+        if (this.state === 'disabled') {
+            this.disabledDamage += amount;
+            if (this.disabledDamage >= this.maxHull * 0.25) this.state = 'destroyed';
+            return 0;
+        }
         let remaining = amount;
         if (this.shield > 0) {
             this.shieldRechargeDelay = 4;
@@ -81,6 +112,15 @@ export class Ship {
             const dealt = Math.min(this.hull, remaining);
             this.hull -= dealt;
             this.hitFlash = 1;
+            if (this.hull <= 0) {
+                this.hull = 0;
+                this.state = 'disabled';
+                this.targetShipId = null;
+                this.targetLockTimer = 0;
+                this.damageRandomSystem();
+            } else if (dealt >= this.maxHull * 0.08) {
+                this.damageRandomSystem();
+            }
             return dealt;
         }
         return 0;
@@ -91,12 +131,27 @@ export class Ship {
         const ratio = next / this.statScale;
         this.statScale = next;
         this.hull *= ratio; this.armor *= ratio; this.shield *= ratio; this.energy *= ratio;
+        this.ammunition *= ratio; this.fuel *= ratio; this.crew *= ratio;
     }
 
     restore(amount: number) { this.hull = Math.min(this.maxHull, this.hull + amount); }
 
+    stabilize() {
+        if (this.state !== 'disabled') return false;
+        this.state = 'active';
+        this.hull = Math.max(1, this.maxHull * 0.08);
+        this.disabledDamage = 0;
+        return true;
+    }
+
+    private damageRandomSystem() {
+        const systems: Ship['damagedSystems'][number][] = ['engines', 'weapons', 'sensors', 'command'];
+        const system = systems[(this.id.length + this.damagedSystems.length) % systems.length];
+        if (!this.damagedSystems.includes(system)) this.damagedSystems.push(system);
+    }
+
     snapshot(): ShipSnapshot {
-        return { id: this.id, loadout: this.loadout, hull: this.hull, armor: this.armor, shield: this.shield, energy: this.energy, order: this.order, statScale: this.statScale };
+        return { id: this.id, loadout: this.loadout, hull: this.hull, armor: this.armor, shield: this.shield, energy: this.energy, order: this.order, statScale: this.statScale, state: this.state, flux: this.flux, targetShipId: this.targetShipId, ammunition: this.ammunition, fuel: this.fuel, crew: this.crew };
     }
 
     static fromSnapshot(data: ShipSnapshot) {
@@ -107,16 +162,26 @@ export class Ship {
         ship.shield = data.shield;
         ship.energy = data.energy;
         ship.order = data.order;
+        ship.state = data.state || (data.hull > 0 ? 'active' : 'disabled');
+        ship.flux = data.flux || 0;
+        ship.targetShipId = data.targetShipId || null;
+        ship.ammunition = data.ammunition ?? ship.definition.ammunition;
+        ship.fuel = data.fuel ?? ship.definition.fuel;
+        ship.crew = data.crew ?? ship.definition.crew;
         return ship;
     }
 }
 
 export function createStarterShips(): Ship[] {
-    return [
+    const ships = [
         new Ship({ hullId: 'command', weaponIds: ['pulse', 'autocannon'], moduleIds: ['commandLink'] }),
         new Ship({ hullId: 'bulwark', weaponIds: ['autocannon', 'autocannon'], moduleIds: [] }),
         new Ship({ hullId: 'lance', weaponIds: ['pulse', 'missile'], moduleIds: [] }),
-        new Ship({ hullId: 'siege', weaponIds: ['railgun'], moduleIds: [] }),
-        new Ship({ hullId: 'specter', weaponIds: ['jammer'], moduleIds: ['electronicSuite'] })
+        new Ship({ hullId: 'tender', weaponIds: ['pulse'], moduleIds: ['repairDrones'] })
     ];
+    const defender = ships.find(ship => ship.role === 'defender');
+    const support = ships.find(ship => ship.role === 'support');
+    if (defender) defender.order = { type: 'protect', issuedAt: 0 };
+    if (support) support.order = { type: 'repair', issuedAt: 0 };
+    return ships;
 }

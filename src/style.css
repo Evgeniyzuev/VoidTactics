@@ -158,7 +158,11 @@ canvas {
 .ship-row .defense-stats { color:#83cfee; letter-spacing:-.04em; text-transform:none; }
 .ship-row em { font-style:normal; font-size:10px; color:#8de6bd; }.ship-row.destroyed { opacity:.3; filter:grayscale(1); }
 .role-defender i { background:#68a8ff; }.role-striker i { background:#ff695b; }.role-artillery i { background:#ffba5b; }.role-scout i { background:#bb7cff; }.role-support i { background:#64e0a0; }
-.order-bar { display:flex; gap:4px; margin-top:8px; overflow-x:auto; padding-bottom:2px; }
-.order-bar button { flex:0 0 auto; padding:6px 8px; border:1px solid rgba(118,213,255,.25); border-radius:4px; background:#0d1a25; color:#9edfff; font:700 9px ui-monospace,monospace; cursor:pointer; }
-.order-bar button:hover { background:#183449; color:white; }
+.order-bar,.doctrine-bar { display:flex; gap:4px; margin-top:8px; overflow-x:auto; padding-bottom:2px; }
+.doctrine-bar { margin:0 0 7px; }
+.order-bar button,.doctrine-bar button { flex:0 0 auto; padding:6px 8px; border:1px solid rgba(118,213,255,.25); border-radius:4px; background:#0d1a25; color:#9edfff; font:700 9px ui-monospace,monospace; cursor:pointer; }
+.order-bar button:hover,.doctrine-bar button:hover,.doctrine-bar button.active { background:#183449; color:white; border-color:#76d5ff; }
 @media(max-width:700px) { #fleet-panel { width:calc(100vw - 24px); bottom:64px; padding:7px; }.ship-roster { display:flex; max-height:none; }.ship-row { min-width:112px; grid-template-columns:5px 1fr; }.ship-row em { display:none; } #ability-panel { bottom:6px !important; } }
+#event-log { position:absolute; right:12px; top:64px; width:min(290px,45vw); display:flex; flex-direction:column; gap:5px; padding:9px; border-left:2px solid rgba(118,213,255,.45); background:linear-gradient(90deg,rgba(5,15,24,.72),transparent); color:#a8bfd0; font:10px ui-monospace,monospace; pointer-events:none; }
+#event-log b { color:#76d5ff; letter-spacing:.12em; } #event-log span { animation:slideIn .2s ease-out; }
+@media(max-width:700px) { #event-log { top:58px; right:6px; width:44vw; font-size:9px; } }

@@ -3,12 +3,14 @@ import { Vector2 } from '../utils/Vector2';
 import { Game } from './Game';
 import { BubbleZone } from '../entities/BubbleZone';
 import { CelestialBody } from '../entities/CelestialBody';
+import { TargetResolver } from '../tactical/TargetResolver';
 
 export class Attack {
     public attacker: Fleet;
     public target: Fleet;
     public finished: boolean = false;
     private game: Game;
+    private simulationAccumulator = 0;
     constructor(attacker: Fleet, target: Fleet, game: Game) {
         this.attacker = attacker;
         this.target = target;
@@ -48,7 +50,7 @@ export class Attack {
         // Check if target is an asteroid (CelestialBody)
         if (this.target instanceof CelestialBody) {
             // Asteroid mining logic - 100x increased rate
-            const miningRate = this.attacker.strength * 0.1; // $ per second (100x increase)
+            const miningRate = this.attacker.ships.filter(ship => ship.alive).length * 0.5;
             const moneyGained = miningRate * dt;
 
             if (this.attacker.isPlayer) {
@@ -67,27 +69,44 @@ export class Attack {
             return; // Skip normal combat logic for asteroids
         }
 
+        this.simulationAccumulator += dt;
+        const player = this.game.getPlayerFleet();
+        const nearPlayer = this.attacker === player || this.target === player ||
+            Vector2.distance(this.position, player.position) < 2500;
+        const tacticalStep = nearPlayer ? 0.1 : 0.5;
+        if (this.simulationAccumulator < tacticalStep) return;
+        dt = this.simulationAccumulator;
+        this.simulationAccumulator = 0;
+
         // Tactical damage is produced by the surviving ships and resolved through
         // shields, armor and hull instead of subtracting an abstract fleet number.
         this.attacker.ensureComposition();
         this.target.ensureComposition();
         const firingShips = this.attacker.ships
             .filter(ship => ship.alive && ship.order.type !== 'retreat' && ship.order.type !== 'repair');
-        const activeWeapons = firingShips.flatMap(ship => ship.weapons);
-        const weaponPower = firingShips.reduce((fleetPower, ship) => fleetPower +
-            ship.weapons.reduce((shipPower, weapon) => shipPower + weapon.damage / weapon.cooldown, 0) * ship.statScale, 0);
-        // Roughly 8-15 seconds to break a comparable ship's defenses.
-        let damage = Math.max(1, weaponPower) * 0.14 * dt;
-        if (this.attacker.abilities.fire.active) {
-            damage *= 2;
+        let totalDamage = 0;
+        let totalHullDamage = 0;
+        for (const ship of firingShips) {
+            if (ship.flux >= ship.maxFlux * 0.92) continue;
+            const targetShip = TargetResolver.resolve(ship, this.target.ships, this.attacker.doctrine, firingShips);
+            if (!targetShip) continue;
+            const weaponsPenalty = ship.damagedSystems.includes('weapons') ? 0.55 : 1;
+            for (const weapon of ship.weapons) {
+                const usesAmmo = weapon.damageType !== 'energy';
+                if (usesAmmo && ship.ammunition <= 0) continue;
+                const fluxPerSecond = weapon.energyCost / Math.max(0.1, weapon.cooldown);
+                if (ship.flux + fluxPerSecond * dt > ship.maxFlux) continue;
+                let damage = weapon.damage / Math.max(0.1, weapon.cooldown) * 0.14 * dt * weaponsPenalty * this.attacker.readiness;
+                if (this.attacker.abilities.fire.active) damage *= 2;
+                ship.flux += fluxPerSecond * dt;
+                if (usesAmmo) ship.ammunition = Math.max(0, ship.ammunition - dt / Math.max(0.1, weapon.cooldown) * 0.05);
+                totalDamage += damage;
+                totalHullDamage += this.target.receiveTacticalDamage(damage, weapon.damageType, targetShip.id);
+            }
         }
-        const primaryDamageType = activeWeapons[0]?.damageType || 'energy';
-        // Damage is continuous: fractional frame damage is meaningful and no
-        // longer gets cancelled by shield regeneration between integer ticks.
-        const hullDamage = this.target.receiveTacticalDamage(damage, primaryDamageType);
-        this.target.accumulatedDamage += hullDamage;
+        this.target.accumulatedDamage += totalHullDamage;
 
-        if (damage > 0) {
+        if (totalDamage > 0) {
 
             // Spawn debris for each damage point
             if (this.target.accumulatedDamage >= 4) {
@@ -107,7 +126,7 @@ export class Attack {
                 dist < 120 &&
                 movingTowardAttacker &&
                 (!this.target.isBubbled || this.target.bubbleDistance > 180) &&
-                this.attacker.strength > this.target.strength) {
+                this.attacker.threatRating > this.target.threatRating) {
                 this.createBubbleForAttacker();
                 this.attacker.abilities.bubble.cooldown = this.attacker.abilities.bubble.cdMax;
             }
@@ -121,14 +140,14 @@ export class Attack {
         }
 
         // Check if attack finished (target dead or attacker dead)
-        if (this.target.strength <= 0 || this.attacker.strength <= 0) {
+        if (!this.target.ships.some(ship => ship.alive) || !this.attacker.ships.some(ship => ship.alive)) {
             this.finished = true;
             // Reset states
-            if (this.attacker.strength > 0) {
+            if (this.attacker.ships.some(ship => ship.alive)) {
                 this.attacker.state = 'normal';
                 this.attacker.currentTarget = null;
             }
-            if (this.target.strength > 0) {
+            if (this.target.ships.some(ship => ship.alive)) {
                 this.target.state = 'normal';
                 this.target.currentTarget = null;
             }

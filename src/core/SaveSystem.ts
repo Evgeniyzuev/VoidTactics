@@ -1,5 +1,6 @@
 import { Fleet } from '../entities/Fleet';
 import { Ship, type ShipSnapshot } from '../tactical/Ship';
+import type { FleetDoctrine } from '../tactical/ShipDefinitions';
 
 export interface SavedFleetState {
     x: number;
@@ -29,10 +30,14 @@ export interface AbilityChargesSave {
 }
 
 export interface GameSaveData {
-    version: 2;
+    version: 3;
     player: SavedFleetState;
     npcs: SavedFleetState[];
     playerShips: ShipSnapshot[];
+    commandCapacity: number;
+    supplies: number;
+    maxSupplies: number;
+    doctrine: FleetDoctrine;
     lastSaveTime: number;
 }
 
@@ -43,21 +48,35 @@ export class SaveSystem {
             color: fleet.color, strength: fleet.strength, faction: fleet.faction
         });
         const data: GameSaveData = {
-            version: 2,
+            version: 3,
             player: serializeFleet(player),
             npcs: npcs.map(serializeFleet),
             playerShips: player.ships.map(ship => ship.snapshot()),
+            commandCapacity: player.commandCapacity,
+            supplies: player.supplies,
+            maxSupplies: player.maxSupplies,
+            doctrine: player.doctrine,
             lastSaveTime: Date.now()
         };
-        localStorage.setItem('vt_save_v2', JSON.stringify(data));
+        localStorage.setItem('vt_save_v3', JSON.stringify(data));
     }
 
     static load(): GameSaveData | null {
-        const raw = localStorage.getItem('vt_save_v2');
-        if (!raw) return null;
+        const raw = localStorage.getItem('vt_save_v3');
         try {
-            const data = JSON.parse(raw) as GameSaveData;
-            return data.version === 2 ? data : null;
+            if (raw) {
+                const data = JSON.parse(raw) as GameSaveData;
+                if (data.version === 3) return data;
+            }
+            const v2Raw = localStorage.getItem('vt_save_v2');
+            if (!v2Raw) return null;
+            const old = JSON.parse(v2Raw) as { player: SavedFleetState, npcs: SavedFleetState[], playerShips: ShipSnapshot[], lastSaveTime: number };
+            return {
+                version: 3, player: old.player, npcs: old.npcs, playerShips: old.playerShips || [],
+                commandCapacity: 24, supplies: 30, maxSupplies: 30,
+                doctrine: { targetPriority: 'nearest', preferredRange: 'balanced', aggression: 'balanced' },
+                lastSaveTime: old.lastSaveTime
+            };
         } catch { return null; }
     }
 
@@ -65,6 +84,14 @@ export class SaveSystem {
         if (!snapshots?.length) return;
         fleet.ships = snapshots.map(snapshot => Ship.fromSnapshot(snapshot));
         fleet.selectedShipId = fleet.ships.find(ship => ship.role === 'flagship')?.id || fleet.ships[0]?.id || null;
+    }
+
+    static restoreFleet(fleet: Fleet, data: GameSaveData) {
+        this.restoreShips(fleet, data.playerShips);
+        fleet.commandCapacity = data.commandCapacity;
+        fleet.supplies = data.supplies;
+        fleet.maxSupplies = data.maxSupplies;
+        fleet.doctrine = data.doctrine;
     }
 
     static clear() {
@@ -75,6 +102,7 @@ export class SaveSystem {
         localStorage.removeItem('vt_fleet_ability_charges');
         localStorage.removeItem('vt_autosave_fleet_ability_charges');
         localStorage.removeItem('vt_save_v2');
+        localStorage.removeItem('vt_save_v3');
     }
 
     static saveFleetSize(size: number) {

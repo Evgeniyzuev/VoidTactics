@@ -3,6 +3,7 @@ import { Fleet, type Faction } from '../entities/Fleet';
 import { WarpGate } from '../entities/WarpGate';
 import { Vector2 } from '../utils/Vector2';
 import { Entity } from '../entities/Entity';
+import { FleetGenerator } from '../tactical/FleetGenerator';
 
 export interface SpawnRules {
     targetFleetCount: number;
@@ -357,9 +358,10 @@ export class SystemManager {
         const npc = new Fleet(startX, startY, factionColors[selectedFaction], false);
         npc.faction = selectedFaction;
 
-        // Set strength based on system rules
+        // Build an actual composition from a tactical budget.
+        let fleetBudget: number;
         if (adjustedMin === adjustedMax) {
-            npc.strength = adjustedMin;
+            fleetBudget = adjustedMin;
         } else {
             const coefficients = [0.5, 0.75, 1, 1.5, 2, 4];
             const coeff = coefficients[Math.floor(Math.random() * coefficients.length)];
@@ -372,9 +374,14 @@ export class SystemManager {
                 finalStrength = Math.round(finalStrength * 2.5);
             }
 
-            npc.strength = finalStrength;
+            fleetBudget = finalStrength;
         }
-        npc.maxStrength = npc.strength;
+        npc.ships = FleetGenerator.generate(fleetBudget, selectedFaction);
+        npc.commandCapacity = Math.max(12, npc.commandUsed);
+        npc.selectedShipId = npc.ships[0]?.id || null;
+        if (selectedFaction === 'military' || selectedFaction === 'mercenary') npc.doctrine.targetPriority = 'artillery';
+        if (selectedFaction === 'pirate') npc.doctrine.targetPriority = 'damaged';
+        if (selectedFaction === 'raider') npc.doctrine.targetPriority = 'support';
 
         // Give initial target to roam
         const celestialBodies = system.entities.filter(e => e instanceof CelestialBody) as CelestialBody[];
@@ -386,7 +393,7 @@ export class SystemManager {
             npc.setTarget(new Vector2((Math.random() - 0.5) * 1000, (Math.random() - 0.5) * 1000));
         }
 
-        console.log(`System ${systemId}: Spawning ${selectedFaction} fleet (strength: ${npc.strength}, difficulty×${difficultyMultiplier.toFixed(2)})`);
+        console.log(`System ${systemId}: Spawning ${selectedFaction} fleet (budget ${fleetBudget}, threat ${npc.threatRating.toFixed(0)}, difficulty×${difficultyMultiplier.toFixed(2)})`);
         return [npc];
     }
 

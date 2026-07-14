@@ -2,7 +2,9 @@ import { Entity } from './Entity';
 import { Camera } from '../renderer/Camera';
 import { Vector2 } from '../utils/Vector2';
 import { Ship, createStarterShips } from '../tactical/Ship';
-import { DEFAULT_FORMATION, type DamageType, type FleetOrderType } from '../tactical/ShipDefinitions';
+import { DEFAULT_FORMATION, type DamageType, type FleetDoctrine, type FleetOrderType } from '../tactical/ShipDefinitions';
+import { FleetGenerator } from '../tactical/FleetGenerator';
+import { RepairService } from '../tactical/RepairService';
 
 export type Faction = 'civilian' | 'pirate' | 'orc' | 'military' | 'player' | 'raider' | 'trader' | 'mercenary';
 
@@ -11,6 +13,13 @@ export class Fleet extends Entity {
     public selectedShipId: string | null = null;
     public formation = DEFAULT_FORMATION;
     private tacticalClock = 0;
+    private legacyBudget = 10;
+    public commandCapacity = 24;
+    public supplies = 30;
+    public maxSupplies = 30;
+    public stabilizationProgress = 0;
+    public doctrine: FleetDoctrine = { targetPriority: 'nearest', preferredRange: 'balanced', aggression: 'balanced' };
+    public interceptCharges = 0;
     public target: Vector2 | null = null;
     public followTarget: Entity | null = null; // Entity to follow
     public followDistance: number = 100; // Distance to maintain when following
@@ -23,10 +32,7 @@ export class Fleet extends Entity {
     private rotation: number = 0;
     public color: string;
     public isPlayer: boolean = false;
-    public strength: number = 10;
-    public maxStrength: number = 10;
     public accumulatedDamage: number = 0;
-    public sizeMultiplier: number = 1.0;
     public faction: Faction = 'civilian';
     public state: 'normal' | 'combat' | 'flee' | 'mining' = 'normal';
     public combatTimer: number = 0;
@@ -70,48 +76,59 @@ export class Fleet extends Entity {
         this.isPlayer = isPlayer;
         if (isPlayer) this.faction = 'player';
         this.radius = 8;
-        this.maxStrength = this.strength;
         this.ships = isPlayer ? createStarterShips() : [];
         this.selectedShipId = this.ships[0]?.id || null;
-        if (isPlayer) this.syncLegacyStrength();
+        if (isPlayer) this.refreshFleetState();
     }
+
+    public get threatRating() { return this.ships.reduce((sum, ship) => sum + ship.combatRating, 0) * this.readiness; }
+    public get commandUsed() { return this.ships.filter(ship => ship.state !== 'destroyed').reduce((sum, ship) => sum + ship.definition.commandCost, 0); }
+    public get readiness() {
+        const supplyFactor = 0.55 + 0.45 * Math.min(1, this.supplies / Math.max(1, this.maxSupplies));
+        const active = this.ships.filter(ship => ship.state !== 'destroyed');
+        if (!active.length) return 0;
+        const ammoFactor = active.reduce((sum, ship) => sum + Math.min(1, ship.ammunition / Math.max(1, ship.definition.ammunition)), 0) / active.length;
+        const fuelFactor = active.reduce((sum, ship) => sum + Math.min(1, ship.fuel / Math.max(1, ship.definition.fuel)), 0) / active.length;
+        return Math.max(0.2, supplyFactor * (0.5 + ammoFactor * 0.25 + fuelFactor * 0.25));
+    }
+    public get signature() { return this.ships.filter(ship => ship.state !== 'destroyed').reduce((sum, ship) => sum + ship.definition.signature, 0); }
+    /** Compatibility adapter while old economy and AI callers are migrated. */
+    public get strength() { return this.ships.length ? this.threatRating : this.legacyBudget; }
+    public set strength(value: number) { if (!this.ships.length) this.legacyBudget = Math.max(1, value); }
+    public get maxStrength() { return this.ships.length ? this.threatRating : this.legacyBudget; }
+    public set maxStrength(value: number) { if (!this.ships.length) this.legacyBudget = Math.max(1, value); }
 
     public ensureComposition() {
         if (this.ships.length > 0) return;
-        const rating = Math.max(1, this.strength);
-        const hullId = rating > 180 ? 'bulwark' : rating > 70 ? 'lance' : 'specter';
-        const weaponIds = hullId === 'bulwark' ? ['autocannon', 'autocannon'] : hullId === 'lance' ? ['pulse', 'missile'] : ['jammer'];
-        const ship = new Ship({ hullId, weaponIds, moduleIds: hullId === 'specter' ? ['electronicSuite'] : [] });
-        const scale = Math.max(0.35, rating / ship.definition.tacticalValue);
-        ship.setStatScale(scale);
-        this.ships = [ship]; this.selectedShipId = ship.id;
+        this.ships = FleetGenerator.generate(this.legacyBudget, this.faction);
+        this.selectedShipId = this.ships[0]?.id || null;
     }
 
     public issueOrder(type: FleetOrderType, shipId?: string) {
-        const targets = shipId ? this.ships.filter(ship => ship.id === shipId) : this.ships.filter(ship => ship.role !== 'flagship');
+        let targets = shipId ? this.ships.filter(ship => ship.id === shipId) : this.ships.filter(ship => ship.role !== 'flagship');
+        if (type === 'repair') targets = this.ships.filter(ship => ship.role === 'support');
+        if (type === 'protect') targets = this.ships.filter(ship => ship.role === 'defender');
         for (const ship of targets) ship.order = { type, issuedAt: this.tacticalClock };
     }
 
-    public receiveTacticalDamage(amount: number, type: DamageType = 'energy'): number {
+    public receiveTacticalDamage(amount: number, type: DamageType = 'energy', targetShipId?: string): number {
         this.ensureComposition();
         const alive = this.ships.filter(ship => ship.alive);
         if (!alive.length) return 0;
-        const ordered = [...alive].sort((a, b) => {
-            const defenderA = a.role === 'defender' && a.order.type === 'protect' ? -1 : 0;
-            const defenderB = b.role === 'defender' && b.order.type === 'protect' ? -1 : 0;
-            return defenderA - defenderB || a.integrity - b.integrity;
-        });
-        const dealt = ordered[0].applyDamage(amount, type);
-        this.syncLegacyStrength(); return dealt;
+        let target = alive.find(ship => ship.id === targetShipId) || alive[0];
+        const defender = alive.find(ship => ship.role === 'defender' && ship.order.type === 'protect');
+        if (defender && defender !== target && this.interceptCharges >= 1) {
+            target = defender;
+            this.interceptCharges -= 1;
+        }
+        return target.applyDamage(amount, type);
     }
 
     public get flagship() { return this.ships.find(ship => ship.role === 'flagship' && ship.alive) || this.ships.find(ship => ship.alive); }
 
-    private syncLegacyStrength() {
-        const rating = this.ships.reduce((sum, ship) => sum + ship.combatRating, 0);
-        const maxRating = this.ships.reduce((sum, ship) => sum + ship.definition.tacticalValue, 0);
-        this.strength = Math.max(0, rating); this.maxStrength = Math.max(this.maxStrength, maxRating);
-        this.sizeMultiplier = Math.max(0.8, Math.sqrt(Math.max(1, this.ships.filter(ship => ship.alive).length)) * 0.8);
+    private refreshFleetState(dt = 0) {
+        const defenders = this.ships.filter(ship => ship.alive && ship.role === 'defender' && ship.order.type === 'protect').length;
+        this.interceptCharges = Math.min(defenders * 3, this.interceptCharges + defenders * dt * 0.75);
     }
 
     setTarget(pos: Vector2) {
@@ -135,12 +152,12 @@ export class Fleet extends Entity {
     update(dt: number) {
         this.tacticalClock += dt; this.ensureComposition();
         for (const ship of this.ships) ship.update(dt);
-        const support = this.ships.find(ship => ship.alive && ship.role === 'support' && ship.order.type === 'repair');
-        if (support) {
-            const patient = this.ships.filter(ship => ship.alive && ship !== support).sort((a, b) => a.integrity - b.integrity)[0];
-            if (patient) patient.restore(dt * 2.5);
+        if (this.velocity.mag() > 5) {
+            const fuelUse = this.velocity.mag() * dt * 0.00035;
+            for (const ship of this.ships.filter(ship => ship.alive)) ship.fuel = Math.max(0, ship.fuel - fuelUse);
         }
-        this.syncLegacyStrength();
+        RepairService.update(this, dt, this.state === 'combat' || this.currentTarget !== null);
+        this.refreshFleetState(dt);
         // Sanitize position and velocity to prevent NaN errors
         if (!isFinite(this.position.x) || !isFinite(this.position.y)) this.position = new Vector2(0, 0);
         if (!isFinite(this.velocity.x) || !isFinite(this.velocity.y)) this.velocity = new Vector2(0, 0);
@@ -177,8 +194,9 @@ export class Fleet extends Entity {
         }
 
         if (this.abilities.medkit.active) {
-            const healPerSecond = (this.maxStrength * 0.2) / this.abilities.medkit.duration;
-            this.strength = Math.min(this.maxStrength, this.strength + healPerSecond * dt);
+            const selected = this.ships.find(ship => ship.id === this.selectedShipId);
+            if (selected?.state === 'disabled') selected.stabilize();
+            if (selected?.alive) selected.restore(selected.maxHull * 0.2 / this.abilities.medkit.duration * dt);
         }
 
         if (this.state === 'combat') {
@@ -319,7 +337,7 @@ export class Fleet extends Entity {
 
                 // Acceleration depends on size (larger is slower to accelerate)
                 // Snappier responsiveness: 1.2 base
-                let responsiveness = 1.2 / Math.sqrt(this.sizeMultiplier);
+                let responsiveness = 1.2;
                 if (this.abilities.afterburner.active) responsiveness *= 1.5;
 
                 let steerForce = steering.scale(responsiveness * dt);
@@ -366,7 +384,7 @@ export class Fleet extends Entity {
         // Draw Ship (Perfect Warp Bubble)
         ctx.beginPath();
         const baseRadius = 8;
-        const shipRadius = baseRadius * this.sizeMultiplier;
+        const shipRadius = baseRadius;
         ctx.arc(0, 0, shipRadius, 0, Math.PI * 2);
 
         // Calculate highlight relative to the sun (0,0)
@@ -396,15 +414,15 @@ export class Fleet extends Entity {
 
         // High contrast stroke with glow
         ctx.strokeStyle = '#FFFFFF';
-        ctx.lineWidth = 1.5 * this.sizeMultiplier;
-        ctx.shadowBlur = (this.state === 'combat' ? 20 : 8) * this.sizeMultiplier;
+        ctx.lineWidth = 1.5;
+        ctx.shadowBlur = this.state === 'combat' ? 20 : 8;
         ctx.shadowColor = this.state === 'combat' ? '#FFFFFF' : this.color;
         ctx.stroke();
         ctx.shadowBlur = 0; // Reset after stroke
 
         // Directional Indicator (Centered Arrow)
         ctx.beginPath();
-        const arrowSize = 4 * this.sizeMultiplier;
+        const arrowSize = 4;
         ctx.moveTo(0, -arrowSize * 1.25); // Front
         ctx.lineTo(arrowSize * 0.75, arrowSize * 0.75);
         ctx.lineTo(-arrowSize * 0.75, arrowSize * 0.75);
@@ -418,7 +436,7 @@ export class Fleet extends Entity {
             ctx.moveTo(-arrowSize, arrowSize * 1.75);
             ctx.quadraticCurveTo(0, arrowSize * 3, arrowSize, arrowSize * 1.75);
             ctx.strokeStyle = this.color;
-            ctx.lineWidth = 1.5 * this.sizeMultiplier;
+            ctx.lineWidth = 1.5;
             ctx.stroke();
         }
 

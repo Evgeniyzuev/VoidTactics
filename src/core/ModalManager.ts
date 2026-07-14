@@ -401,7 +401,7 @@ export class ModalManager {
         message.style.lineHeight = '1.6';
 
         const reward = document.createElement('p');
-        reward.textContent = '+100 💪 Fleet Strength\n+$5,000 💰 Money';
+        reward.textContent = '+3 Command Capacity\n+10 Supply Capacity\n+$5,000 Credits';
         reward.style.margin = '0 0 30px 0';
         reward.style.fontSize = '16px';
         reward.style.fontWeight = 'bold';
@@ -542,6 +542,9 @@ export class ModalManager {
             currentStrength: number,
             currentMaxStrength: number,
             currentMoney: number,
+            commandUsed: number,
+            commandCapacity: number,
+            shipCost: number,
             levelInfo: string,
             mercenaryCount: number,
             mercenaryMax: number,
@@ -586,7 +589,7 @@ export class ModalManager {
         title.style.color = '#00C8FF';
 
         const info = document.createElement('p');
-        info.textContent = `Fleet Strength: ${formatNumber(state.currentStrength)} / ${formatNumber(state.currentMaxStrength)} | Money: $${formatNumber(state.currentMoney)}`;
+        info.textContent = `Threat: ${formatNumber(state.currentStrength)} | Command: ${state.commandUsed}/${state.commandCapacity} | Money: $${formatNumber(state.currentMoney)}`;
         info.style.margin = '0 0 10px 0';
         info.style.fontSize = '14px';
         info.style.color = '#FFD700';
@@ -611,8 +614,8 @@ export class ModalManager {
         upgradeLabel.style.opacity = '0.7';
 
         const upgradeButton = document.createElement('button');
-        const upgradeCost = state.currentMaxStrength + 10;
-        upgradeButton.textContent = `Hold to buy strength (${formatNumber(upgradeCost)}$ per 1💪)`;
+        const upgradeCost = state.shipCost;
+        upgradeButton.textContent = `Commission next ship (${formatNumber(upgradeCost)}$)`;
         upgradeButton.style.padding = '10px 20px';
         upgradeButton.style.width = '100%';
         upgradeButton.style.border = 'none';
@@ -620,26 +623,10 @@ export class ModalManager {
         upgradeButton.style.background = state.currentMoney >= upgradeCost ? '#00AA00' : '#444444';
         upgradeButton.style.color = 'white';
         upgradeButton.style.cursor = state.currentMoney >= upgradeCost ? 'pointer' : 'not-allowed';
-        let upgradeInterval: any = null;
-        const stopUpgrade = () => {
-            if (upgradeInterval) {
-                clearInterval(upgradeInterval);
-                upgradeInterval = null;
-            }
+        upgradeButton.onclick = () => {
+            onUpgrade();
+            updateUi();
         };
-        const startUpgrade = () => {
-            if (upgradeInterval || state.currentMoney < upgradeCost) return;
-            // 20 times per second
-            upgradeInterval = setInterval(() => {
-                const ok = onUpgrade();
-                if (!ok) stopUpgrade();
-                updateUi();
-            }, 50);
-        };
-        upgradeButton.onpointerdown = () => startUpgrade();
-        upgradeButton.onpointerup = () => stopUpgrade();
-        upgradeButton.onpointerleave = () => stopUpgrade();
-        upgradeButton.onpointercancel = () => stopUpgrade();
 
         section1.appendChild(upgradeLabel);
         section1.appendChild(upgradeButton);
@@ -663,7 +650,7 @@ export class ModalManager {
             { id: 'bubble', name: '🫧 Bubble' },
             { id: 'cloak', name: '👻 Cloak' },
             { id: 'mine', name: '💣 Warp Mine' },
-            { id: 'medkit', name: '💊 Medkit' },
+            { id: 'medkit', name: '✚ Emergency Repair' },
             { id: 'fire', name: '🔥 Fire' },
             { id: 'shield', name: '🛡 Shield' }
         ];
@@ -751,11 +738,11 @@ export class ModalManager {
 
         const updateUi = () => {
             const next = getState();
-            info.textContent = `Fleet Strength: ${formatNumber(next.currentStrength)} / ${formatNumber(next.currentMaxStrength)} | Money: $${formatNumber(next.currentMoney)}`;
+            info.textContent = `Threat: ${formatNumber(next.currentStrength)} | Command: ${next.commandUsed}/${next.commandCapacity} | Money: $${formatNumber(next.currentMoney)}`;
             levelText.textContent = next.levelInfo;
 
-            const nextUpgradeCost = next.currentMaxStrength + 10;
-            upgradeButton.textContent = `Hold to buy strength (${formatNumber(nextUpgradeCost)}$ per 1💪)`;
+            const nextUpgradeCost = next.shipCost;
+            upgradeButton.textContent = `Commission next ship (${formatNumber(nextUpgradeCost)}$)`;
             upgradeButton.style.background = next.currentMoney >= nextUpgradeCost ? '#00AA00' : '#444444';
             upgradeButton.style.cursor = next.currentMoney >= nextUpgradeCost ? 'pointer' : 'not-allowed';
 
@@ -810,7 +797,7 @@ export class ModalManager {
         title.style.color = '#FFA500';
 
         const message = document.createElement('p');
-        message.textContent = 'Mining Rate: 0.001$ per second per fleet strength';
+        message.textContent = 'Mining rate depends on active ships in the fleet.';
         message.style.margin = '0 0 30px 0';
         message.style.fontSize = '14px';
         message.style.lineHeight = '1.6';

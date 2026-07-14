@@ -1,6 +1,6 @@
 import { formatNumber } from '../utils/NumberFormatter';
 import type { Fleet } from '../entities/Fleet';
-import type { FleetOrderType } from '../tactical/ShipDefinitions';
+import type { FleetOrderType, TargetPriority } from '../tactical/ShipDefinitions';
 
 export class UIManager {
     private container: HTMLElement;
@@ -10,7 +10,9 @@ export class UIManager {
     private onAbility: (ability: string) => void;
     private onMenu: () => void;
     private onOrder: (order: FleetOrderType) => void;
+    private onDoctrine: (priority: TargetPriority) => void;
     private fleetPanel!: HTMLElement;
+    private eventLog!: HTMLElement;
 
     private playBtn!: HTMLButtonElement;
     private cameraFollowBtn!: HTMLButtonElement;
@@ -30,7 +32,8 @@ export class UIManager {
             onCameraToggle: (follow: boolean) => void,
             onAbility: (ability: string) => void,
             onMenu: () => void,
-            onOrder: (order: FleetOrderType) => void
+            onOrder: (order: FleetOrderType) => void,
+            onDoctrine: (priority: TargetPriority) => void
         }
     ) {
         const el = document.getElementById(containerId);
@@ -42,6 +45,7 @@ export class UIManager {
         this.onAbility = callbacks.onAbility;
         this.onMenu = callbacks.onMenu;
         this.onOrder = callbacks.onOrder;
+        this.onDoctrine = callbacks.onDoctrine;
 
         this.render();
     }
@@ -169,12 +173,41 @@ export class UIManager {
         // Ability Panel (Bottom Center)
         this.renderAbilityPanel();
         this.renderFleetPanel();
+        this.renderEventLog();
+    }
+
+    private renderEventLog() {
+        const log = document.createElement('div');
+        log.id = 'event-log';
+        log.innerHTML = '<b>SYSTEM FEED</b>';
+        this.container.appendChild(log);
+        this.eventLog = log;
+    }
+
+    public addEvent(message: string) {
+        if (!this.eventLog) return;
+        const row = document.createElement('span');
+        row.textContent = message;
+        this.eventLog.appendChild(row);
+        while (this.eventLog.querySelectorAll('span').length > 5) this.eventLog.querySelector('span')?.remove();
     }
 
     private renderFleetPanel() {
         const panel = document.createElement('aside');
         panel.id = 'fleet-panel';
-        panel.innerHTML = '<header><span>TACTICAL FLEET</span><small>WEDGE</small></header><div class="ship-roster"></div><div class="order-bar"></div>';
+        panel.innerHTML = '<header><span>TACTICAL FLEET</span><small class="fleet-summary">WEDGE</small></header><div class="doctrine-bar"></div><div class="ship-roster"></div><div class="order-bar"></div>';
+        const doctrineBar = panel.querySelector('.doctrine-bar')!;
+        const priorities: { type: TargetPriority, label: string }[] = [
+            { type: 'nearest', label: 'NEAR' }, { type: 'artillery', label: 'ARTY' },
+            { type: 'support', label: 'SUP' }, { type: 'scout', label: 'EW' }, { type: 'damaged', label: 'WEAK' }
+        ];
+        for (const priority of priorities) {
+            const button = document.createElement('button');
+            button.textContent = priority.label;
+            button.dataset.priority = priority.type;
+            button.onclick = event => { event.stopPropagation(); this.onDoctrine(priority.type); };
+            doctrineBar.appendChild(button);
+        }
         const orders: { type: FleetOrderType, label: string }[] = [
             { type: 'attack', label: 'ATK' }, { type: 'escort', label: 'ESC' },
             { type: 'hold', label: 'HOLD' }, { type: 'protect', label: 'GUARD' },
@@ -197,15 +230,20 @@ export class UIManager {
     public updateFleet(fleet: Fleet) {
         const roster = this.fleetPanel?.querySelector('.ship-roster');
         if (!roster) return;
+        const active = fleet.ships.filter(ship => ship.state === 'active').length;
+        const disabled = fleet.ships.filter(ship => ship.state === 'disabled').length;
+        const summary = this.fleetPanel.querySelector('.fleet-summary');
+        if (summary) summary.textContent = `T ${Math.round(fleet.threatRating)} · ${active}A/${disabled}D · C ${fleet.commandUsed}/${fleet.commandCapacity} · R ${Math.round(fleet.readiness * 100)}%`;
+        this.fleetPanel.querySelectorAll<HTMLButtonElement>('.doctrine-bar button').forEach(button => button.classList.toggle('active', button.dataset.priority === fleet.doctrine.targetPriority));
         roster.innerHTML = '';
         for (const ship of fleet.ships) {
             const row = document.createElement('button');
-            row.className = `ship-row role-${ship.role}${ship.id === fleet.selectedShipId ? ' selected' : ''}${ship.alive ? '' : ' destroyed'}`;
+            row.className = `ship-row role-${ship.role}${ship.id === fleet.selectedShipId ? ' selected' : ''}${ship.state === 'active' ? '' : ' destroyed'}`;
             const hp = Math.max(0, Math.round(ship.integrity * 100));
             const shield = Math.max(0, Math.ceil(ship.shield));
             const armor = Math.max(0, Math.ceil(ship.armor));
             const hull = Math.max(0, Math.ceil(ship.hull));
-            row.innerHTML = `<i></i><span><b>${ship.definition.name}</b><small>${ship.role} · ${ship.order.type}</small><small class="defense-stats">S ${shield}/${Math.ceil(ship.maxShield)} · A ${armor}/${Math.ceil(ship.maxArmor)} · H ${hull}/${Math.ceil(ship.maxHull)}</small></span><em>${hp}%</em>`;
+            row.innerHTML = `<i></i><span><b>${ship.definition.name}</b><small>${ship.role} · ${ship.state} · ${ship.order.type}</small><small class="defense-stats">S ${shield}/${Math.ceil(ship.maxShield)} · A ${armor}/${Math.ceil(ship.maxArmor)} · H ${hull}/${Math.ceil(ship.maxHull)} · F ${Math.round(ship.flux)}/${Math.round(ship.maxFlux)} · AM ${Math.floor(ship.ammunition)}</small></span><em>${hp}%</em>`;
             row.onclick = event => { event.stopPropagation(); fleet.selectedShipId = ship.id; };
             roster.appendChild(row);
         }
@@ -265,7 +303,7 @@ export class UIManager {
             { id: 'bubble', icon: '🫧', color: '#00AAFF', title: 'Bubble (Stop Nearby)' },
             { id: 'cloak', icon: '👻', color: '#AAAAAA', title: 'Cloak (Invisibility)' },
             { id: 'mine', icon: '💣', color: '#FF0000', title: 'Warp Mine (Proximity Trap)' },
-            { id: 'medkit', icon: '💊', color: '#00C8FF', title: 'Medkit (Heal 20% over 10s)' },
+            { id: 'medkit', icon: '✚', color: '#00C8FF', title: 'Emergency Repair (stabilize and repair selected ship)' },
             { id: 'fire', icon: '🔥', color: '#FF5500', title: 'Fire (2x damage for 5s)' },
             { id: 'shield', icon: '🛡', color: '#66CCFF', title: 'Shield (Untargetable 1s)' }
         ];
@@ -434,11 +472,8 @@ export class UIManager {
     public updateStrength(strength: number, maxStrength?: number) {
         const strengthDisplay = document.getElementById('strength-display');
         if (strengthDisplay) {
-            if (maxStrength !== undefined) {
-                strengthDisplay.textContent = `${formatNumber(strength)}/${formatNumber(maxStrength)}`;
-            } else {
-                strengthDisplay.textContent = `${formatNumber(strength)}`;
-            }
+            void maxStrength;
+            strengthDisplay.textContent = `Threat ${formatNumber(strength)}`;
         }
     }
 

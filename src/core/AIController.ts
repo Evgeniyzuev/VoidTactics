@@ -47,7 +47,7 @@ export class AIController {
                         }
                     }
 
-                    if (dist > giveUpRadius || (dist > 1200 && npc.faction === 'pirate' && npc.strength < npc.followTarget.strength && !hasNearbyAlly)) {
+                    if (dist > giveUpRadius || (dist > 1200 && npc.faction === 'pirate' && npc.threatRating < npc.followTarget.threatRating && !hasNearbyAlly)) {
                         npc.stopFollowing();
                         if (celestialBodies.length > 0) {
                             const poi = celestialBodies[Math.floor(Math.random() * celestialBodies.length)];
@@ -101,7 +101,7 @@ export class AIController {
                     if (hostileBtoA) {
                         // Civilians are easily spooked, Traders only flee from stronger opponents
                         const fearFactor = npc.faction === 'civilian' ? 0.5 : (npc.faction === 'trader' ? 1.0 : 1.2);
-                        if (other.strength > npc.strength * fearFactor) {
+                        if (other.threatRating > npc.threatRating * fearFactor) {
                             if (dist < minDistThreat) {
                                 minDistThreat = dist;
                                 closestThreat = other;
@@ -119,19 +119,19 @@ export class AIController {
                             canTarget = true;
                         } else if (npc.faction === 'pirate') {
                             // Pirates are aggressive; size matters less unless alone vs bigger
-                            if (other.strength > npc.strength && !hasNearbyAlly) {
+                            if (other.threatRating > npc.threatRating && !hasNearbyAlly) {
                                 canTarget = false;
                             } else {
                                 canTarget = true;
                             }
                         } else if (npc.faction === 'civilian' || npc.faction === 'trader') {
                             // Only target if very weak (self-defense)
-                            canTarget = other.strength < npc.strength * 0.4;
+                            canTarget = other.threatRating < npc.threatRating * 0.4;
                         }
 
                         if (canTarget) {
                             // Calculate scores
-                            let strengthRatio = npc.strength / Math.max(0.1, other.strength);
+                            let strengthRatio = npc.threatRating / Math.max(0.1, other.threatRating);
                             if (isMilitaryLike || npc.faction === 'pirate') {
                                 strengthRatio = 0.5 + strengthRatio * 0.25;
                             }

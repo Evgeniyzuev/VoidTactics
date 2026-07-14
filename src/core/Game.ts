@@ -17,6 +17,9 @@ import { formatNumber } from '../utils/NumberFormatter';
 import { WarpMine } from '../entities/WarpMine';
 import { Debris } from '../entities/Debris';
 import { SupplyCrate } from '../entities/SupplyCrate';
+import { Ship } from '../tactical/Ship';
+import { RepairService } from '../tactical/RepairService';
+import { WorldEvent } from '../entities/WorldEvent';
 
 
 export class Game {
@@ -37,6 +40,7 @@ export class Game {
     private mines: WarpMine[] = [];
     private debris: Debris[] = [];
     private crates: SupplyCrate[] = [];
+    private worldEvents: WorldEvent[] = [];
 
     // Getters for AIController
     public getEntities(): Entity[] { return this.entities; }
@@ -121,7 +125,8 @@ export class Game {
             onCameraToggle: (follow) => this.setCameraFollow(follow),
             onAbility: (id) => this.activateAbility(id),
             onMenu: () => this.showMenu(),
-            onOrder: (order) => this.playerFleet.issueOrder(order, this.playerFleet.selectedShipId || undefined)
+            onOrder: (order) => this.playerFleet.issueOrder(order, this.playerFleet.selectedShipId || undefined),
+            onDoctrine: (priority) => { this.playerFleet.doctrine.targetPriority = priority; }
         });
 
         this.refreshDifficultyMultiplier();
@@ -181,10 +186,10 @@ export class Game {
             onSaveFleet: () => {
                 if (this.isGameOver) return;
                 SaveSystem.save(this.playerFleet, this.npcFleets);
-                SaveSystem.saveFleetSize(this.playerFleet.maxStrength);
+                SaveSystem.saveFleetSize(this.playerFleet.commandCapacity);
                 SaveSystem.saveFleetProgress(this.captureProgress());
                 SaveSystem.saveFleetAbilityCharges(this.captureAbilityCharges());
-                console.log('Fleet size saved:', this.playerFleet.maxStrength);
+                console.log('Fleet command capacity saved:', this.playerFleet.commandCapacity);
             },
             onLoadFleet: () => {
                 // Load saved size and start new world with it
@@ -193,7 +198,7 @@ export class Game {
                 const savedCharges = SaveSystem.loadFleetAbilityCharges() || this.getDefaultAbilityCharges();
                 this.initWorld(savedSize || 10, undefined, undefined, savedProgress, savedCharges);
                 const tacticalSave = SaveSystem.load();
-                if (tacticalSave) SaveSystem.restoreShips(this.playerFleet, tacticalSave.playerShips);
+                if (tacticalSave) SaveSystem.restoreFleet(this.playerFleet, tacticalSave);
             },
             onLoadAuto: () => {
                 // Load autosave size and start new world with it
@@ -202,7 +207,7 @@ export class Game {
                 const autosaveCharges = SaveSystem.loadAutosaveFleetAbilityCharges() || this.getDefaultAbilityCharges();
                 this.initWorld(autosaveSize || 10, undefined, undefined, autosaveProgress, autosaveCharges);
                 const tacticalSave = SaveSystem.load();
-                if (tacticalSave) SaveSystem.restoreShips(this.playerFleet, tacticalSave.playerShips);
+                if (tacticalSave) SaveSystem.restoreFleet(this.playerFleet, tacticalSave);
             }
         }, this.isGameOver);
     }
@@ -268,6 +273,7 @@ export class Game {
         this.mines = [];
         this.debris = [];
         this.crates = [];
+        this.worldEvents = [];
         this.isGameOver = false;
         this.difficultyMultiplier = 1;
 
@@ -302,8 +308,6 @@ export class Game {
         }
 
         this.playerFleet = new Fleet(spawnX, spawnY, '#00AAFF', true);
-        this.playerFleet.maxStrength = startStrength;
-        this.playerFleet.strength = startStrength;
         this.playerFleet.faction = 'player';
         this.playerFleet.money = Game.START_MONEY;
 
@@ -323,12 +327,13 @@ export class Game {
         }
 
         this.entities.push(this.playerFleet);
+        this.initializeWorldEvents();
 
         // Spawn initial fleets using system-specific rules
         const initialFleets: Fleet[] = [];
         for (let i = 0; i < 30; i++) {
             const forcedFaction = this.currentSystemId === 2 ? 'raider' : undefined;
-            const fleets = this.systemManager.spawnFleetsForSystem(this.currentSystemId, startStrength, this.npcFleets, this.difficultyMultiplier, forcedFaction, this.playerFleet.level);
+            const fleets = this.systemManager.spawnFleetsForSystem(this.currentSystemId, this.playerFleet.threatRating, this.npcFleets, this.difficultyMultiplier, forcedFaction, this.playerFleet.level);
             initialFleets.push(...fleets);
         }
         this.entities.push(...initialFleets);
@@ -405,7 +410,7 @@ export class Game {
             this.update(dt * this.timeScale);
             this.ui.updateAbilities(this.playerFleet);
             this.ui.updateMoney(this.playerFleet.money);
-            this.ui.updateStrength(this.playerFleet.strength, this.playerFleet.maxStrength);
+            this.ui.updateStrength(this.playerFleet.threatRating);
             this.ui.updateFleet(this.playerFleet);
             this.updateLevelDisplay();
         }
@@ -499,16 +504,6 @@ export class Game {
         this.updateLevelDisplay();
     }
 
-    private handleRegen(dt: number) {
-        const allFleets = [this.playerFleet, ...this.npcFleets];
-        for (const fleet of allFleets) {
-            if (fleet.strength >= fleet.maxStrength) continue;
-
-            const regenAmount = fleet.maxStrength * 0.005 * dt;
-            fleet.strength = Math.min(fleet.maxStrength, fleet.strength + regenAmount);
-        }
-    }
-
     private handleCratePickup() {
         const pickupRadius = 75;
         const player = this.playerFleet;
@@ -556,7 +551,7 @@ export class Game {
         for (const candidate of allFleets) {
             if (candidate === attacker) continue;
             if (candidate === this.playerFleet) continue;
-            if (candidate.strength <= 0) continue;
+            if (!candidate.ships.some(ship => ship.alive)) continue;
             if (!this.aiController.isHostile(attacker, candidate)) continue;
             const dist = Vector2.distance(attacker.position, candidate.position);
             if (dist < bestDist) {
@@ -599,15 +594,58 @@ export class Game {
         this.ui.updateMoney(this.playerFleet.money);
     }
 
+    private initializeWorldEvents() {
+        const definitions: [number, number, 'anomaly' | 'distress' | 'salvage', string, number][] = [
+            [1250, -650, 'anomaly', 'Unknown signal', 420],
+            [-900, 850, 'distress', 'Distress call', 300],
+            [1650, 1100, 'salvage', 'Derelict field', 540]
+        ];
+        this.worldEvents = definitions.map(data => new WorldEvent(...data));
+        this.entities.push(...this.worldEvents);
+    }
+
+    private updateWorldEvents() {
+        for (const event of this.worldEvents) {
+            if (!event.active) {
+                if (!event.resolutionReported) {
+                    event.resolutionReported = true;
+                    this.ui.addEvent(`${event.title} expired; the world moved on without you.`);
+                }
+                continue;
+            }
+            if (Vector2.distance(event.position, this.playerFleet.position) > 110) continue;
+            event.active = false;
+            event.resolutionReported = true;
+            if (event.kind === 'anomaly') {
+                this.awardPlayerMoney(350);
+                this.playerFleet.commandCapacity += 1;
+                this.ui.addEvent('Anomaly decoded: +350 credits, +1 command capacity.');
+            } else if (event.kind === 'salvage') {
+                this.awardPlayerMoney(180);
+                this.playerFleet.supplies = Math.min(this.playerFleet.maxSupplies, this.playerFleet.supplies + 12);
+                this.ui.addEvent('Derelict salvaged: +180 credits, +12 supplies.');
+            } else {
+                const pirates = this.systemManager.spawnFleetsForSystem(this.currentSystemId, Math.max(60, this.playerFleet.threatRating), this.npcFleets, this.difficultyMultiplier, 'pirate', this.playerFleet.level);
+                const military = this.systemManager.spawnFleetsForSystem(this.currentSystemId, Math.max(45, this.playerFleet.threatRating * 0.7), this.npcFleets, this.difficultyMultiplier, 'military', this.playerFleet.level);
+                for (const fleet of [...pirates, ...military]) {
+                    fleet.position = event.position.add(new Vector2((fleet.faction === 'pirate' ? 1 : -1) * 140, 0));
+                    this.entities.push(fleet); this.npcFleets.push(fleet);
+                }
+                this.ui.addEvent('Distress contact: pirates and a military responder arrived.');
+            }
+        }
+    }
+
     private update(dt: number) {
         if (this.isPaused) return;
 
-        dt = dt * this.timeScale;
+        // loop() already applies timeScale before calling update().
+        this.updateWorldEvents();
 
         // 1. Maintain Population & Bounds Check
         const toRemoveBounds: Fleet[] = [];
         for (const f of this.npcFleets) {
-            if (f.position.mag() > this.SYSTEM_RADIUS || f.strength <= 0) {
+            if (f.position.mag() > this.SYSTEM_RADIUS || !f.ships.some(ship => ship.alive)) {
                 toRemoveBounds.push(f);
             }
         }
@@ -623,7 +661,7 @@ export class Game {
 
         // Check if we should spawn more fleets
         if (this.systemManager.shouldSpawnMoreFleets(this.currentSystemId, this.npcFleets, this.difficultyMultiplier)) {
-            const newFleets = this.systemManager.spawnFleetsForSystem(this.currentSystemId, this.playerFleet.strength, this.npcFleets, this.difficultyMultiplier, undefined, this.playerFleet.level);
+            const newFleets = this.systemManager.spawnFleetsForSystem(this.currentSystemId, this.playerFleet.threatRating, this.npcFleets, this.difficultyMultiplier, undefined, this.playerFleet.level);
             // Add new fleets to entities and npcFleets
             for (const fleet of newFleets) {
                 this.entities.push(fleet);
@@ -648,18 +686,7 @@ export class Game {
             }
         }
 
-        // 2. Regen fleets towards max size
-        this.handleRegen(dt);
-
-        // 3. Update Fleet Scaling based on Player Strength
-        const playerStrength = this.playerFleet.maxStrength;
-        for (const entity of this.entities) {
-            if (entity instanceof Fleet) {
-                const ratio = entity.strength / playerStrength;
-                // Clamp sizeMultiplier to at least 0.4 to prevent negative radius crashes
-                entity.sizeMultiplier = Math.max(0.4, 1 + Math.log2(ratio) * 0.2);
-            }
-        }
+        // Shields and field repairs update on individual ships; fleet HP and visual size no longer regenerate or scale.
 
         // Boundary warning for player
         if (this.playerFleet.position.mag() > this.SYSTEM_RADIUS * 0.9) {
@@ -700,7 +727,7 @@ export class Game {
         let playerCollectedAny = false;
         if (playerFleet.state !== 'combat') { // Don't pick up during combat or when moving fast
             const pickupRadius = 75; // Radius for debris pickup
-            const pickupRate = dt * (playerFleet.strength / 10); // Units per second
+            const pickupRate = dt * Math.max(1, playerFleet.ships.filter(ship => ship.alive).length);
             let remainingPickup = pickupRate;
 
             // Sort debris by distance for closest first
@@ -750,7 +777,7 @@ export class Game {
         for (const npc of this.npcFleets) {
             if (npc.state !== 'combat') { // Only condition is not being in combat
                 const pickupRadius = 75; // Same radius as player
-                const pickupRate = dt * (npc.strength / 10); // Same collection rate as player
+                const pickupRate = dt * Math.max(1, npc.ships.filter(ship => ship.alive).length);
                 let remainingPickup = pickupRate;
 
                 // Sort debris by distance for closest first
@@ -925,7 +952,7 @@ export class Game {
 
                             // All civilians larger than player in detection radius become hostile to player
                             for (const fleet of allFleets) {
-                                if (fleet.faction === 'civilian' && fleet.sizeMultiplier > player.sizeMultiplier && Vector2.distance(fleet.position, player.position) <= detectionRadius) {
+                            if (fleet.faction === 'civilian' && fleet.threatRating > player.threatRating && Vector2.distance(fleet.position, player.position) <= detectionRadius) {
                                     fleet.hostileTo.add(player);
                                 }
                             }
@@ -955,8 +982,8 @@ export class Game {
 
     private resolveAttack(attack: Attack, toRemove: Fleet[]) {
         const winners: Fleet[] = [];
-        if (attack.attacker.strength > 0) winners.push(attack.attacker);
-        if (attack.target.strength > 0) winners.push(attack.target);
+        if (attack.attacker.ships.some(ship => ship.alive)) winners.push(attack.attacker);
+        if (attack.target.ships.some(ship => ship.alive)) winners.push(attack.target);
 
         // Reset winner states
         for (const winner of winners) {
@@ -966,15 +993,15 @@ export class Game {
 
         // Spawn debris for dead fleets
         const dead: Fleet[] = [];
-        if (attack.attacker.strength <= 0) dead.push(attack.attacker);
-        if (attack.target.strength <= 0) dead.push(attack.target);
+        if (!attack.attacker.ships.some(ship => ship.alive)) dead.push(attack.attacker);
+        if (!attack.target.ships.some(ship => ship.alive)) dead.push(attack.target);
         for (const d of dead) {
                 if (d.lootDropped) {
                     toRemove.push(d);
                     continue;
                 }
                 d.lootDropped = true;
-                const debrisValue = Math.floor(d.strength / 20); // Reduced by half
+                const debrisValue = Math.max(1, Math.floor(d.ships.reduce((sum, ship) => sum + ship.definition.tacticalValue, 0) / 20));
                 if (debrisValue > 0) {
                     this.spawnDebris(d.position.x, d.position.y, debrisValue);
                 }
@@ -1127,7 +1154,11 @@ export class Game {
                 const isHostile = this.aiController.isHostile(fleet, this.playerFleet);
                 const status = isHostile ? '<span style="color: red;">Hostile</span>' : '<span style="color: green;">Friendly</span>';
                 info += `${status}<br/>`;
-                info += `Size: ${formatNumber(fleet.strength)} / ${formatNumber(fleet.maxStrength)}<br/>`;
+                const activeShips = fleet.ships.filter(ship => ship.state === 'active').length;
+                const disabledShips = fleet.ships.filter(ship => ship.state === 'disabled').length;
+                info += `Threat: ${formatNumber(fleet.threatRating)}<br/>`;
+                info += `Ships: ${activeShips} active / ${disabledShips} disabled<br/>`;
+                info += `Readiness: ${Math.round(fleet.readiness * 100)}% · Command: ${fleet.commandUsed}/${fleet.commandCapacity}<br/>`;
                 fleet.ensureComposition();
                 const defenses = fleet.ships.filter(ship => ship.alive).reduce((total, ship) => ({
                     shield: total.shield + ship.shield, maxShield: total.maxShield + ship.maxShield,
@@ -1277,7 +1308,7 @@ export class Game {
 
                         // All civilians larger than player in detection radius become hostile to player
                         for (const f of allFleets) {
-                            if (f.faction === 'civilian' && f.sizeMultiplier > this.playerFleet.sizeMultiplier && Vector2.distance(f.position, this.playerFleet.position) <= detectionRadius) {
+                            if (f.faction === 'civilian' && f.threatRating > this.playerFleet.threatRating && Vector2.distance(f.position, this.playerFleet.position) <= detectionRadius) {
                                 f.hostileTo.add(this.playerFleet);
                             }
                         }
@@ -1337,6 +1368,7 @@ export class Game {
 
     private showTerraUpgradeDialog() {
         console.log('Showing Terra upgrade dialog');
+        RepairService.restoreAtStation(this.playerFleet);
 
         // Ensure game is paused while dialog is open
         if (!this.isPaused) {
@@ -1348,31 +1380,41 @@ export class Game {
                 const levelProgress = Math.max(0, this.playerFleet.totalMoneyEarned - this.playerFleet.levelThreshold);
                 const levelNeeded = Math.max(1, this.playerFleet.nextLevelThreshold - this.playerFleet.levelThreshold);
                 return {
-                    currentStrength: this.playerFleet.strength,
-                    currentMaxStrength: this.playerFleet.maxStrength,
+                    currentStrength: this.playerFleet.threatRating,
+                    currentMaxStrength: this.playerFleet.threatRating,
                     currentMoney: this.playerFleet.money,
+                    commandUsed: this.playerFleet.commandUsed,
+                    commandCapacity: this.playerFleet.commandCapacity,
+                    shipCost: 600 + this.playerFleet.ships.length * 150,
                     levelInfo: `Level ${this.playerFleet.level} (${formatNumber(levelProgress)}/${formatNumber(levelNeeded)} this level)`,
                     mercenaryCount: this.npcFleets.filter(f => f.faction === 'mercenary').length,
                     mercenaryMax: this.playerFleet.level + 5,
-                    mercenaryCost: this.playerFleet.maxStrength
+                    mercenaryCost: Math.max(100, this.playerFleet.threatRating * 10)
                 };
             },
             () => {
                 // Upgrade logic
-                const upgradeCost = this.playerFleet.maxStrength + 10;
-                if (this.playerFleet.money >= upgradeCost) {
-                    this.playerFleet.maxStrength += 1;
-                    this.playerFleet.strength += 1;
+                const upgradeCost = 600 + this.playerFleet.ships.length * 150;
+                const choices = [
+                    { hullId: 'specter', weaponIds: ['jammer'], moduleIds: ['electronicSuite'] },
+                    { hullId: 'siege', weaponIds: ['railgun'], moduleIds: [] },
+                    { hullId: 'lance', weaponIds: ['pulse', 'missile'], moduleIds: [] },
+                    { hullId: 'tender', weaponIds: ['pulse'], moduleIds: ['repairDrones'] }
+                ];
+                const loadout = choices[this.playerFleet.ships.length % choices.length];
+                const ship = new Ship(loadout);
+                if (this.playerFleet.money >= upgradeCost && this.playerFleet.ships.length < 8 && this.playerFleet.commandUsed + ship.definition.commandCost <= this.playerFleet.commandCapacity) {
+                    this.playerFleet.ships.push(ship);
                     this.playerFleet.money -= upgradeCost;
                     this.ui.updateMoney(this.playerFleet.money);
-                    this.ui.updateStrength(this.playerFleet.strength, this.playerFleet.maxStrength);
-                    console.log('Fleet upgraded by 1 to strength:', this.playerFleet.strength);
+                    this.ui.updateStrength(this.playerFleet.threatRating);
+                    console.log('Ship added to fleet:', ship.definition.name);
 
                     // Trigger autosave after upgrade
-                    SaveSystem.saveAutosaveFleetSize(this.playerFleet.maxStrength);
+                    SaveSystem.saveAutosaveFleetSize(this.playerFleet.commandCapacity);
                     SaveSystem.saveAutosaveFleetProgress(this.captureProgress());
                     SaveSystem.saveAutosaveFleetAbilityCharges(this.captureAbilityCharges());
-                    console.log('Autosave created with fleet strength:', this.playerFleet.strength);
+                    console.log('Autosave created with fleet threat:', this.playerFleet.threatRating);
                     return true;
                 }
                 return false;
@@ -1399,12 +1441,12 @@ export class Game {
             () => {
                 const currentCount = this.npcFleets.filter(f => f.faction === 'mercenary').length;
                 const maxCount = this.playerFleet.level + 5;
-                const cost = this.playerFleet.maxStrength;
+                const cost = Math.max(100, this.playerFleet.threatRating * 10);
                 if (currentCount >= maxCount || this.playerFleet.money < cost) return false;
 
                 const fleets = this.systemManager.spawnFleetsForSystem(
                     this.currentSystemId,
-                    this.playerFleet.strength,
+                    this.playerFleet.threatRating,
                     this.npcFleets,
                     this.difficultyMultiplier,
                     'mercenary',
@@ -1448,13 +1490,14 @@ export class Game {
         this.modal.showLiberationRewardDialog(
             () => {
                 // Collect reward
-                this.playerFleet.maxStrength += 100;
-                this.playerFleet.strength += 100;
+                this.playerFleet.commandCapacity += 3;
+                this.playerFleet.maxSupplies += 10;
+                this.playerFleet.supplies = this.playerFleet.maxSupplies;
                 this.awardPlayerMoney(5000);
                 body.rewardCollected = true;
                 body.pulsing = false; // Stop pulsing after collection
-                this.ui.updateStrength(this.playerFleet.strength, this.playerFleet.maxStrength);
-                console.log('Liberation reward collected: +100 strength, +$5000');
+                this.ui.updateStrength(this.playerFleet.threatRating);
+                console.log('Liberation reward collected: command and supply capacity, +$5000');
                 this.modal.closeModal();
                 if (this.isPaused) this.togglePause();
             },
@@ -1542,7 +1585,7 @@ export class Game {
                 }
 
                 // Interception Radius around the CHASER
-                const r = 8 * fleet.sizeMultiplier;
+                const r = 8;
                 const combatTriggerDist = 4 * r;
                 const screenRadius = combatTriggerDist * this.camera.zoom;
 
@@ -1720,8 +1763,11 @@ export class Game {
         console.log(`Warping from System ${this.currentSystemId} to System ${targetSystemId}...`);
 
         // Store player fleet state before transition
-        const playerStrength = this.playerFleet.strength;
-        const playerMaxStrength = this.playerFleet.maxStrength;
+        const playerShips = this.playerFleet.ships.map(ship => ship.snapshot());
+        const commandCapacity = this.playerFleet.commandCapacity;
+        const supplies = this.playerFleet.supplies;
+        const maxSupplies = this.playerFleet.maxSupplies;
+        const doctrine = { ...this.playerFleet.doctrine };
         const playerMoney = this.playerFleet.money;
         const playerProgress = this.captureProgress();
         const playerCharges = this.captureAbilityCharges();
@@ -1740,11 +1786,15 @@ export class Game {
         }
 
         // Initialize the new system
-        this.initWorld(playerMaxStrength, targetSystemId, spawnNearGate, playerProgress, playerCharges);
+        this.initWorld(this.playerFleet.threatRating, targetSystemId, spawnNearGate, playerProgress, playerCharges);
 
         // Restore player fleet state
-        this.playerFleet.maxStrength = playerMaxStrength;
-        this.playerFleet.strength = playerStrength;
+        this.playerFleet.ships = playerShips.map(snapshot => Ship.fromSnapshot(snapshot));
+        this.playerFleet.selectedShipId = this.playerFleet.ships.find(ship => ship.role === 'flagship')?.id || this.playerFleet.ships[0]?.id || null;
+        this.playerFleet.commandCapacity = commandCapacity;
+        this.playerFleet.supplies = supplies;
+        this.playerFleet.maxSupplies = maxSupplies;
+        this.playerFleet.doctrine = doctrine;
         this.playerFleet.money = playerMoney;
 
         // Update UI
