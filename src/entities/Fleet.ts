@@ -536,7 +536,7 @@ export class Fleet extends Entity {
         const level = this.isPlayer ? 0 : ratio < 0.5 ? 1 : ratio < 0.9 ? 2 : ratio < 1.3 ? 3 : 4;
         const color = this.isPlayer ? '#55d8ff' : level === 1 ? '#67dc88' : level === 2 ? '#ffe06b' : level === 3 ? '#ffad5c' : '#ff5f63';
         const progress = this.isPlayer ? 1 : Math.min(1, ratio / 1.5);
-        const radius = 19 * Math.max(0.85, Math.min(1.15, camera.zoom));
+        const radius = 10 * Math.max(0.85, Math.min(1.15, camera.zoom));
 
         ctx.save();
         ctx.lineCap = 'round';
@@ -549,12 +549,6 @@ export class Fleet extends Entity {
         ctx.beginPath(); ctx.arc(screen.x, screen.y, radius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress); ctx.stroke();
         ctx.shadowBlur = 0;
 
-        if (!this.isPlayer && camera.zoom > 0.45) {
-            ctx.fillStyle = color;
-            ctx.font = '700 9px ui-monospace, monospace';
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText(`T${level}`, screen.x + radius - 1, screen.y - radius + 2);
-        }
         ctx.restore();
     }
 

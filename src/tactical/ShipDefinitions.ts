@@ -6,6 +6,7 @@ export type ShipState = 'active' | 'disabled' | 'destroyed';
 
 export const COMBAT_BALANCE = {
     damageScale: 0.55,
+    hullRewardMultiplier: 3,
     hullThreatWeight: 0.24,
     offenseThreatWeight: 0.35,
     disabledThreatFactor: 0
