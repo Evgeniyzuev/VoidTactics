@@ -21,6 +21,8 @@ import { Ship } from '../tactical/Ship';
 import { RepairService } from '../tactical/RepairService';
 import { WorldEvent } from '../entities/WorldEvent';
 import { SHOP_SHIPS } from '../tactical/FleetGenerator';
+import { CombatEffects } from '../renderer/CombatEffects';
+import type { DamageType } from '../tactical/ShipDefinitions';
 
 
 export class Game {
@@ -42,6 +44,7 @@ export class Game {
     private debris: Debris[] = [];
     private crates: SupplyCrate[] = [];
     private worldEvents: WorldEvent[] = [];
+    private combatEffects = new CombatEffects();
 
     // Getters for AIController
     public getEntities(): Entity[] { return this.entities; }
@@ -52,6 +55,10 @@ export class Game {
     public getDebris(): Debris[] { return this.debris; }
     public getCrates(): SupplyCrate[] { return this.crates; }
     public getSystemRadius(): number { return this.SYSTEM_RADIUS; }
+
+    public addCombatShot(attacker: Fleet, target: Fleet, type: DamageType, hit: boolean) {
+        this.combatEffects.addShot(attacker.position, target.position, type, hit);
+    }
 
     public spawnDebris(x: number, y: number, value: number) {
         // Check for nearby debris to combine
@@ -277,6 +284,7 @@ export class Game {
         this.debris = [];
         this.crates = [];
         this.worldEvents = [];
+        this.combatEffects.clear();
         this.isGameOver = false;
         this.difficultyMultiplier = 1;
 
@@ -723,6 +731,7 @@ export class Game {
 
         this.aiController.processAI();
         this.processCombat(dt);
+        this.combatEffects.update(dt);
 
         // Debris pickup - player and NPCs
 
@@ -1576,6 +1585,7 @@ export class Game {
 
         const ctx = this.renderer.getContext();
         for (const e of this.entities) e.draw(ctx, this.camera);
+        this.combatEffects.draw(ctx, this.camera);
 
         // Threat rings are deliberately separate from the ship silhouette:
         // hull shape communicates role, ring color communicates danger.

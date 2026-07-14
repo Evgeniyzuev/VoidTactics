@@ -1,6 +1,7 @@
 import { Fleet, type FleetSkillId } from '../entities/Fleet';
 import { Ship, type ShipSnapshot } from '../tactical/Ship';
 import type { FleetDoctrine } from '../tactical/ShipDefinitions';
+import { Vector2 } from '../utils/Vector2';
 
 export interface SavedFleetState {
     x: number;
@@ -41,6 +42,8 @@ export interface GameSaveData {
     doctrine: FleetDoctrine;
     skillPoints: number;
     skills: Record<FleetSkillId, number>;
+    progress?: PlayerProgressSave;
+    abilityCharges?: AbilityChargesSave;
     lastSaveTime: number;
 }
 
@@ -62,6 +65,21 @@ export class SaveSystem {
             doctrine: player.doctrine,
             skillPoints: player.skillPoints,
             skills: player.skills,
+            progress: {
+                totalMoneyEarned: player.totalMoneyEarned,
+                level: player.level,
+                levelThreshold: player.levelThreshold,
+                nextLevelThreshold: player.nextLevelThreshold
+            },
+            abilityCharges: {
+                afterburner: player.abilities.afterburner.charges,
+                cloak: player.abilities.cloak.charges,
+                bubble: player.abilities.bubble.charges,
+                mine: player.abilities.mine.charges,
+                medkit: player.abilities.medkit.charges,
+                fire: player.abilities.fire.charges,
+                shield: player.abilities.shield.charges
+            },
             lastSaveTime: Date.now()
         };
         localStorage.setItem('vt_save_v3', JSON.stringify(data));
@@ -104,6 +122,26 @@ export class SaveSystem {
         fleet.doctrine = data.doctrine;
         fleet.skillPoints = data.skillPoints || 0;
         fleet.skills = { ...fleet.skills, ...(data.skills || {}) };
+        if (data.player) {
+            fleet.position = new Vector2(data.player.x, data.player.y);
+            fleet.velocity = new Vector2(data.player.vx, data.player.vy);
+            fleet.color = data.player.color;
+        }
+        if (data.progress) {
+            fleet.totalMoneyEarned = data.progress.totalMoneyEarned;
+            fleet.level = data.progress.level;
+            fleet.levelThreshold = data.progress.levelThreshold;
+            fleet.nextLevelThreshold = data.progress.nextLevelThreshold;
+        }
+        if (data.abilityCharges) {
+            fleet.abilities.afterburner.charges = data.abilityCharges.afterburner;
+            fleet.abilities.cloak.charges = data.abilityCharges.cloak;
+            fleet.abilities.bubble.charges = data.abilityCharges.bubble;
+            fleet.abilities.mine.charges = data.abilityCharges.mine;
+            fleet.abilities.medkit.charges = data.abilityCharges.medkit;
+            fleet.abilities.fire.charges = data.abilityCharges.fire;
+            fleet.abilities.shield.charges = data.abilityCharges.shield;
+        }
     }
 
     static clear() {

@@ -102,7 +102,9 @@ export class Attack {
                 ship.flux += fluxPerSecond * dt;
                 if (usesAmmo) ship.ammunition = Math.max(0, ship.ammunition - dt / Math.max(0.1, weapon.cooldown) * 0.05);
                 totalDamage += damage;
-                totalHullDamage += this.target.receiveTacticalDamage(damage, weapon.damageType, targetShip.id);
+                const hullDamage = this.target.receiveTacticalDamage(damage, weapon.damageType, targetShip.id);
+                totalHullDamage += hullDamage;
+                this.game.addCombatShot(this.attacker, this.target, weapon.damageType, hullDamage > 0);
             }
         }
         this.target.accumulatedDamage += totalHullDamage;
