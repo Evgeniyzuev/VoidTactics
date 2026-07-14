@@ -1,4 +1,4 @@
-import { HULLS, MODULES, WEAPONS, type DamageType, type FleetOrder, type ShipLoadout, type ShipState } from './ShipDefinitions';
+import { COMBAT_BALANCE, HULLS, MODULES, WEAPONS, type DamageType, type FleetOrder, type ShipLoadout, type ShipState } from './ShipDefinitions';
 
 export interface ShipSnapshot {
     id: string;
@@ -67,10 +67,16 @@ export class Ship {
     get maxEnergy() { return (this.definition.energy + this.modules.reduce((sum, module) => sum + (module.energyModifier || 0), 0)) * this.statScale; }
     get maxFlux() { return this.maxEnergy * 1.5; }
     get integrity() { return this.hull / this.maxHull; }
+    get effectiveHealth() { return Math.max(0, this.hull) + Math.max(0, this.armor) + Math.max(0, this.shield); }
+    get maxEffectiveHealth() { return this.maxHull + this.maxArmor + this.maxShield; }
+    get weaponDps() { return this.weapons.reduce((sum, weapon) => sum + weapon.damage / Math.max(0.1, weapon.cooldown), 0); }
+    get utilityRating() { return this.role === 'support' || this.role === 'scout' ? 6 : this.role === 'defender' || this.role === 'flagship' ? 5 : 2; }
+    get maxCombatRating() {
+        return this.maxHull * COMBAT_BALANCE.hullThreatWeight + this.weaponDps * COMBAT_BALANCE.offenseThreatWeight + this.utilityRating;
+    }
     get combatRating() {
-        if (this.state !== 'active') return 0;
-        const defenses = (this.shield / Math.max(1, this.maxShield) + this.armor / Math.max(1, this.maxArmor) + this.integrity) / 3;
-        return this.definition.tacticalValue * (0.35 + Math.max(0, defenses) * 0.65);
+        if (this.state !== 'active') return this.maxCombatRating * COMBAT_BALANCE.disabledThreatFactor;
+        return Math.max(0, this.hull) * COMBAT_BALANCE.hullThreatWeight + this.weaponDps * COMBAT_BALANCE.offenseThreatWeight + this.utilityRating;
     }
 
     update(dt: number) {

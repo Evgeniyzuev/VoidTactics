@@ -4,6 +4,7 @@ import { Game } from './Game';
 import { BubbleZone } from '../entities/BubbleZone';
 import { CelestialBody } from '../entities/CelestialBody';
 import { TargetResolver } from '../tactical/TargetResolver';
+import { COMBAT_BALANCE } from '../tactical/ShipDefinitions';
 
 export class Attack {
     public attacker: Fleet;
@@ -96,7 +97,7 @@ export class Attack {
                 if (usesAmmo && ship.ammunition <= 0) continue;
                 const fluxPerSecond = weapon.energyCost / Math.max(0.1, weapon.cooldown);
                 if (ship.flux + fluxPerSecond * dt > ship.maxFlux) continue;
-                let damage = weapon.damage / Math.max(0.1, weapon.cooldown) * 0.14 * dt * weaponsPenalty * this.attacker.readiness;
+                let damage = weapon.damage / Math.max(0.1, weapon.cooldown) * COMBAT_BALANCE.damageScale * dt * weaponsPenalty * this.attacker.readiness;
                 if (this.attacker.abilities.fire.active) damage *= 2;
                 ship.flux += fluxPerSecond * dt;
                 if (usesAmmo) ship.ammunition = Math.max(0, ship.ammunition - dt / Math.max(0.1, weapon.cooldown) * 0.05);

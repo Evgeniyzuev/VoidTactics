@@ -1,6 +1,6 @@
 import { formatNumber } from '../utils/NumberFormatter';
 import type { Fleet } from '../entities/Fleet';
-import type { FleetOrderType, TargetPriority } from '../tactical/ShipDefinitions';
+import { COMBAT_BALANCE, type FleetOrderType, type TargetPriority } from '../tactical/ShipDefinitions';
 
 export class UIManager {
     private container: HTMLElement;
@@ -233,7 +233,10 @@ export class UIManager {
         const active = fleet.ships.filter(ship => ship.state === 'active').length;
         const disabled = fleet.ships.filter(ship => ship.state === 'disabled').length;
         const summary = this.fleetPanel.querySelector('.fleet-summary');
-        if (summary) summary.textContent = `T ${Math.round(fleet.threatRating)} · ${active}A/${disabled}D · C ${fleet.commandUsed}/${fleet.commandCapacity} · R ${Math.round(fleet.readiness * 100)}%`;
+        const defenses = fleet.ships.reduce((sum, ship) => sum + ship.effectiveHealth, 0);
+        const maxDefenses = fleet.ships.reduce((sum, ship) => sum + ship.maxEffectiveHealth, 0);
+        const dps = fleet.ships.filter(ship => ship.alive && ship.order.type !== 'repair').reduce((sum, ship) => sum + ship.weaponDps * fleet.readiness * COMBAT_BALANCE.damageScale, 0);
+        if (summary) summary.textContent = `T ${Math.round(fleet.threatRating)} · DEF ${Math.ceil(defenses)}/${Math.ceil(maxDefenses)} · DPS ${dps.toFixed(0)} · ${active}A/${disabled}D · C ${fleet.commandUsed}/${fleet.commandCapacity} · R ${Math.round(fleet.readiness * 100)}%`;
         this.fleetPanel.querySelectorAll<HTMLButtonElement>('.doctrine-bar button').forEach(button => button.classList.toggle('active', button.dataset.priority === fleet.doctrine.targetPriority));
         roster.innerHTML = '';
         for (const ship of fleet.ships) {

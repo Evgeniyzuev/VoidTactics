@@ -4,6 +4,13 @@ export type FleetOrderType = 'attack' | 'escort' | 'hold' | 'retreat' | 'protect
 export type TargetPriority = 'nearest' | 'artillery' | 'support' | 'scout' | 'damaged';
 export type ShipState = 'active' | 'disabled' | 'destroyed';
 
+export const COMBAT_BALANCE = {
+    damageScale: 0.55,
+    hullThreatWeight: 0.24,
+    offenseThreatWeight: 0.35,
+    disabledThreatFactor: 0
+} as const;
+
 export interface FleetDoctrine {
     targetPriority: TargetPriority;
     preferredRange: 'close' | 'balanced' | 'long';
