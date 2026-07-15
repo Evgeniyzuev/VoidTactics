@@ -16,34 +16,52 @@ export interface ShopShipDefinition {
     name: string;
     role: ShipRole;
     loadout: ShipLoadout;
+    basePrice: number;
     price: number;
     requiredLevel: number;
     description: string;
     size: 'small' | 'medium' | 'large';
-    statScale: number;
     tier: number;
     sizeRequired: number;
     techRequired: number;
     requiredSkill?: { skill: FleetSkillId; level: number };
 }
 
+export function getShopSizeMultiplier(sizeRequired: number): number {
+    return sizeRequired + 1;
+}
+
+export function getShopTechMultiplier(techRequired: number): number {
+    return techRequired + 1;
+}
+
+export function getShopMultiplier(offer: Pick<ShopShipDefinition, 'sizeRequired' | 'techRequired'>): number {
+    return getShopSizeMultiplier(offer.sizeRequired) * getShopTechMultiplier(offer.techRequired);
+}
+
+type ShopShipSeed = Omit<ShopShipDefinition, 'price'>;
+
+function createShopShip(seed: ShopShipSeed): ShopShipDefinition {
+    return { ...seed, price: seed.basePrice * getShopMultiplier(seed) };
+}
+
 export const SHOP_SHIPS: ShopShipDefinition[] = [
-    { id: 'flagship', name: 'Command Cruiser', role: 'flagship', loadout: LOADOUTS.flagship, price: 1200, requiredLevel: 1, size: 'large', statScale: 1.6, tier: 0, sizeRequired: 2, techRequired: 0, description: 'Command link and balanced weapons.' },
-    { id: 'defender', name: 'Bulwark', role: 'defender', loadout: LOADOUTS.defender, price: 850, requiredLevel: 1, size: 'large', statScale: 1, tier: 0, sizeRequired: 2, techRequired: 0, description: 'Intercepts attacks and anchors the formation.' },
-    { id: 'striker', name: 'Lance', role: 'striker', loadout: LOADOUTS.striker, price: 900, requiredLevel: 1, size: 'medium', statScale: 2.2, tier: 0, sizeRequired: 1, techRequired: 0, description: 'Short and medium range damage dealer.' },
-    { id: 'support', name: 'Tender', role: 'support', loadout: LOADOUTS.support, price: 1000, requiredLevel: 1, size: 'large', statScale: 2.2, tier: 0, sizeRequired: 2, techRequired: 0, description: 'Repairs hulls and stabilizes disabled ships.' },
-    { id: 'scout', name: 'Specter', role: 'scout', loadout: LOADOUTS.scout, price: 1100, requiredLevel: 2, size: 'small', statScale: 4.2, tier: 0, sizeRequired: 0, techRequired: 0, description: 'Detection and electronic warfare.' },
-    { id: 'artillery', name: 'Siege', role: 'artillery', loadout: LOADOUTS.artillery, price: 1400, requiredLevel: 3, size: 'large', statScale: 4.5, tier: 0, sizeRequired: 2, techRequired: 0, description: 'Long-range firepower; needs reconnaissance.' },
-    { id: 'command-mk3', name: 'Command Cruiser Mk III', role: 'flagship', loadout: LOADOUTS.flagship, price: 2160, requiredLevel: 3, size: 'large', statScale: 3.2, tier: 1, sizeRequired: 2, techRequired: 1, description: 'Tier 1: approximately twice the command systems.' },
-    { id: 'bulwark-mk4', name: 'Bulwark Mk IV', role: 'defender', loadout: LOADOUTS.defender, price: 1530, requiredLevel: 5, size: 'large', statScale: 2, tier: 1, sizeRequired: 2, techRequired: 1, description: 'Tier 1: fortress-grade armor and interception.' },
-    { id: 'lance-mk4', name: 'Lance Mk IV', role: 'striker', loadout: LOADOUTS.striker, price: 1620, requiredLevel: 4, size: 'medium', statScale: 4.4, tier: 1, sizeRequired: 1, techRequired: 1, description: 'Tier 1: high-output assault ship.' },
-    { id: 'tender-mk3', name: 'Tender Mk III', role: 'support', loadout: LOADOUTS.support, price: 1800, requiredLevel: 4, size: 'large', statScale: 4.4, tier: 1, sizeRequired: 2, techRequired: 1, description: 'Tier 1: mobile repair and logistics platform.' },
-    { id: 'specter-mk4', name: 'Specter Mk IV', role: 'scout', loadout: LOADOUTS.scout, price: 1980, requiredLevel: 4, size: 'small', statScale: 8.4, tier: 1, sizeRequired: 0, techRequired: 1, description: 'Tier 1: deep reconnaissance and electronic warfare.' },
-    { id: 'siege-mk7', name: 'Longbow Mk VII', role: 'artillery', loadout: LOADOUTS.artillery, price: 2520, requiredLevel: 7, size: 'large', statScale: 9, tier: 1, sizeRequired: 2, techRequired: 1, description: 'Tier 1: strategic artillery with extreme range.' },
-    { id: 'command-apex', name: 'Aegis Apex', role: 'flagship', loadout: LOADOUTS.flagship, price: 3888, requiredLevel: 10, size: 'large', statScale: 6.4, tier: 2, sizeRequired: 2, techRequired: 2, description: 'Tier 2: four times the baseline command systems.' },
-    { id: 'siege-apex', name: 'Longbow Apex', role: 'artillery', loadout: LOADOUTS.artillery, price: 4536, requiredLevel: 12, size: 'large', statScale: 18, tier: 2, sizeRequired: 2, techRequired: 2, description: 'Tier 2: endgame artillery platform.' },
-    { id: 'command-leviathan', name: 'Aegis Leviathan', role: 'flagship', loadout: LOADOUTS.flagship, price: 6998, requiredLevel: 20, size: 'large', statScale: 12.8, tier: 3, sizeRequired: 2, techRequired: 3, description: 'Tier 3: eight times the baseline command systems.' },
-    { id: 'siege-leviathan', name: 'Longbow Leviathan', role: 'artillery', loadout: LOADOUTS.artillery, price: 8165, requiredLevel: 24, size: 'large', statScale: 36, tier: 3, sizeRequired: 2, techRequired: 3, description: 'Tier 3: superheavy siege platform.' }
+    createShopShip({ id: 'flagship', name: 'Command Cruiser', role: 'flagship', loadout: LOADOUTS.flagship, basePrice: 1200, requiredLevel: 1, size: 'large', tier: 0, sizeRequired: 2, techRequired: 0, description: 'Command link and balanced weapons.' }),
+    createShopShip({ id: 'defender', name: 'Bulwark', role: 'defender', loadout: LOADOUTS.defender, basePrice: 850, requiredLevel: 1, size: 'large', tier: 0, sizeRequired: 2, techRequired: 0, description: 'Intercepts attacks and anchors the formation.' }),
+    createShopShip({ id: 'striker', name: 'Lance', role: 'striker', loadout: LOADOUTS.striker, basePrice: 900, requiredLevel: 1, size: 'medium', tier: 0, sizeRequired: 1, techRequired: 0, description: 'Short and medium range damage dealer.' }),
+    createShopShip({ id: 'support', name: 'Tender', role: 'support', loadout: LOADOUTS.support, basePrice: 1000, requiredLevel: 1, size: 'large', tier: 0, sizeRequired: 2, techRequired: 0, description: 'Repairs hulls and stabilizes disabled ships.' }),
+    createShopShip({ id: 'scout', name: 'Specter', role: 'scout', loadout: LOADOUTS.scout, basePrice: 1100, requiredLevel: 2, size: 'small', tier: 0, sizeRequired: 0, techRequired: 0, description: 'Detection and electronic warfare.' }),
+    createShopShip({ id: 'artillery', name: 'Siege', role: 'artillery', loadout: LOADOUTS.artillery, basePrice: 1400, requiredLevel: 3, size: 'large', tier: 0, sizeRequired: 2, techRequired: 0, description: 'Long-range firepower; needs reconnaissance.' }),
+    createShopShip({ id: 'command-mk3', name: 'Command Cruiser Mk III', role: 'flagship', loadout: LOADOUTS.flagship, basePrice: 1200, requiredLevel: 3, size: 'large', tier: 1, sizeRequired: 2, techRequired: 1, description: 'Tier 1: Tech 2 command systems.' }),
+    createShopShip({ id: 'bulwark-mk4', name: 'Bulwark Mk IV', role: 'defender', loadout: LOADOUTS.defender, basePrice: 850, requiredLevel: 5, size: 'large', tier: 1, sizeRequired: 2, techRequired: 1, description: 'Tier 1: fortress-grade armor and interception.' }),
+    createShopShip({ id: 'lance-mk4', name: 'Lance Mk IV', role: 'striker', loadout: LOADOUTS.striker, basePrice: 900, requiredLevel: 4, size: 'medium', tier: 1, sizeRequired: 1, techRequired: 1, description: 'Tier 1: high-output assault ship.' }),
+    createShopShip({ id: 'tender-mk3', name: 'Tender Mk III', role: 'support', loadout: LOADOUTS.support, basePrice: 1000, requiredLevel: 4, size: 'large', tier: 1, sizeRequired: 2, techRequired: 1, description: 'Tier 1: mobile repair and logistics platform.' }),
+    createShopShip({ id: 'specter-mk4', name: 'Specter Mk IV', role: 'scout', loadout: LOADOUTS.scout, basePrice: 1100, requiredLevel: 4, size: 'small', tier: 1, sizeRequired: 0, techRequired: 1, description: 'Tier 1: deep reconnaissance and electronic warfare.' }),
+    createShopShip({ id: 'siege-mk7', name: 'Longbow Mk VII', role: 'artillery', loadout: LOADOUTS.artillery, basePrice: 1400, requiredLevel: 7, size: 'large', tier: 1, sizeRequired: 2, techRequired: 1, description: 'Tier 1: strategic artillery with extreme range.' }),
+    createShopShip({ id: 'command-apex', name: 'Aegis Apex', role: 'flagship', loadout: LOADOUTS.flagship, basePrice: 1200, requiredLevel: 10, size: 'large', tier: 2, sizeRequired: 2, techRequired: 2, description: 'Tier 2: Tech 3 command systems.' }),
+    createShopShip({ id: 'siege-apex', name: 'Longbow Apex', role: 'artillery', loadout: LOADOUTS.artillery, basePrice: 1400, requiredLevel: 12, size: 'large', tier: 2, sizeRequired: 2, techRequired: 2, description: 'Tier 2: endgame artillery platform.' }),
+    createShopShip({ id: 'command-leviathan', name: 'Aegis Leviathan', role: 'flagship', loadout: LOADOUTS.flagship, basePrice: 1200, requiredLevel: 20, size: 'large', tier: 3, sizeRequired: 2, techRequired: 3, description: 'Tier 3: Tech 4 command systems.' }),
+    createShopShip({ id: 'siege-leviathan', name: 'Longbow Leviathan', role: 'artillery', loadout: LOADOUTS.artillery, basePrice: 1400, requiredLevel: 24, size: 'large', tier: 3, sizeRequired: 2, techRequired: 3, description: 'Tier 3: superheavy siege platform.' })
 ];
 
 export interface ShopShipStats {
@@ -56,7 +74,7 @@ export interface ShopShipStats {
 
 export function getShopShipStats(offer: ShopShipDefinition): ShopShipStats {
     const hull = HULLS[offer.loadout.hullId];
-    const scale = offer.statScale;
+    const scale = getShopMultiplier(offer);
     const dps = offer.loadout.weaponIds.reduce((sum, id) => {
         const weapon = WEAPONS[id];
         return sum + (weapon ? weapon.damage / Math.max(0.1, weapon.cooldown) : 0);

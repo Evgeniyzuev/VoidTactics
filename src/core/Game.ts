@@ -20,9 +20,9 @@ import { SupplyCrate } from '../entities/SupplyCrate';
 import { Ship } from '../tactical/Ship';
 import { RepairService } from '../tactical/RepairService';
 import { WorldEvent } from '../entities/WorldEvent';
-import { SHOP_SHIPS } from '../tactical/FleetGenerator';
+import { getShopMultiplier, SHOP_SHIPS } from '../tactical/FleetGenerator';
 import { CombatEffects } from '../renderer/CombatEffects';
-import type { DamageType } from '../tactical/ShipDefinitions';
+import { COMBAT_BALANCE, type DamageType } from '../tactical/ShipDefinitions';
 
 
 export class Game {
@@ -1177,6 +1177,10 @@ export class Game {
                     armor: total.armor + ship.armor, maxArmor: total.maxArmor + ship.maxArmor,
                     hull: total.hull + ship.hull, maxHull: total.maxHull + ship.maxHull
                 }), { shield: 0, maxShield: 0, armor: 0, maxArmor: 0, hull: 0, maxHull: 0 });
+                const damage = fleet.ships
+                    .filter(ship => ship.alive && ship.order.type !== 'repair')
+                    .reduce((sum, ship) => sum + ship.weaponDps, 0) * fleet.readiness * COMBAT_BALANCE.damageScale;
+                info += `<span style="color:#ffb86b">Damage: ${formatNumber(Math.round(damage))} DPS</span><br/>`;
                 info += `<span style="color:#66ccff">Shield: ${formatNumber(Math.ceil(defenses.shield))} / ${formatNumber(Math.ceil(defenses.maxShield))}</span><br/>`;
                 info += `<span style="color:#d6b26e">Armor: ${formatNumber(Math.ceil(defenses.armor))} / ${formatNumber(Math.ceil(defenses.maxArmor))}</span><br/>`;
                 info += `<span style="color:#8de6bd">Hull: ${formatNumber(Math.ceil(defenses.hull))} / ${formatNumber(Math.ceil(defenses.maxHull))}</span><br/>`;
@@ -1416,7 +1420,7 @@ export class Game {
                 if (this.playerFleet.getSkillLevel('size') < offer.sizeRequired || this.playerFleet.getSkillLevel('tech') < offer.techRequired) return false;
                 if (offer.requiredSkill && this.playerFleet.getSkillLevel(offer.requiredSkill.skill) < offer.requiredSkill.level) return false;
                 const ship = new Ship({ ...offer.loadout, weaponIds: [...offer.loadout.weaponIds], moduleIds: [...offer.loadout.moduleIds] });
-                ship.setStatScale(offer.statScale);
+                ship.setStatScale(getShopMultiplier(offer));
                 ship.variantName = offer.name;
                 ship.purchasePrice = offer.price;
                 if (this.playerFleet.money < offer.price || this.playerFleet.commandUsed + ship.commandCost > this.playerFleet.commandCapacity) return false;
