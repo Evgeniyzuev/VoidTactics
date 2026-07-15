@@ -830,7 +830,7 @@ export class ModalManager {
             content.appendChild(shipTitle);
             const grid = document.createElement('div');
             grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px';
-            for (const ship of SHOP_SHIPS) {
+            for (const ship of [...SHOP_SHIPS].sort((a, b) => a.price - b.price)) {
                 const card = document.createElement('div');
                 card.style.cssText = 'background:rgba(255,255,255,.05);border:1px solid rgba(98,216,255,.18);border-radius:6px;padding:9px';
                 const hull = HULLS[ship.loadout.hullId];
@@ -839,7 +839,7 @@ export class ModalManager {
                 const can = state.money >= ship.price && state.commandUsed + commandCost <= state.commandCapacity && state.level >= ship.requiredLevel && skillReady;
                 const requirement = ship.requiredSkill ? ` · ${ship.requiredSkill.skill} ${ship.requiredSkill.level}+` : '';
                 const reason = state.level < ship.requiredLevel ? `Нужен Lv ${ship.requiredLevel}` : !skillReady ? `Нужен ${ship.requiredSkill?.skill} ${ship.requiredSkill?.level}` : state.commandUsed + commandCost > state.commandCapacity ? 'Не хватает command' : state.money < ship.price ? 'Не хватает кредитов' : 'Недоступно';
-                card.innerHTML = `<b style="color:#f8fafc">${ship.name}</b><small style="display:block;color:#94a3b8">${ship.size} · ${ship.role} · ${ship.description}</small><span style="display:block;color:#ffd166;margin:5px 0">$${formatNumber(ship.price)} · C${commandCost} · ×${ship.statScale} power${requirement}</span>`;
+                card.innerHTML = `<b style="color:#f8fafc">${ship.name}</b><small style="display:block;color:#94a3b8">T${ship.tier} · ${ship.size} · ${ship.role} · ${ship.description}</small><span style="display:block;color:#ffd166;margin:5px 0">$${formatNumber(ship.price)} · C${commandCost} · ×${ship.statScale} systems${requirement}</span>`;
                 const buy = this.makeButton(can ? 'Купить' : reason, can ? '#167c80' : '#334155', () => { if (onBuy(ship.id)) update(); });
                 buy.disabled = !can; buy.style.opacity = can ? '1' : '0.55'; buy.style.width = '100%'; card.appendChild(buy); grid.appendChild(card);
             }

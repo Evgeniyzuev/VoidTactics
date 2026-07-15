@@ -1396,7 +1396,7 @@ export class Game {
                 level: this.playerFleet.level,
                 skillPoints: this.playerFleet.skillPoints,
                 skills: { ...this.playerFleet.skills },
-                ships: this.playerFleet.ships.map(ship => ({ name: ship.definition.name, role: ship.role, commandCost: ship.commandCost }))
+                ships: this.playerFleet.ships.map(ship => ({ name: ship.displayName, role: ship.role, commandCost: ship.commandCost }))
             }),
             (id) => {
                 const offer = SHOP_SHIPS.find(ship => ship.id === id);
@@ -1404,6 +1404,7 @@ export class Game {
                 if (offer.requiredSkill && this.playerFleet.getSkillLevel(offer.requiredSkill.skill) < offer.requiredSkill.level) return false;
                 const ship = new Ship({ ...offer.loadout, weaponIds: [...offer.loadout.weaponIds], moduleIds: [...offer.loadout.moduleIds] });
                 ship.setStatScale(offer.statScale);
+                ship.variantName = offer.name;
                 if (this.playerFleet.money < offer.price || this.playerFleet.commandUsed + ship.commandCost > this.playerFleet.commandCapacity) return false;
                 this.playerFleet.money -= offer.price;
                 this.playerFleet.ships.push(ship);

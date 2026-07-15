@@ -256,7 +256,7 @@ export class UIManager {
             const shield = Math.max(0, Math.ceil(ship.shield));
             const armor = Math.max(0, Math.ceil(ship.armor));
             const hull = Math.max(0, Math.ceil(ship.hull));
-            row.innerHTML = `<i></i><span><b>${ship.definition.name}</b><small>${ship.role} · ${ship.state} · ${ship.order.type}</small><small class="defense-stats">S ${shield}/${Math.ceil(ship.maxShield)} · A ${armor}/${Math.ceil(ship.maxArmor)} · H ${hull}/${Math.ceil(ship.maxHull)} · F ${Math.round(ship.flux)}/${Math.round(ship.maxFlux)} · AM ${Math.floor(ship.ammunition)}</small></span><em>${hp}%</em>`;
+            row.innerHTML = `<i></i><span><b>${ship.displayName}</b><small>${ship.role} · ${ship.state} · ${ship.order.type}</small><small class="defense-stats">S ${shield}/${Math.ceil(ship.maxShield)} · A ${armor}/${Math.ceil(ship.maxArmor)} · H ${hull}/${Math.ceil(ship.maxHull)} · F ${Math.round(ship.flux)}/${Math.round(ship.maxFlux)} · AM ${Math.floor(ship.ammunition)}</small></span><em>${hp}%</em>`;
             row.onclick = event => { event.stopPropagation(); fleet.selectedShipId = ship.id; };
             roster.appendChild(row);
         }

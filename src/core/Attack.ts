@@ -128,12 +128,19 @@ export class Attack {
             const targetVel = this.target.velocity.mag() > 1 ? this.target.velocity.normalize() : new Vector2(0, 0);
             const towardScore = targetVel.x * toAttackerDir.x + targetVel.y * toAttackerDir.y;
             const movingTowardAttacker = towardScore > 0.3 || dist < 60;
+            // A single active bubble already covering this target is enough.
+            // The deploy animation lasts 0.2s, so checking zones prevents every
+            // attacker in the same tactical tick from queuing an identical bubble.
+            const bubbleAlreadyQueued = this.game.getBubbleZones().some(zone =>
+                Vector2.distance(zone.position, this.target.position) < zone.radius
+            );
 
             if (!this.attacker.isPlayer &&
                 this.attacker.abilities.bubble.cooldown <= 0 &&
                 dist < 120 &&
                 movingTowardAttacker &&
                 (!this.target.isBubbled || this.target.bubbleDistance > 180) &&
+                !bubbleAlreadyQueued &&
                 this.attacker.threatRating > this.target.threatRating) {
                 this.createBubbleForAttacker();
                 this.attacker.abilities.bubble.cooldown = this.attacker.abilities.bubble.cdMax;

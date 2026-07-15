@@ -12,6 +12,7 @@ export interface ShipSnapshot {
     state?: ShipState;
     flux?: number;
     targetShipId?: string | null;
+    variantName?: string;
     ammunition?: number;
     fuel?: number;
     crew?: number;
@@ -35,6 +36,7 @@ export class Ship {
     public state: ShipState = 'active';
     public flux = 0;
     public targetShipId: string | null = null;
+    public variantName: string | null = null;
     public targetLockTimer = 0;
     public disabledDamage = 0;
     public damagedSystems: ('engines' | 'weapons' | 'sensors' | 'command')[] = [];
@@ -57,6 +59,7 @@ export class Ship {
     }
 
     get definition() { return HULLS[this.loadout.hullId] || HULLS.command; }
+    get displayName() { return this.variantName || this.definition.name; }
     get role() { return this.definition.role; }
     get weapons() { return this.loadout.weaponIds.map(id => WEAPONS[id]).filter(Boolean); }
     get modules() { return this.loadout.moduleIds.map(id => MODULES[id]).filter(Boolean); }
@@ -159,7 +162,7 @@ export class Ship {
     }
 
     snapshot(): ShipSnapshot {
-        return { id: this.id, loadout: this.loadout, hull: this.hull, armor: this.armor, shield: this.shield, energy: this.energy, order: this.order, statScale: this.statScale, state: this.state, flux: this.flux, targetShipId: this.targetShipId, ammunition: this.ammunition, fuel: this.fuel, crew: this.crew };
+        return { id: this.id, loadout: this.loadout, hull: this.hull, armor: this.armor, shield: this.shield, energy: this.energy, order: this.order, statScale: this.statScale, state: this.state, flux: this.flux, targetShipId: this.targetShipId, variantName: this.variantName || undefined, ammunition: this.ammunition, fuel: this.fuel, crew: this.crew };
     }
 
     static fromSnapshot(data: ShipSnapshot) {
@@ -173,6 +176,7 @@ export class Ship {
         ship.state = data.state || (data.hull > 0 ? 'active' : 'disabled');
         ship.flux = data.flux || 0;
         ship.targetShipId = data.targetShipId || null;
+        ship.variantName = data.variantName || null;
         ship.ammunition = data.ammunition ?? ship.definition.ammunition;
         ship.fuel = data.fuel ?? ship.definition.fuel;
         ship.crew = data.crew ?? ship.definition.crew;
