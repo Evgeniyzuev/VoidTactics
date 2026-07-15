@@ -69,7 +69,9 @@ export class Ship {
     get integrity() { return this.hull / this.maxHull; }
     get effectiveHealth() { return Math.max(0, this.hull) + Math.max(0, this.armor) + Math.max(0, this.shield); }
     get maxEffectiveHealth() { return this.maxHull + this.maxArmor + this.maxShield; }
-    get weaponDps() { return this.weapons.reduce((sum, weapon) => sum + weapon.damage / Math.max(0.1, weapon.cooldown), 0); }
+    get weaponDps() { return this.weapons.reduce((sum, weapon) => sum + weapon.damage / Math.max(0.1, weapon.cooldown), 0) * this.statScale; }
+    /** Advanced hulls consume more command capacity as their systems grow. */
+    get commandCost() { return Math.max(this.definition.commandCost, Math.ceil(this.definition.commandCost * Math.sqrt(this.statScale))); }
     get utilityRating() { return this.role === 'support' || this.role === 'scout' ? 6 : this.role === 'defender' || this.role === 'flagship' ? 5 : 2; }
     get maxCombatRating() {
         return this.maxHull * COMBAT_BALANCE.hullThreatWeight + this.weaponDps * COMBAT_BALANCE.offenseThreatWeight + this.utilityRating;

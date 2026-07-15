@@ -8,13 +8,13 @@ import { RepairService } from '../tactical/RepairService';
 
 export type Faction = 'civilian' | 'pirate' | 'orc' | 'military' | 'player' | 'raider' | 'trader' | 'mercenary';
 export type FleetSkillId = 'leadership' | 'logistics' | 'engineering' | 'sensors' | 'navigation' | 'tactics';
-export const FLEET_SKILLS: Record<FleetSkillId, { name: string; description: string; max: number }> = {
-    leadership: { name: 'Leadership', description: '+3 command capacity per level', max: 5 },
-    logistics: { name: 'Logistics', description: '+10 supply capacity and better readiness', max: 5 },
-    engineering: { name: 'Engineering', description: 'Faster field repairs', max: 5 },
-    sensors: { name: 'Sensors', description: 'Lower fleet signature', max: 5 },
-    navigation: { name: 'Navigation', description: 'Higher strategic speed', max: 5 },
-    tactics: { name: 'Tactics', description: 'More defender intercept charges', max: 5 }
+export const FLEET_SKILLS: Record<FleetSkillId, { name: string; description: string }> = {
+    leadership: { name: 'Leadership', description: '+3 command capacity per level' },
+    logistics: { name: 'Logistics', description: '+10 supply capacity and better readiness' },
+    engineering: { name: 'Engineering', description: 'Faster field repairs' },
+    sensors: { name: 'Sensors', description: 'Lower fleet signature' },
+    navigation: { name: 'Navigation', description: 'Higher strategic speed' },
+    tactics: { name: 'Tactics', description: 'More defender intercept charges' }
 };
 
 export class Fleet extends Entity {
@@ -93,7 +93,7 @@ export class Fleet extends Entity {
     }
 
     public get threatRating() { return this.ships.reduce((sum, ship) => sum + ship.combatRating, 0) * this.readiness; }
-    public get commandUsed() { return this.ships.filter(ship => ship.state !== 'destroyed').reduce((sum, ship) => sum + ship.definition.commandCost, 0); }
+    public get commandUsed() { return this.ships.filter(ship => ship.state !== 'destroyed').reduce((sum, ship) => sum + ship.commandCost, 0); }
     public get readiness() {
         const supplyFactor = 0.55 + 0.45 * Math.min(1, this.supplies / Math.max(1, this.maxSupplies));
         const active = this.ships.filter(ship => ship.state !== 'destroyed');
@@ -104,7 +104,7 @@ export class Fleet extends Entity {
     }
     public get signature() { return this.ships.filter(ship => ship.state !== 'destroyed').reduce((sum, ship) => sum + ship.definition.signature, 0) * Math.max(0.6, 1 - this.skills.sensors * 0.08); }
     public getSkillLevel(skill: FleetSkillId) { return this.skills[skill] || 0; }
-    public canLearnSkill(skill: FleetSkillId) { return this.skillPoints > 0 && this.getSkillLevel(skill) < FLEET_SKILLS[skill].max; }
+    public canLearnSkill(skill: FleetSkillId) { return this.skillPoints > 0 && !!FLEET_SKILLS[skill]; }
     public learnSkill(skill: FleetSkillId) {
         if (!this.canLearnSkill(skill)) return false;
         this.skillPoints--;

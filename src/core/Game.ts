@@ -135,8 +135,7 @@ export class Game {
             onMenu: () => this.showMenu(),
             onOrder: (order) => this.playerFleet.issueOrder(order, this.playerFleet.selectedShipId || undefined),
             onDoctrine: (priority) => { this.playerFleet.doctrine.targetPriority = priority; },
-            onFaq: () => this.showFAQ(),
-            onFleet: () => this.showFleetManagement()
+            onFaq: () => this.showFAQ()
         });
 
         this.refreshDifficultyMultiplier();
@@ -1397,13 +1396,15 @@ export class Game {
                 level: this.playerFleet.level,
                 skillPoints: this.playerFleet.skillPoints,
                 skills: { ...this.playerFleet.skills },
-                ships: this.playerFleet.ships.map(ship => ({ name: ship.definition.name, role: ship.role, commandCost: ship.definition.commandCost }))
+                ships: this.playerFleet.ships.map(ship => ({ name: ship.definition.name, role: ship.role, commandCost: ship.commandCost }))
             }),
             (id) => {
                 const offer = SHOP_SHIPS.find(ship => ship.id === id);
                 if (!offer || this.playerFleet.level < offer.requiredLevel) return false;
+                if (offer.requiredSkill && this.playerFleet.getSkillLevel(offer.requiredSkill.skill) < offer.requiredSkill.level) return false;
                 const ship = new Ship({ ...offer.loadout, weaponIds: [...offer.loadout.weaponIds], moduleIds: [...offer.loadout.moduleIds] });
-                if (this.playerFleet.money < offer.price || this.playerFleet.commandUsed + ship.definition.commandCost > this.playerFleet.commandCapacity) return false;
+                ship.setStatScale(offer.statScale);
+                if (this.playerFleet.money < offer.price || this.playerFleet.commandUsed + ship.commandCost > this.playerFleet.commandCapacity) return false;
                 this.playerFleet.money -= offer.price;
                 this.playerFleet.ships.push(ship);
                 this.ui.updateMoney(this.playerFleet.money);
@@ -1453,31 +1454,9 @@ export class Game {
                 };
             },
             () => {
-                // Upgrade logic
-                const upgradeCost = 600 + this.playerFleet.ships.length * 150;
-                const choices = [
-                    { hullId: 'specter', weaponIds: ['jammer'], moduleIds: ['electronicSuite'] },
-                    { hullId: 'siege', weaponIds: ['railgun'], moduleIds: [] },
-                    { hullId: 'lance', weaponIds: ['pulse', 'missile'], moduleIds: [] },
-                    { hullId: 'tender', weaponIds: ['pulse'], moduleIds: ['repairDrones'] }
-                ];
-                const loadout = choices[this.playerFleet.ships.length % choices.length];
-                const ship = new Ship(loadout);
-                if (this.playerFleet.money >= upgradeCost && this.playerFleet.commandUsed + ship.definition.commandCost <= this.playerFleet.commandCapacity) {
-                    this.playerFleet.ships.push(ship);
-                    this.playerFleet.money -= upgradeCost;
-                    this.ui.updateMoney(this.playerFleet.money);
-                    this.ui.updateStrength(this.playerFleet.threatRating);
-                    console.log('Ship added to fleet:', ship.definition.name);
-
-                    // Trigger autosave after upgrade
-                    SaveSystem.saveAutosaveFleetSize(this.playerFleet.commandCapacity);
-                    SaveSystem.saveAutosaveFleetProgress(this.captureProgress());
-                    SaveSystem.saveAutosaveFleetAbilityCharges(this.captureAbilityCharges());
-                    console.log('Autosave created with fleet threat:', this.playerFleet.threatRating);
-                    return true;
-                }
-                return false;
+                // Terra opens the full shipyard instead of buying a random hull.
+                this.showFleetManagement();
+                return true;
             },
             () => {
                 console.log('Terra upgrade cancelled');

@@ -12,7 +12,6 @@ export class UIManager {
     private onOrder: (order: FleetOrderType) => void;
     private onDoctrine: (priority: TargetPriority) => void;
     private onFaq: () => void;
-    private onFleet: () => void;
     private fleetPanel!: HTMLElement;
     private eventLog!: HTMLElement;
 
@@ -36,8 +35,7 @@ export class UIManager {
             onMenu: () => void,
             onOrder: (order: FleetOrderType) => void,
             onDoctrine: (priority: TargetPriority) => void,
-            onFaq: () => void,
-            onFleet: () => void
+            onFaq: () => void
         }
     ) {
         const el = document.getElementById(containerId);
@@ -51,7 +49,6 @@ export class UIManager {
         this.onOrder = callbacks.onOrder;
         this.onDoctrine = callbacks.onDoctrine;
         this.onFaq = callbacks.onFaq;
-        this.onFleet = callbacks.onFleet;
 
         this.render();
     }
@@ -167,12 +164,6 @@ export class UIManager {
         this.cameraFollowBtn.title = 'Camera Follow';
         this.cameraFollowBtn.onclick = () => this.toggleCameraFollow();
 
-        const fleetBtn = document.createElement('button');
-        fleetBtn.className = 'control-btn';
-        fleetBtn.innerText = '⚓';
-        fleetBtn.title = 'Fleet management and shipyard';
-        fleetBtn.onclick = () => this.onFleet();
-
         const faqBtn = document.createElement('button');
         faqBtn.className = 'control-btn';
         faqBtn.innerText = '?';
@@ -182,7 +173,6 @@ export class UIManager {
         hud.appendChild(this.playBtn);
         hud.appendChild(speedContainer);
         hud.appendChild(this.cameraFollowBtn);
-        hud.appendChild(fleetBtn);
         hud.appendChild(faqBtn);
         hud.appendChild(menuBtn);
         this.container.appendChild(hud);

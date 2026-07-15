@@ -3,6 +3,7 @@ import { SaveSystem } from './SaveSystem';
 import type { FleetSkillId } from '../entities/Fleet';
 import { FLEET_SKILLS } from '../entities/Fleet';
 import { SHOP_SHIPS } from '../tactical/FleetGenerator';
+import { HULLS } from '../tactical/ShipDefinitions';
 
 export class ModalManager {
     private modalContainer: HTMLDivElement | null = null;
@@ -611,21 +612,20 @@ export class ModalManager {
         section1.style.marginBottom = '20px';
 
         const upgradeLabel = document.createElement('div');
-        upgradeLabel.textContent = 'REINFORCE FLEET';
+        upgradeLabel.textContent = 'SHIPYARD · CHOOSE A HULL, ROLE AND TIER';
         upgradeLabel.style.fontSize = '12px';
         upgradeLabel.style.marginBottom = '10px';
         upgradeLabel.style.opacity = '0.7';
 
         const upgradeButton = document.createElement('button');
-        const upgradeCost = state.shipCost;
-        upgradeButton.textContent = `Commission next ship (${formatNumber(upgradeCost)}$)`;
+        upgradeButton.textContent = '⚓ SHIPYARD';
         upgradeButton.style.padding = '10px 20px';
         upgradeButton.style.width = '100%';
         upgradeButton.style.border = 'none';
         upgradeButton.style.borderRadius = '6px';
-        upgradeButton.style.background = state.currentMoney >= upgradeCost ? '#00AA00' : '#444444';
+        upgradeButton.style.background = '#00AA00';
         upgradeButton.style.color = 'white';
-        upgradeButton.style.cursor = state.currentMoney >= upgradeCost ? 'pointer' : 'not-allowed';
+        upgradeButton.style.cursor = 'pointer';
         upgradeButton.onclick = () => {
             onUpgrade();
             updateUi();
@@ -744,10 +744,9 @@ export class ModalManager {
             info.textContent = `Threat: ${formatNumber(next.currentStrength)} | Command: ${next.commandUsed}/${next.commandCapacity} | Money: $${formatNumber(next.currentMoney)}`;
             levelText.textContent = next.levelInfo;
 
-            const nextUpgradeCost = next.shipCost;
-            upgradeButton.textContent = `Commission next ship (${formatNumber(nextUpgradeCost)}$)`;
-            upgradeButton.style.background = next.currentMoney >= nextUpgradeCost ? '#00AA00' : '#444444';
-            upgradeButton.style.cursor = next.currentMoney >= nextUpgradeCost ? 'pointer' : 'not-allowed';
+            upgradeButton.textContent = '⚓ SHIPYARD';
+            upgradeButton.style.background = '#00AA00';
+            upgradeButton.style.cursor = 'pointer';
 
             for (const btn of abilityButtons) {
                 btn.style.background = next.currentMoney >= 200 ? 'rgba(0, 200, 255, 0.2)' : '#333';
@@ -772,9 +771,9 @@ export class ModalManager {
             ['Как понять угрозу?', 'Threat — компактная оценка боевой опасности флота: корпус кораблей, оружие и поддержка. Это не запас здоровья. DEF в панели — текущие щиты + броня + корпус.'],
             ['Почему щит не пробивается?', 'Урон проходит слоями: щит → броня → корпус. Щит восстанавливается после паузы, броня и корпус — только поддержкой, припасами или на станции. Поэтому фокусируйте огонь и следите за DPS.'],
             ['Что означает форма и цвет?', 'Силуэт показывает роль флагмана флота: широкий — защитник, длинный — артиллерия, компактный — разведка. Цвет кольца — относительная угроза: зелёный ниже половины вашей, жёлтый близкий, оранжевый выше, красный значительно выше.'],
-            ['Как растёт флот?', 'Деньги зачисляются только за урон по корпусу. За кредиты во вкладке ⚓ покупаются конкретные корабли; их command cost должен помещаться в лимит. Навык Leadership даёт +3 command capacity за уровень.'],
+            ['Как растёт флот?', 'Деньги зачисляются только за урон по корпусу. На Terra кнопка SHIPYARD открывает выбор конкретного корпуса, роли и усиленного tier; command cost должен помещаться в лимит. Навык Leadership даёт +3 command capacity за уровень.'],
             ['Зачем нужны роли?', 'Defender перехватывает часть атак, striker наносит урон, artillery стреляет издалека, scout раскрывает цели и ставит помехи, support ремонтирует и стабилизирует disabled-корабли, flagship задаёт командование.'],
-            ['Как работают уровни и навыки?', 'Каждые 1000 заработанных кредитов открывают уровень (следующий порог растёт в 1,5 раза) и дают очко навыка. Logistics увеличивает припасы, Engineering ускоряет ремонт, Sensors уменьшает заметность, Navigation ускоряет перелёт, Tactics усиливает перехваты.'],
+            ['Как работают уровни и навыки?', 'Каждые 1000 заработанных кредитов открывают уровень (следующий порог растёт в 1,5 раза) и дают очко навыка. Навыки не имеют верхнего лимита: Logistics увеличивает припасы, Engineering ускоряет ремонт, Sensors уменьшает заметность, Navigation ускоряет перелёт, Tactics усиливает перехваты.'],
             ['Что делать после боя?', 'Проверьте disabled-корабли, прикажите REPAIR и пополните припасы. На станции можно полностью восстановить флот. Бой можно покинуть — повреждения и трофеи сохраняются.']
         ];
         for (const [title, body] of sections) {
@@ -819,9 +818,9 @@ export class ModalManager {
                 row.style.cssText = 'display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,.08);padding:7px 0';
                 const label = document.createElement('span');
                 label.style.cssText = 'flex:1;color:#e2e8f0;font-size:12px';
-                label.innerHTML = `<b>${def.name}</b> ${state.skills[skill] || 0}/${def.max}<small style="display:block;color:#94a3b8">${def.description}</small>`;
+                label.innerHTML = `<b>${def.name}</b> ${state.skills[skill] || 0}/∞<small style="display:block;color:#94a3b8">${def.description}</small>`;
                 const btn = this.makeButton('+1', '#0b7285', () => { if (onSkill(skill)) update(); });
-                btn.disabled = state.skillPoints <= 0 || (state.skills[skill] || 0) >= def.max;
+                btn.disabled = state.skillPoints <= 0;
                 btn.style.opacity = btn.disabled ? '0.4' : '1';
                 row.append(label, btn); content.appendChild(row);
             });
@@ -834,9 +833,14 @@ export class ModalManager {
             for (const ship of SHOP_SHIPS) {
                 const card = document.createElement('div');
                 card.style.cssText = 'background:rgba(255,255,255,.05);border:1px solid rgba(98,216,255,.18);border-radius:6px;padding:9px';
-                const can = state.money >= ship.price && state.commandUsed + (ship.loadout.hullId ? ({ command: 4, bulwark: 4, lance: 3, siege: 4, specter: 2, tender: 3 } as Record<string, number>)[ship.loadout.hullId] : 99) <= state.commandCapacity && state.level >= ship.requiredLevel;
-                card.innerHTML = `<b style="color:#f8fafc">${ship.name}</b><small style="display:block;color:#94a3b8">${ship.size} · ${ship.role} · ${ship.description}</small><span style="display:block;color:#ffd166;margin:5px 0">$${formatNumber(ship.price)} · command ${({ command: 4, bulwark: 4, lance: 3, siege: 4, specter: 2, tender: 3 } as Record<string, number>)[ship.loadout.hullId]}</span>`;
-                const buy = this.makeButton(can ? 'Купить' : (state.level < ship.requiredLevel ? `Нужен Lv ${ship.requiredLevel}` : 'Недоступно'), can ? '#167c80' : '#334155', () => { if (onBuy(ship.id)) update(); });
+                const hull = HULLS[ship.loadout.hullId];
+                const commandCost = Math.max(hull.commandCost, Math.ceil(hull.commandCost * Math.sqrt(ship.statScale)));
+                const skillReady = !ship.requiredSkill || (state.skills[ship.requiredSkill.skill] || 0) >= ship.requiredSkill.level;
+                const can = state.money >= ship.price && state.commandUsed + commandCost <= state.commandCapacity && state.level >= ship.requiredLevel && skillReady;
+                const requirement = ship.requiredSkill ? ` · ${ship.requiredSkill.skill} ${ship.requiredSkill.level}+` : '';
+                const reason = state.level < ship.requiredLevel ? `Нужен Lv ${ship.requiredLevel}` : !skillReady ? `Нужен ${ship.requiredSkill?.skill} ${ship.requiredSkill?.level}` : state.commandUsed + commandCost > state.commandCapacity ? 'Не хватает command' : state.money < ship.price ? 'Не хватает кредитов' : 'Недоступно';
+                card.innerHTML = `<b style="color:#f8fafc">${ship.name}</b><small style="display:block;color:#94a3b8">${ship.size} · ${ship.role} · ${ship.description}</small><span style="display:block;color:#ffd166;margin:5px 0">$${formatNumber(ship.price)} · C${commandCost} · ×${ship.statScale} power${requirement}</span>`;
+                const buy = this.makeButton(can ? 'Купить' : reason, can ? '#167c80' : '#334155', () => { if (onBuy(ship.id)) update(); });
                 buy.disabled = !can; buy.style.opacity = can ? '1' : '0.55'; buy.style.width = '100%'; card.appendChild(buy); grid.appendChild(card);
             }
             content.appendChild(grid);
