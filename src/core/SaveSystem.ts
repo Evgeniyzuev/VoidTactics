@@ -101,7 +101,7 @@ export class SaveSystem {
                 money: 0,
                 doctrine: { targetPriority: 'nearest', preferredRange: 'balanced', aggression: 'balanced' },
                 skillPoints: 0,
-                skills: { leadership: 0, logistics: 0, engineering: 0, sensors: 0, navigation: 0, tactics: 0 },
+                skills: { leadership: 0, logistics: 0, engineering: 0, sensors: 0, navigation: 0, tactics: 0, size: 0, tech: 0 },
                 lastSaveTime: old.lastSaveTime
             };
         } catch { return null; }

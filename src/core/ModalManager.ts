@@ -2,8 +2,7 @@ import { formatNumber } from '../utils/NumberFormatter';
 import { SaveSystem } from './SaveSystem';
 import type { FleetSkillId } from '../entities/Fleet';
 import { FLEET_SKILLS } from '../entities/Fleet';
-import { SHOP_SHIPS } from '../tactical/FleetGenerator';
-import { HULLS } from '../tactical/ShipDefinitions';
+import { getShopShipStats, SHOP_SHIPS } from '../tactical/FleetGenerator';
 
 export class ModalManager {
     private modalContainer: HTMLDivElement | null = null;
@@ -771,9 +770,9 @@ export class ModalManager {
             ['Как понять угрозу?', 'Threat — компактная оценка боевой опасности флота: корпус кораблей, оружие и поддержка. Это не запас здоровья. DEF в панели — текущие щиты + броня + корпус.'],
             ['Почему щит не пробивается?', 'Урон проходит слоями: щит → броня → корпус. Щит восстанавливается после паузы, броня и корпус — только поддержкой, припасами или на станции. Поэтому фокусируйте огонь и следите за DPS.'],
             ['Что означает форма и цвет?', 'Силуэт показывает роль флагмана флота: широкий — защитник, длинный — артиллерия, компактный — разведка. Цвет кольца — относительная угроза: зелёный ниже половины вашей, жёлтый близкий, оранжевый выше, красный значительно выше.'],
-            ['Как растёт флот?', 'Деньги зачисляются только за урон по корпусу. На Terra кнопка SHIPYARD открывает выбор конкретного корпуса, роли и усиленного tier; command cost должен помещаться в лимит. Навык Leadership даёт +3 command capacity за уровень.'],
+            ['Как растёт флот?', 'Деньги зачисляются только за урон по корпусу. Каждый корабль занимает ровно 1 command point. На Terra кнопка SHIPYARD открывает выбор корпуса, роли и tier. Size и Tech — требования, они не расходуются при покупке. Уволенный корабль возвращает 50% цены.'],
             ['Зачем нужны роли?', 'Defender перехватывает часть атак, striker наносит урон, artillery стреляет издалека, scout раскрывает цели и ставит помехи, support ремонтирует и стабилизирует disabled-корабли, flagship задаёт командование.'],
-            ['Как работают уровни и навыки?', 'Каждые 1000 заработанных кредитов открывают уровень (следующий порог растёт в 1,5 раза) и дают очко навыка. Навыки не имеют верхнего лимита: Logistics увеличивает припасы, Engineering ускоряет ремонт, Sensors уменьшает заметность, Navigation ускоряет перелёт, Tactics усиливает перехваты.'],
+            ['Как работают уровни и навыки?', 'Каждые 1000 заработанных кредитов открывают уровень (следующий порог растёт в 1,5 раза) и дают очко навыка. Навыки не имеют верхнего лимита: Size открывает medium/large корпуса, Tech — новые tier-ы, Leadership увеличивает command capacity, а остальные улучшают снабжение, ремонт, сенсоры, скорость и перехваты.'],
             ['Что делать после боя?', 'Проверьте disabled-корабли, прикажите REPAIR и пополните припасы. На станции можно полностью восстановить флот. Бой можно покинуть — повреждения и трофеи сохраняются.']
         ];
         for (const [title, body] of sections) {
@@ -789,9 +788,10 @@ export class ModalManager {
     }
 
     showFleetManagementDialog(
-        getState: () => { money: number; commandUsed: number; commandCapacity: number; level: number; skillPoints: number; skills: Record<FleetSkillId, number>; ships: { name: string; role: string; commandCost: number }[] },
+        getState: () => { money: number; commandUsed: number; commandCapacity: number; level: number; skillPoints: number; skills: Record<FleetSkillId, number>; ships: { id: string; name: string; role: string; state: string; commandCost: number; refund: number; threat: number; hull: number; armor: number; shield: number; dps: number }[] },
         onBuy: (id: string) => boolean,
         onSkill: (skill: FleetSkillId) => boolean,
+        onDismiss: (id: string) => boolean,
         onClose: () => void
     ) {
         this.closeModal();
@@ -824,6 +824,24 @@ export class ModalManager {
                 btn.style.opacity = btn.disabled ? '0.4' : '1';
                 row.append(label, btn); content.appendChild(row);
             });
+            const rosterTitle = document.createElement('h3');
+            rosterTitle.textContent = 'ТЕКУЩИЙ ФЛОТ · DISMISS ВОЗВРАЩАЕТ 50% ЦЕНЫ';
+            rosterTitle.style.cssText = 'color:#62d8ff;margin:18px 0 8px;font-size:14px';
+            content.appendChild(rosterTitle);
+            const roster = document.createElement('div');
+            roster.style.cssText = 'display:grid;gap:6px;margin-bottom:12px';
+            for (const ship of state.ships) {
+                const row = document.createElement('div');
+                row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px;border:1px solid rgba(255,255,255,.1);border-radius:5px;background:rgba(255,255,255,.03)';
+                const stats = document.createElement('span');
+                stats.style.cssText = 'flex:1;color:#c8d5e2;font-size:11px';
+                stats.innerHTML = `<b>${ship.name}</b> · ${ship.role} · ${ship.state}<small style="display:block;color:#94a3b8">Threat ${Math.round(ship.threat)} · DPS ${Math.round(ship.dps)} · S ${Math.round(ship.shield)} · A ${Math.round(ship.armor)} · H ${Math.round(ship.hull)}</small>`;
+                const dismiss = this.makeButton(`Уволить +$${formatNumber(ship.refund)}`, '#7f2939', () => { if (onDismiss(ship.id)) update(); });
+                dismiss.disabled = state.ships.length <= 1;
+                dismiss.style.opacity = dismiss.disabled ? '0.4' : '1';
+                row.append(stats, dismiss); roster.appendChild(row);
+            }
+            content.appendChild(roster);
             const shipTitle = document.createElement('h3');
             shipTitle.textContent = 'ВЕРФЬ · КОРАБЛИ';
             shipTitle.style.cssText = 'color:#62d8ff;margin:18px 0 8px;font-size:14px';
@@ -833,13 +851,15 @@ export class ModalManager {
             for (const ship of [...SHOP_SHIPS].sort((a, b) => a.price - b.price)) {
                 const card = document.createElement('div');
                 card.style.cssText = 'background:rgba(255,255,255,.05);border:1px solid rgba(98,216,255,.18);border-radius:6px;padding:9px';
-                const hull = HULLS[ship.loadout.hullId];
-                const commandCost = Math.max(hull.commandCost, Math.ceil(hull.commandCost * Math.sqrt(ship.statScale)));
+                const commandCost = 1;
+                const preview = getShopShipStats(ship);
                 const skillReady = !ship.requiredSkill || (state.skills[ship.requiredSkill.skill] || 0) >= ship.requiredSkill.level;
-                const can = state.money >= ship.price && state.commandUsed + commandCost <= state.commandCapacity && state.level >= ship.requiredLevel && skillReady;
-                const requirement = ship.requiredSkill ? ` · ${ship.requiredSkill.skill} ${ship.requiredSkill.level}+` : '';
-                const reason = state.level < ship.requiredLevel ? `Нужен Lv ${ship.requiredLevel}` : !skillReady ? `Нужен ${ship.requiredSkill?.skill} ${ship.requiredSkill?.level}` : state.commandUsed + commandCost > state.commandCapacity ? 'Не хватает command' : state.money < ship.price ? 'Не хватает кредитов' : 'Недоступно';
-                card.innerHTML = `<b style="color:#f8fafc">${ship.name}</b><small style="display:block;color:#94a3b8">T${ship.tier} · ${ship.size} · ${ship.role} · ${ship.description}</small><span style="display:block;color:#ffd166;margin:5px 0">$${formatNumber(ship.price)} · C${commandCost} · ×${ship.statScale} systems${requirement}</span>`;
+                const sizeReady = (state.skills.size || 0) >= ship.sizeRequired;
+                const techReady = (state.skills.tech || 0) >= ship.techRequired;
+                const can = state.money >= ship.price && state.commandUsed + commandCost <= state.commandCapacity && state.level >= ship.requiredLevel && skillReady && sizeReady && techReady;
+                const requirement = ` · Size ${ship.sizeRequired} · Tech ${ship.techRequired}${ship.requiredSkill ? ` · ${ship.requiredSkill.skill} ${ship.requiredSkill.level}+` : ''}`;
+                const reason = state.level < ship.requiredLevel ? `Нужен Lv ${ship.requiredLevel}` : !sizeReady ? `Нужен Size ${ship.sizeRequired}` : !techReady ? `Нужен Tech ${ship.techRequired}` : !skillReady ? `Нужен ${ship.requiredSkill?.skill} ${ship.requiredSkill?.level}` : state.commandUsed + commandCost > state.commandCapacity ? 'Не хватает command' : state.money < ship.price ? 'Не хватает кредитов' : 'Недоступно';
+                card.innerHTML = `<b style="color:#f8fafc">${ship.name}</b><small style="display:block;color:#94a3b8">T${ship.tier} · ${ship.size} · ${ship.role} · ${ship.description}</small><span style="display:block;color:#ffd166;margin:5px 0">$${formatNumber(ship.price)} · C1 · Threat ${Math.round(preview.threat)} · ×${ship.statScale} systems${requirement}</span><small style="display:block;color:#a8dadc">DPS ${Math.round(preview.dps)} · Shield ${Math.round(preview.shield)} · Armor ${Math.round(preview.armor)} · Hull ${Math.round(preview.hull)}</small>`;
                 const buy = this.makeButton(can ? 'Купить' : reason, can ? '#167c80' : '#334155', () => { if (onBuy(ship.id)) update(); });
                 buy.disabled = !can; buy.style.opacity = can ? '1' : '0.55'; buy.style.width = '100%'; card.appendChild(buy); grid.appendChild(card);
             }

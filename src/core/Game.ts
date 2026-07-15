@@ -1396,15 +1396,29 @@ export class Game {
                 level: this.playerFleet.level,
                 skillPoints: this.playerFleet.skillPoints,
                 skills: { ...this.playerFleet.skills },
-                ships: this.playerFleet.ships.map(ship => ({ name: ship.displayName, role: ship.role, commandCost: ship.commandCost }))
+                ships: this.playerFleet.ships.map(ship => ({
+                    id: ship.id,
+                    name: ship.displayName,
+                    role: ship.role,
+                    state: ship.state,
+                    commandCost: ship.commandCost,
+                    refund: Math.floor(ship.purchasePrice * 0.5),
+                    threat: ship.combatRating,
+                    dps: ship.weaponDps,
+                    shield: ship.shield,
+                    armor: ship.armor,
+                    hull: ship.hull
+                }))
             }),
             (id) => {
                 const offer = SHOP_SHIPS.find(ship => ship.id === id);
                 if (!offer || this.playerFleet.level < offer.requiredLevel) return false;
+                if (this.playerFleet.getSkillLevel('size') < offer.sizeRequired || this.playerFleet.getSkillLevel('tech') < offer.techRequired) return false;
                 if (offer.requiredSkill && this.playerFleet.getSkillLevel(offer.requiredSkill.skill) < offer.requiredSkill.level) return false;
                 const ship = new Ship({ ...offer.loadout, weaponIds: [...offer.loadout.weaponIds], moduleIds: [...offer.loadout.moduleIds] });
                 ship.setStatScale(offer.statScale);
                 ship.variantName = offer.name;
+                ship.purchasePrice = offer.price;
                 if (this.playerFleet.money < offer.price || this.playerFleet.commandUsed + ship.commandCost > this.playerFleet.commandCapacity) return false;
                 this.playerFleet.money -= offer.price;
                 this.playerFleet.ships.push(ship);
@@ -1420,6 +1434,22 @@ export class Game {
                     SaveSystem.save(this.playerFleet, this.npcFleets);
                 }
                 return learned;
+            },
+            (id: string) => {
+                if (this.playerFleet.ships.length <= 1) return false;
+                const index = this.playerFleet.ships.findIndex(ship => ship.id === id);
+                if (index < 0) return false;
+                const ship = this.playerFleet.ships[index];
+                const refund = Math.floor(ship.purchasePrice * 0.5);
+                this.playerFleet.ships.splice(index, 1);
+                if (this.playerFleet.selectedShipId === ship.id) {
+                    this.playerFleet.selectedShipId = this.playerFleet.ships.find(candidate => candidate.role === 'flagship' && candidate.alive)?.id || this.playerFleet.ships[0]?.id || null;
+                }
+                this.playerFleet.money += refund;
+                this.ui.updateMoney(this.playerFleet.money);
+                this.ui.updateFleet(this.playerFleet);
+                SaveSystem.save(this.playerFleet, this.npcFleets);
+                return true;
             },
             () => {
                 this.modal.closeModal();

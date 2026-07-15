@@ -7,14 +7,16 @@ import { FleetGenerator } from '../tactical/FleetGenerator';
 import { RepairService } from '../tactical/RepairService';
 
 export type Faction = 'civilian' | 'pirate' | 'orc' | 'military' | 'player' | 'raider' | 'trader' | 'mercenary';
-export type FleetSkillId = 'leadership' | 'logistics' | 'engineering' | 'sensors' | 'navigation' | 'tactics';
+export type FleetSkillId = 'leadership' | 'logistics' | 'engineering' | 'sensors' | 'navigation' | 'tactics' | 'size' | 'tech';
 export const FLEET_SKILLS: Record<FleetSkillId, { name: string; description: string }> = {
     leadership: { name: 'Leadership', description: '+3 command capacity per level' },
     logistics: { name: 'Logistics', description: '+10 supply capacity and better readiness' },
     engineering: { name: 'Engineering', description: 'Faster field repairs' },
     sensors: { name: 'Sensors', description: 'Lower fleet signature' },
     navigation: { name: 'Navigation', description: 'Higher strategic speed' },
-    tactics: { name: 'Tactics', description: 'More defender intercept charges' }
+    tactics: { name: 'Tactics', description: 'More defender intercept charges' },
+    size: { name: 'Size', description: 'Unlocks medium and large hulls' },
+    tech: { name: 'Tech', description: 'Unlocks higher ship tiers' }
 };
 
 export class Fleet extends Entity {
@@ -27,7 +29,7 @@ export class Fleet extends Entity {
     public supplies = 30;
     public maxSupplies = 30;
     public skillPoints = 0;
-    public skills: Record<FleetSkillId, number> = { leadership: 0, logistics: 0, engineering: 0, sensors: 0, navigation: 0, tactics: 0 };
+    public skills: Record<FleetSkillId, number> = { leadership: 0, logistics: 0, engineering: 0, sensors: 0, navigation: 0, tactics: 0, size: 0, tech: 0 };
     public stabilizationProgress = 0;
     public doctrine: FleetDoctrine = { targetPriority: 'nearest', preferredRange: 'balanced', aggression: 'balanced' };
     public interceptCharges = 0;
