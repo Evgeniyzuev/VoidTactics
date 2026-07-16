@@ -915,7 +915,11 @@ export class Game {
 
             a.update(dt);
             if (a.finished) {
-                this.resolveAttack(a, toRemove);
+                if (a.target instanceof CelestialBody) {
+                    this.resolveMiningAttack(a);
+                } else {
+                    this.resolveAttack(a, toRemove);
+                }
                 this.attacks.splice(i, 1);
             }
         }
@@ -993,6 +997,11 @@ export class Game {
 
 
     private resolveAttack(attack: Attack, toRemove: Fleet[]) {
+        if (attack.target instanceof CelestialBody) {
+            this.resolveMiningAttack(attack);
+            return;
+        }
+
         const winners: Fleet[] = [];
         if (attack.attacker.ships.some(ship => ship.alive)) winners.push(attack.attacker);
         if (attack.target.ships.some(ship => ship.alive)) winners.push(attack.target);
@@ -1038,6 +1047,20 @@ export class Game {
         }
 
         console.log(`Attack Resolved: Winners: ${winners.length}, Losers: ${dead.length}.`);
+    }
+
+    private resolveMiningAttack(attack: Attack) {
+        attack.attacker.state = 'normal';
+        attack.attacker.currentTarget = null;
+        attack.attacker.isMining = false;
+        attack.attacker.miningTarget = null;
+
+        if (attack.target instanceof CelestialBody) {
+            attack.target.isMiningTarget = false;
+            if (attack.target.miningProgress >= attack.target.miningYield) {
+                this.ui.addEvent(`Mining complete: ${attack.target.name}`);
+            }
+        }
     }
 
 
