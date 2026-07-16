@@ -1112,6 +1112,7 @@ export class Game {
         this.closeTooltip();
 
         this.infoTooltip = document.createElement('div');
+        this.infoTooltip.className = 'entity-tooltip';
         this.infoTooltip.style.position = 'absolute';
         this.infoTooltip.style.background = 'rgba(0, 0, 0, 0.9)';
         this.infoTooltip.style.color = 'white';
@@ -1127,10 +1128,6 @@ export class Game {
         // Prevent clicks on tooltip from affecting game
         this.infoTooltip.addEventListener('click', (e) => e.stopPropagation());
         this.infoTooltip.addEventListener('pointerdown', (e) => e.stopPropagation());
-
-        const screenPos = this.camera.worldToScreen(entity.position);
-        this.infoTooltip.style.left = (screenPos.x + 20) + 'px';
-        this.infoTooltip.style.top = (screenPos.y - 30) + 'px';
 
         const header = document.createElement('div');
         header.style.marginBottom = '8px';
@@ -1236,6 +1233,7 @@ export class Game {
 
         const createButton = (text: string, title: string, color: string, callback: () => void) => {
             const btn = document.createElement('button');
+            btn.className = 'entity-action-btn';
             btn.textContent = text;
             btn.title = title;
             btn.style.padding = '6px 12px';
@@ -1293,7 +1291,10 @@ export class Game {
         }
 
         const uiLayer = document.getElementById('ui-layer');
-        if (uiLayer) uiLayer.appendChild(this.infoTooltip);
+        if (uiLayer) {
+            uiLayer.appendChild(this.infoTooltip);
+            this.positionTooltip(entity);
+        }
     }
 
     private closeTooltip() {
@@ -1608,12 +1609,18 @@ export class Game {
 
 
 
-    private updateTooltipPosition() {
-        if (this.infoTooltip && this.inspectedEntity) {
-            const screenPos = this.camera.worldToScreen(this.inspectedEntity.position);
-            this.infoTooltip.style.left = (screenPos.x + 20) + 'px';
-            this.infoTooltip.style.top = (screenPos.y - 30) + 'px';
-        }
+    private positionTooltip(entity: Entity) {
+        if (!this.infoTooltip) return;
+        const screenPos = this.camera.worldToScreen(entity.position);
+        const rect = this.infoTooltip.getBoundingClientRect();
+        const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+        const viewportHeight = document.documentElement.clientHeight || window.innerHeight;
+        const maxLeft = Math.max(8, viewportWidth - rect.width - 8);
+        const maxTop = Math.max(8, viewportHeight - rect.height - 8);
+        const left = Math.max(8, Math.min(screenPos.x + 20, maxLeft));
+        const top = Math.max(8, Math.min(screenPos.y - 30, maxTop));
+        this.infoTooltip.style.left = `${left}px`;
+        this.infoTooltip.style.top = `${top}px`;
     }
 
     private draw() {
@@ -1726,7 +1733,7 @@ export class Game {
         }
         this.drawEntityIndicator(this.playerFleet.position, this.playerFleet.color, 6); // Player indicator (smaller)
 
-        this.updateTooltipPosition();
+        if (this.inspectedEntity) this.positionTooltip(this.inspectedEntity);
     }
 
     private drawEntityIndicator(worldPos: Vector2, color: string, size: number) {

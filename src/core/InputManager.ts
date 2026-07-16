@@ -24,7 +24,7 @@ export class InputManager {
 
     private initListeners() {
         // Pointer Events (Unified Mouse/Touch)
-        window.addEventListener('pointerdown', (e) => {
+        this.canvas.addEventListener('pointerdown', (e) => {
             this.activePointers.set(e.pointerId, new Vector2(e.clientX, e.clientY));
 
             if (this.activePointers.size === 1) {
@@ -53,6 +53,8 @@ export class InputManager {
         });
 
         window.addEventListener('pointermove', (e) => {
+            if (!this.activePointers.has(e.pointerId)) return;
+
             const pos = new Vector2(e.clientX, e.clientY);
             this.activePointers.set(e.pointerId, pos);
 

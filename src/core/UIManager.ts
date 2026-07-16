@@ -14,6 +14,8 @@ export class UIManager {
     private onFaq: () => void;
     private fleetPanel!: HTMLElement;
     private eventLog!: HTMLElement;
+    private fleetPanelCollapsed: boolean = window.matchMedia('(max-width: 700px)').matches;
+    private currentFleet: Fleet | null = null;
 
     private playBtn!: HTMLButtonElement;
     private cameraFollowBtn!: HTMLButtonElement;
@@ -205,7 +207,20 @@ export class UIManager {
     private renderFleetPanel() {
         const panel = document.createElement('aside');
         panel.id = 'fleet-panel';
-        panel.innerHTML = '<header><span>TACTICAL FLEET</span><small class="fleet-summary">WEDGE</small></header><div class="doctrine-bar"></div><div class="ship-roster"></div><div class="order-bar"></div>';
+        panel.classList.toggle('collapsed', this.fleetPanelCollapsed);
+        panel.innerHTML = '<header><button class="fleet-panel-toggle" type="button" aria-expanded="' + (!this.fleetPanelCollapsed) + '"><span class="fleet-panel-title">TACTICAL FLEET</span><small class="fleet-summary">WEDGE</small><span class="fleet-panel-chevron" aria-hidden="true">' + (this.fleetPanelCollapsed ? '▸' : '▾') + '</span></button></header><div class="fleet-panel-body"><div class="doctrine-bar"></div><div class="ship-roster"></div><div class="order-bar"></div></div>';
+        const toggle = panel.querySelector<HTMLButtonElement>('.fleet-panel-toggle')!;
+        toggle.title = this.fleetPanelCollapsed ? 'Expand fleet panel' : 'Collapse fleet panel';
+        toggle.addEventListener('click', event => {
+            event.stopPropagation();
+            this.fleetPanelCollapsed = !this.fleetPanelCollapsed;
+            panel.classList.toggle('collapsed', this.fleetPanelCollapsed);
+            toggle.setAttribute('aria-expanded', String(!this.fleetPanelCollapsed));
+            toggle.title = this.fleetPanelCollapsed ? 'Expand fleet panel' : 'Collapse fleet panel';
+            const chevron = toggle.querySelector('.fleet-panel-chevron');
+            if (chevron) chevron.textContent = this.fleetPanelCollapsed ? '▸' : '▾';
+            if (this.currentFleet) this.updateFleetSummary(this.currentFleet);
+        });
         const doctrineBar = panel.querySelector('.doctrine-bar')!;
         const priorities: { type: TargetPriority, label: string }[] = [
             { type: 'nearest', label: 'NEAR' }, { type: 'artillery', label: 'ARTY' },
@@ -238,15 +253,12 @@ export class UIManager {
     }
 
     public updateFleet(fleet: Fleet) {
+        this.currentFleet = fleet;
         const roster = this.fleetPanel?.querySelector('.ship-roster');
         if (!roster) return;
         const active = fleet.ships.filter(ship => ship.state === 'active').length;
         const disabled = fleet.ships.filter(ship => ship.state === 'disabled').length;
-        const summary = this.fleetPanel.querySelector('.fleet-summary');
-        const defenses = fleet.ships.reduce((sum, ship) => sum + ship.effectiveHealth, 0);
-        const maxDefenses = fleet.ships.reduce((sum, ship) => sum + ship.maxEffectiveHealth, 0);
-        const dps = fleet.ships.filter(ship => ship.alive && ship.order.type !== 'repair').reduce((sum, ship) => sum + ship.weaponDps * fleet.readiness * COMBAT_BALANCE.damageScale, 0);
-        if (summary) summary.textContent = `T ${Math.round(fleet.threatRating)} · DEF ${Math.ceil(defenses)}/${Math.ceil(maxDefenses)} · DPS ${dps.toFixed(0)} · ${active}A/${disabled}D · C ${fleet.commandUsed}/${fleet.commandCapacity} · R ${Math.round(fleet.readiness * 100)}%${fleet.isPlayer ? ` · Lv ${fleet.level} · SP ${fleet.skillPoints}` : ''}`;
+        this.updateFleetSummary(fleet, active, disabled);
         this.fleetPanel.querySelectorAll<HTMLButtonElement>('.doctrine-bar button').forEach(button => button.classList.toggle('active', button.dataset.priority === fleet.doctrine.targetPriority));
         roster.innerHTML = '';
         for (const ship of fleet.ships) {
@@ -260,6 +272,19 @@ export class UIManager {
             row.onclick = event => { event.stopPropagation(); fleet.selectedShipId = ship.id; };
             roster.appendChild(row);
         }
+    }
+
+    private updateFleetSummary(fleet: Fleet, active = fleet.ships.filter(ship => ship.state === 'active').length, disabled = fleet.ships.filter(ship => ship.state === 'disabled').length) {
+        const summary = this.fleetPanel.querySelector('.fleet-summary');
+        if (!summary) return;
+        const dps = fleet.ships.filter(ship => ship.alive && ship.order.type !== 'repair').reduce((sum, ship) => sum + ship.weaponDps * fleet.readiness * COMBAT_BALANCE.damageScale, 0);
+        if (this.fleetPanelCollapsed) {
+            summary.textContent = `T ${Math.round(fleet.threatRating)} · DPS ${dps.toFixed(0)} · ${active}/${fleet.ships.length} SHIPS`;
+            return;
+        }
+        const defenses = fleet.ships.reduce((sum, ship) => sum + ship.effectiveHealth, 0);
+        const maxDefenses = fleet.ships.reduce((sum, ship) => sum + ship.maxEffectiveHealth, 0);
+        summary.textContent = `T ${Math.round(fleet.threatRating)} · DEF ${Math.ceil(defenses)}/${Math.ceil(maxDefenses)} · DPS ${dps.toFixed(0)} · ${active}A/${disabled}D · C ${fleet.commandUsed}/${fleet.commandCapacity} · R ${Math.round(fleet.readiness * 100)}%${fleet.isPlayer ? ` · Lv ${fleet.level} · SP ${fleet.skillPoints}` : ''}`;
     }
 
     private renderAbilityPanel() {
