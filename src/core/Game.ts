@@ -23,6 +23,7 @@ import { WorldEvent } from '../entities/WorldEvent';
 import { getShopMultiplier, getShopRequirements, SHOP_SHIPS } from '../tactical/FleetGenerator';
 import { CombatEffects } from '../renderer/CombatEffects';
 import { COMBAT_BALANCE, type DamageType } from '../tactical/ShipDefinitions';
+import { bindButtonAction } from '../utils/TouchButton';
 
 
 export class Game {
@@ -1245,12 +1246,8 @@ export class Game {
             btn.style.cursor = 'pointer';
             btn.style.fontWeight = 'bold';
             btn.style.fontFamily = 'monospace';
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
+            bindButtonAction(btn, () => {
                 callback();
-            });
-            btn.addEventListener('pointerdown', (e) => {
-                e.stopPropagation();
             });
             return btn;
         };

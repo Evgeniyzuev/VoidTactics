@@ -1,6 +1,7 @@
 import { formatNumber } from '../utils/NumberFormatter';
 import type { Fleet } from '../entities/Fleet';
 import { COMBAT_BALANCE, type FleetOrderType, type TargetPriority } from '../tactical/ShipDefinitions';
+import { bindButtonAction } from '../utils/TouchButton';
 
 export class UIManager {
     private container: HTMLElement;
@@ -69,16 +70,16 @@ export class UIManager {
         menuBtn.innerText = '☰';
         menuBtn.title = 'Game Menu';
         menuBtn.style.marginLeft = '8px';
-        menuBtn.onclick = () => this.onMenu();
+        bindButtonAction(menuBtn, () => this.onMenu());
 
         // Play/Pause Button
         this.playBtn = document.createElement('button');
         this.playBtn.className = 'control-btn';
         this.playBtn.innerText = '⏸';
         this.playBtn.title = 'Play/Pause';
-        this.playBtn.onclick = () => {
+        bindButtonAction(this.playBtn, () => {
             this.onPlayPause();
-        };
+        });
 
         // Speed Control Group
         const speedContainer = document.createElement('div');
@@ -93,11 +94,11 @@ export class UIManager {
         minusBtn.title = 'Decrease Speed (-10%)';
         minusBtn.style.padding = '4px 8px';
         minusBtn.style.minWidth = '30px';
-        minusBtn.onclick = () => {
+        bindButtonAction(minusBtn, () => {
             this.currentSpeed = Math.max(0.1, Math.round((this.currentSpeed - 0.1) * 10) / 10);
             this.onSpeedChange(this.currentSpeed);
             this.updateSpeedDisplay();
-        };
+        });
 
         this.speedBtn = document.createElement('button');
         this.speedBtn.className = 'control-btn speed-value';
@@ -149,11 +150,11 @@ export class UIManager {
         plusBtn.title = 'Increase Speed (+10%)';
         plusBtn.style.padding = '4px 8px';
         plusBtn.style.minWidth = '30px';
-        plusBtn.onclick = () => {
+        bindButtonAction(plusBtn, () => {
             this.currentSpeed = Math.min(4.0, Math.round((this.currentSpeed + 0.1) * 10) / 10);
             this.onSpeedChange(this.currentSpeed);
             this.updateSpeedDisplay();
-        };
+        });
 
         speedContainer.appendChild(minusBtn);
         speedContainer.appendChild(this.speedBtn);
@@ -164,13 +165,13 @@ export class UIManager {
         this.cameraFollowBtn.className = 'control-btn active';
         this.cameraFollowBtn.innerText = '📹';
         this.cameraFollowBtn.title = 'Camera Follow';
-        this.cameraFollowBtn.onclick = () => this.toggleCameraFollow();
+        bindButtonAction(this.cameraFollowBtn, () => this.toggleCameraFollow());
 
         const faqBtn = document.createElement('button');
         faqBtn.className = 'control-btn';
         faqBtn.innerText = '?';
         faqBtn.title = 'FAQ / Help';
-        faqBtn.onclick = () => this.onFaq();
+        bindButtonAction(faqBtn, () => this.onFaq());
 
         hud.appendChild(this.playBtn);
         hud.appendChild(speedContainer);
@@ -208,11 +209,10 @@ export class UIManager {
         const panel = document.createElement('aside');
         panel.id = 'fleet-panel';
         panel.classList.toggle('collapsed', this.fleetPanelCollapsed);
-        panel.innerHTML = '<header><button class="fleet-panel-toggle" type="button" aria-expanded="' + (!this.fleetPanelCollapsed) + '"><span class="fleet-panel-title">TACTICAL FLEET</span><small class="fleet-summary">WEDGE</small><span class="fleet-panel-chevron" aria-hidden="true">' + (this.fleetPanelCollapsed ? '▸' : '▾') + '</span></button></header><div class="fleet-panel-body"><div class="doctrine-bar"></div><div class="ship-roster"></div><div class="order-bar"></div></div>';
+        panel.innerHTML = '<header><button class="fleet-panel-toggle" type="button" aria-expanded="' + (!this.fleetPanelCollapsed) + '"><span class="fleet-panel-icon" aria-hidden="true">🚀</span><span class="fleet-panel-title">TACTICAL FLEET</span><small class="fleet-summary">WEDGE</small><span class="fleet-panel-chevron" aria-hidden="true">' + (this.fleetPanelCollapsed ? '▸' : '▾') + '</span></button></header><div class="fleet-panel-body"><div class="doctrine-bar"></div><div class="ship-roster"></div><div class="order-bar"></div></div>';
         const toggle = panel.querySelector<HTMLButtonElement>('.fleet-panel-toggle')!;
         toggle.title = this.fleetPanelCollapsed ? 'Expand fleet panel' : 'Collapse fleet panel';
-        toggle.addEventListener('click', event => {
-            event.stopPropagation();
+        bindButtonAction(toggle, () => {
             this.fleetPanelCollapsed = !this.fleetPanelCollapsed;
             panel.classList.toggle('collapsed', this.fleetPanelCollapsed);
             toggle.setAttribute('aria-expanded', String(!this.fleetPanelCollapsed));
@@ -230,7 +230,7 @@ export class UIManager {
             const button = document.createElement('button');
             button.textContent = priority.label;
             button.dataset.priority = priority.type;
-            button.onclick = event => { event.stopPropagation(); this.onDoctrine(priority.type); };
+            bindButtonAction(button, () => this.onDoctrine(priority.type));
             doctrineBar.appendChild(button);
         }
         const orders: { type: FleetOrderType, label: string }[] = [
@@ -244,7 +244,7 @@ export class UIManager {
             const button = document.createElement('button');
             button.textContent = order.label;
             button.title = order.type;
-            button.onclick = event => { event.stopPropagation(); this.onOrder(order.type); };
+            bindButtonAction(button, () => this.onOrder(order.type));
             bar.appendChild(button);
         }
         panel.addEventListener('pointerdown', event => event.stopPropagation());
@@ -260,18 +260,27 @@ export class UIManager {
         const disabled = fleet.ships.filter(ship => ship.state === 'disabled').length;
         this.updateFleetSummary(fleet, active, disabled);
         this.fleetPanel.querySelectorAll<HTMLButtonElement>('.doctrine-bar button').forEach(button => button.classList.toggle('active', button.dataset.priority === fleet.doctrine.targetPriority));
-        roster.innerHTML = '';
+        const existingRows = new Map(
+            Array.from(roster.querySelectorAll<HTMLButtonElement>('.ship-row'))
+                .map(row => [row.dataset.shipId || '', row])
+        );
         for (const ship of fleet.ships) {
-            const row = document.createElement('button');
+            let row = existingRows.get(ship.id);
+            if (!row) {
+                row = document.createElement('button');
+                row.dataset.shipId = ship.id;
+                bindButtonAction(row, () => { fleet.selectedShipId = ship.id; });
+            }
             row.className = `ship-row role-${ship.role}${ship.id === fleet.selectedShipId ? ' selected' : ''}${ship.state === 'active' ? '' : ' destroyed'}`;
             const hp = Math.max(0, Math.round(ship.integrity * 100));
             const shield = Math.max(0, Math.ceil(ship.shield));
             const armor = Math.max(0, Math.ceil(ship.armor));
             const hull = Math.max(0, Math.ceil(ship.hull));
             row.innerHTML = `<i></i><span><b>${ship.displayName}</b><small>${ship.role} · ${ship.state} · ${ship.order.type}</small><small class="defense-stats">S ${shield}/${Math.ceil(ship.maxShield)} · A ${armor}/${Math.ceil(ship.maxArmor)} · H ${hull}/${Math.ceil(ship.maxHull)} · F ${Math.round(ship.flux)}/${Math.round(ship.maxFlux)} · AM ${Math.floor(ship.ammunition)}</small></span><em>${hp}%</em>`;
-            row.onclick = event => { event.stopPropagation(); fleet.selectedShipId = ship.id; };
             roster.appendChild(row);
+            existingRows.delete(ship.id);
         }
+        existingRows.forEach(row => row.remove());
     }
 
     private updateFleetSummary(fleet: Fleet, active = fleet.ships.filter(ship => ship.state === 'active').length, disabled = fleet.ships.filter(ship => ship.state === 'disabled').length) {
@@ -389,10 +398,9 @@ export class UIManager {
             timerText.style.fontWeight = 'bold';
             timerText.style.color = 'white';
 
-            btn.onclick = (e) => {
-                e.stopPropagation();
+            bindButtonAction(btn, () => {
                 this.onAbility(ability.id);
-            };
+            });
 
             btn.appendChild(overlay);
             btn.appendChild(timerText);

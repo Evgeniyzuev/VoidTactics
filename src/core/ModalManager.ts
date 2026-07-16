@@ -3,6 +3,7 @@ import { SaveSystem } from './SaveSystem';
 import type { FleetSkillId } from '../entities/Fleet';
 import { FLEET_SKILLS } from '../entities/Fleet';
 import { getShopShipStats, getShopSizeMultiplier, getShopTechMultiplier, getShopMultiplier, getShopRequirements, SHOP_SHIPS } from '../tactical/FleetGenerator';
+import { bindButtonAction } from '../utils/TouchButton';
 
 export class ModalManager {
     private modalContainer: HTMLDivElement | null = null;
@@ -89,7 +90,7 @@ export class ModalManager {
                 btn.style.boxShadow = 'none';
             });
 
-            btn.addEventListener('click', () => {
+            bindButtonAction(btn, () => {
                 callback();
                 this.closeModal();
             });
@@ -897,7 +898,7 @@ export class ModalManager {
     private makeButton(text: string, color: string, callback: () => void) {
         const button = document.createElement('button');
         button.textContent = text; button.style.cssText = `padding:7px 12px;border:1px solid rgba(255,255,255,.18);border-radius:5px;background:${color};color:white;font:12px monospace;cursor:pointer`;
-        button.onclick = event => { event.stopPropagation(); callback(); }; return button;
+        bindButtonAction(button, () => callback()); return button;
     }
 
     /**
