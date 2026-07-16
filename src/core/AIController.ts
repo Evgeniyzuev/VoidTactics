@@ -100,7 +100,7 @@ export class AIController {
                     // Threat Evaluation
                     if (hostileBtoA) {
                         // Civilians are easily spooked, Traders only flee from stronger opponents
-                        const fearFactor = npc.faction === 'civilian' ? 0.5 : (npc.faction === 'trader' ? 1.0 : 1.2);
+                        const fearFactor = ['pirate', 'orc', 'raider'].includes(npc.faction) ? 1.15 : npc.faction === 'civilian' ? 0.5 : (npc.faction === 'trader' ? 1.0 : 1.2);
                         if (other.threatRating > npc.threatRating * fearFactor) {
                             if (dist < minDistThreat) {
                                 minDistThreat = dist;
@@ -115,15 +115,10 @@ export class AIController {
                             closestHostile = other;
                         }
                         let canTarget = false;
-                        if (isMilitaryLike || npc.faction === 'raider' || npc.faction === 'orc') {
+                        if (isMilitaryLike) {
                             canTarget = true;
-                        } else if (npc.faction === 'pirate') {
-                            // Pirates are aggressive; size matters less unless alone vs bigger
-                            if (other.threatRating > npc.threatRating && !hasNearbyAlly) {
-                                canTarget = false;
-                            } else {
-                                canTarget = true;
-                            }
+                        } else if (['pirate', 'orc', 'raider'].includes(npc.faction)) {
+                            canTarget = hasNearbyAlly || npc.threatRating >= other.threatRating * 1.15;
                         } else if (npc.faction === 'civilian' || npc.faction === 'trader') {
                             // Only target if very weak (self-defense)
                             canTarget = other.threatRating < npc.threatRating * 0.4;
@@ -168,8 +163,8 @@ export class AIController {
             // Decide action
             const isMilitaryWithAllies = isMilitaryLike && allFleets.some(f => f !== npc && this.isAlly(npc, f) && Vector2.distance(npc.position, f.position) < 1000);
 
-            if (closestThreat && !['raider', 'orc', 'military', 'mercenary'].includes(npc.faction) && !isMilitaryWithAllies) {
-                // Flee! (Military only flees if alone and overwhelmed, Raiders/Orcs never)
+            if (closestThreat && !isMilitaryLike && !isMilitaryWithAllies) {
+                // Aggressive factions still disengage when they are outmatched and alone.
                 const runDir = npc.position.sub(closestThreat.position).normalize();
                 npc.setTarget(npc.position.add(runDir.scale(800)));
                 if (closestThreat && minDistThreat <= 800 && npc.abilities.mine.cooldown <= 0 && Math.random() < 0.1) {

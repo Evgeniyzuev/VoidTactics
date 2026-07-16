@@ -77,7 +77,7 @@ export class Ship {
     get weaponDps() { return this.weapons.reduce((sum, weapon) => sum + weapon.damage / Math.max(0.1, weapon.cooldown), 0) * this.statScale; }
     /** Every concrete ship occupies one command point; hull size is a skill gate. */
     get commandCost() { return 1; }
-    get utilityRating() { return this.role === 'support' || this.role === 'scout' ? 6 : this.role === 'defender' || this.role === 'flagship' ? 5 : 2; }
+    get utilityRating() { return (this.role === 'support' || this.role === 'scout' ? 6 : this.role === 'defender' || this.role === 'flagship' ? 5 : 2) * this.statScale; }
     get maxCombatRating() {
         return this.maxHull * COMBAT_BALANCE.hullThreatWeight + this.weaponDps * COMBAT_BALANCE.offenseThreatWeight + this.utilityRating;
     }
@@ -140,7 +140,7 @@ export class Ship {
     }
 
     setStatScale(scale: number) {
-        const next = Math.max(0.35, scale);
+        const next = Math.max(0.02, scale);
         const ratio = next / this.statScale;
         this.statScale = next;
         this.hull *= ratio; this.armor *= ratio; this.shield *= ratio; this.energy *= ratio;
@@ -188,15 +188,8 @@ export class Ship {
 }
 
 export function createStarterShips(): Ship[] {
-    const ships = [
-        new Ship({ hullId: 'command', weaponIds: ['pulse', 'autocannon'], moduleIds: ['commandLink'] }),
-        new Ship({ hullId: 'bulwark', weaponIds: ['autocannon', 'autocannon'], moduleIds: [] }),
-        new Ship({ hullId: 'lance', weaponIds: ['pulse', 'missile'], moduleIds: [] }),
-        new Ship({ hullId: 'tender', weaponIds: ['pulse'], moduleIds: ['repairDrones'] })
-    ];
-    const defender = ships.find(ship => ship.role === 'defender');
-    const support = ships.find(ship => ship.role === 'support');
-    if (defender) defender.order = { type: 'protect', issuedAt: 0 };
-    if (support) support.order = { type: 'repair', issuedAt: 0 };
-    return ships;
+    const ship = new Ship({ hullId: 'lance', weaponIds: ['pulse', 'missile'], moduleIds: [] });
+    ship.variantName = 'Skiff';
+    ship.setStatScale(10 / ship.maxCombatRating);
+    return [ship];
 }

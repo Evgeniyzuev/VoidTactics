@@ -25,10 +25,10 @@ export class Fleet extends Entity {
     public formation = DEFAULT_FORMATION;
     private tacticalClock = 0;
     private legacyBudget = 10;
-    public commandCapacity = 24;
+    public commandCapacity = 4;
     public supplies = 30;
     public maxSupplies = 30;
-    public skillPoints = 0;
+    public skillPoints = 3;
     public skills: Record<FleetSkillId, number> = { leadership: 0, logistics: 0, engineering: 0, sensors: 0, navigation: 0, tactics: 0, size: 0, tech: 0 };
     public stabilizationProgress = 0;
     public doctrine: FleetDoctrine = { targetPriority: 'nearest', preferredRange: 'balanced', aggression: 'balanced' };
@@ -90,6 +90,7 @@ export class Fleet extends Entity {
         if (isPlayer) this.faction = 'player';
         this.radius = 8;
         this.ships = isPlayer ? createStarterShips() : [];
+        if (!isPlayer) this.skillPoints = 0;
         this.selectedShipId = this.ships[0]?.id || null;
         if (isPlayer) this.refreshFleetState();
     }
@@ -100,13 +101,13 @@ export class Fleet extends Entity {
         const supplyFactor = 0.55 + 0.45 * Math.min(1, this.supplies / Math.max(1, this.maxSupplies));
         const active = this.ships.filter(ship => ship.state !== 'destroyed');
         if (!active.length) return 0;
-        const ammoFactor = active.reduce((sum, ship) => sum + Math.min(1, ship.ammunition / Math.max(1, ship.definition.ammunition)), 0) / active.length;
-        const fuelFactor = active.reduce((sum, ship) => sum + Math.min(1, ship.fuel / Math.max(1, ship.definition.fuel)), 0) / active.length;
+        const ammoFactor = active.reduce((sum, ship) => sum + Math.min(1, ship.ammunition / Math.max(1, ship.definition.ammunition * ship.statScale)), 0) / active.length;
+        const fuelFactor = active.reduce((sum, ship) => sum + Math.min(1, ship.fuel / Math.max(1, ship.definition.fuel * ship.statScale)), 0) / active.length;
         return Math.max(0.2, supplyFactor * (0.5 + ammoFactor * 0.25 + fuelFactor * 0.25));
     }
     public get signature() { return this.ships.filter(ship => ship.state !== 'destroyed').reduce((sum, ship) => sum + ship.definition.signature, 0) * Math.max(0.6, 1 - this.skills.sensors * 0.08); }
     public getSkillLevel(skill: FleetSkillId) { return this.skills[skill] || 0; }
-    public canLearnSkill(skill: FleetSkillId) { return this.skillPoints > 0 && !!FLEET_SKILLS[skill]; }
+    public canLearnSkill(skill: FleetSkillId) { return this.skillPoints > 0 && !!FLEET_SKILLS[skill] && this.skills[skill] < this.level; }
     public learnSkill(skill: FleetSkillId) {
         if (!this.canLearnSkill(skill)) return false;
         this.skillPoints--;

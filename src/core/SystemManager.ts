@@ -23,6 +23,8 @@ export interface SystemConfig {
 export class SystemManager {
     private systems: Map<number, SystemConfig> = new Map();
     private spawnTimers: Map<number, number> = new Map(); // systemId -> time since last spawn
+    private threatCoefficientCursor: Map<number, number> = new Map();
+    private readonly threatCoefficients = [1, 0.5, 0.25, 0.125, 2, 4, 8, 16];
 
     constructor() {
         this.initializeSystems();
@@ -275,13 +277,11 @@ export class SystemManager {
     }
 
     public spawnFleetsForSystem(systemId: number, playerStrength: number, fleets: Fleet[], difficultyMultiplier: number, forcedFaction?: Faction, playerLevel: number = 1): Fleet[] {
+        void difficultyMultiplier;
         const system = this.systems.get(systemId);
         if (!system) return [];
 
         const rules = system.spawnRules;
-        const strengthScale = Math.max(1, difficultyMultiplier);
-        const adjustedMin = Math.max(1, Math.round(rules.strengthMin * strengthScale));
-        const adjustedMax = Math.max(adjustedMin, Math.round(rules.strengthMax * strengthScale));
         const levelAdjustedWeights = this.getLevelAdjustedWeights(rules.factionWeights, playerLevel);
 
         // Pick faction based on weights with percentage restrictions
@@ -358,24 +358,13 @@ export class SystemManager {
         const npc = new Fleet(startX, startY, factionColors[selectedFaction], false);
         npc.faction = selectedFaction;
 
-        // Build an actual composition from a tactical budget.
-        let fleetBudget: number;
-        if (adjustedMin === adjustedMax) {
-            fleetBudget = adjustedMin;
-        } else {
-            const coefficients = [0.5, 0.75, 1, 1.5, 2, 4];
-            const coeff = coefficients[Math.floor(Math.random() * coefficients.length)];
-            let baseS = playerStrength * coeff * strengthScale;
-
-            const variance = 0.6 + Math.random() * 0.7;
-            let finalStrength = Math.max(adjustedMin, Math.min(adjustedMax, Math.round(baseS * variance)));
-
-            if (selectedFaction === 'trader') {
-                finalStrength = Math.round(finalStrength * 2.5);
-            }
-
-            fleetBudget = finalStrength;
-        }
+        // Cycle through the complete ecosystem scale so every system gets both
+        // smaller and larger fleets relative to the current player fleet.
+        const cursor = this.threatCoefficientCursor.get(systemId) || 0;
+        const coefficient = this.threatCoefficients[cursor % this.threatCoefficients.length];
+        this.threatCoefficientCursor.set(systemId, cursor + 1);
+        const variance = 0.7 + Math.random() * 0.6;
+        const fleetBudget = Math.max(0, playerStrength * coefficient * variance);
         npc.ships = FleetGenerator.generate(fleetBudget, selectedFaction);
         npc.commandCapacity = Math.max(12, npc.commandUsed);
         npc.selectedShipId = npc.ships[0]?.id || null;
@@ -393,7 +382,7 @@ export class SystemManager {
             npc.setTarget(new Vector2((Math.random() - 0.5) * 1000, (Math.random() - 0.5) * 1000));
         }
 
-        console.log(`System ${systemId}: Spawning ${selectedFaction} fleet (budget ${fleetBudget}, threat ${npc.threatRating.toFixed(0)}, difficulty×${difficultyMultiplier.toFixed(2)})`);
+        console.log(`System ${systemId}: Spawning ${selectedFaction} fleet (×${coefficient}, variance ${variance.toFixed(2)}, threat ${npc.threatRating.toFixed(0)})`);
         return [npc];
     }
 

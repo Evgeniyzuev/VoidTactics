@@ -97,10 +97,10 @@ export class SaveSystem {
             const old = JSON.parse(v2Raw) as { player: SavedFleetState, npcs: SavedFleetState[], playerShips: ShipSnapshot[], lastSaveTime: number };
             return {
                 version: 3, player: old.player, npcs: old.npcs, playerShips: old.playerShips || [],
-                commandCapacity: 24, supplies: 30, maxSupplies: 30,
+                commandCapacity: 4, supplies: 30, maxSupplies: 30,
                 money: 0,
                 doctrine: { targetPriority: 'nearest', preferredRange: 'balanced', aggression: 'balanced' },
-                skillPoints: 0,
+                skillPoints: 3,
                 skills: { leadership: 0, logistics: 0, engineering: 0, sensors: 0, navigation: 0, tactics: 0, size: 0, tech: 0 },
                 lastSaveTime: old.lastSaveTime
             };

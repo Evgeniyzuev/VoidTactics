@@ -20,7 +20,7 @@ import { SupplyCrate } from '../entities/SupplyCrate';
 import { Ship } from '../tactical/Ship';
 import { RepairService } from '../tactical/RepairService';
 import { WorldEvent } from '../entities/WorldEvent';
-import { getShopMultiplier, SHOP_SHIPS } from '../tactical/FleetGenerator';
+import { getShopMultiplier, getShopRequirements, SHOP_SHIPS } from '../tactical/FleetGenerator';
 import { CombatEffects } from '../renderer/CombatEffects';
 import { COMBAT_BALANCE, type DamageType } from '../tactical/ShipDefinitions';
 
@@ -508,7 +508,7 @@ export class Game {
             this.playerFleet.level++;
             this.playerFleet.levelThreshold = this.playerFleet.nextLevelThreshold;
             this.playerFleet.nextLevelThreshold = Math.round(this.playerFleet.nextLevelThreshold * 1.5);
-            this.playerFleet.skillPoints++;
+            this.playerFleet.skillPoints += 3;
             console.log(`Level ${this.playerFleet.level} reached (earned ${formatNumber(this.playerFleet.totalMoneyEarned)})`);
         }
         this.refreshDifficultyMultiplier();
@@ -1416,9 +1416,9 @@ export class Game {
             }),
             (id) => {
                 const offer = SHOP_SHIPS.find(ship => ship.id === id);
-                if (!offer || this.playerFleet.level < offer.requiredLevel) return false;
-                if (this.playerFleet.getSkillLevel('size') < offer.sizeRequired || this.playerFleet.getSkillLevel('tech') < offer.techRequired) return false;
-                if (offer.requiredSkill && this.playerFleet.getSkillLevel(offer.requiredSkill.skill) < offer.requiredSkill.level) return false;
+                if (!offer) return false;
+                const requirements = getShopRequirements(offer);
+                if (Object.entries(requirements).some(([skill, level]) => this.playerFleet.getSkillLevel(skill as FleetSkillId) < (level || 0))) return false;
                 const ship = new Ship({ ...offer.loadout, weaponIds: [...offer.loadout.weaponIds], moduleIds: [...offer.loadout.moduleIds] });
                 ship.setStatScale(getShopMultiplier(offer));
                 ship.variantName = offer.name;

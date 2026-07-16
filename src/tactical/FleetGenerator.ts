@@ -18,13 +18,11 @@ export interface ShopShipDefinition {
     loadout: ShipLoadout;
     basePrice: number;
     price: number;
-    requiredLevel: number;
-    description: string;
+    rank: number;
     size: 'small' | 'medium' | 'large';
-    tier: number;
     sizeRequired: number;
     techRequired: number;
-    requiredSkill?: { skill: FleetSkillId; level: number };
+    requiredSkills?: Partial<Record<FleetSkillId, number>>;
 }
 
 export function getShopSizeMultiplier(sizeRequired: number): number {
@@ -39,6 +37,16 @@ export function getShopMultiplier(offer: Pick<ShopShipDefinition, 'sizeRequired'
     return getShopSizeMultiplier(offer.sizeRequired) * getShopTechMultiplier(offer.techRequired);
 }
 
+export function getShopRequirements(offer: Pick<ShopShipDefinition, 'sizeRequired' | 'techRequired' | 'requiredSkills'>): Partial<Record<FleetSkillId, number>> {
+    const requirements: Partial<Record<FleetSkillId, number>> = {};
+    if (offer.sizeRequired > 0) requirements.size = offer.sizeRequired;
+    if (offer.techRequired > 0) requirements.tech = offer.techRequired;
+    for (const [skill, level] of Object.entries(offer.requiredSkills || {})) {
+        if (typeof level === 'number' && level > 0) requirements[skill as FleetSkillId] = level;
+    }
+    return requirements;
+}
+
 type ShopShipSeed = Omit<ShopShipDefinition, 'price'>;
 
 function createShopShip(seed: ShopShipSeed): ShopShipDefinition {
@@ -46,22 +54,18 @@ function createShopShip(seed: ShopShipSeed): ShopShipDefinition {
 }
 
 export const SHOP_SHIPS: ShopShipDefinition[] = [
-    createShopShip({ id: 'flagship', name: 'Command Cruiser', role: 'flagship', loadout: LOADOUTS.flagship, basePrice: 1200, requiredLevel: 1, size: 'large', tier: 0, sizeRequired: 2, techRequired: 0, description: 'Command link and balanced weapons.' }),
-    createShopShip({ id: 'defender', name: 'Bulwark', role: 'defender', loadout: LOADOUTS.defender, basePrice: 850, requiredLevel: 1, size: 'large', tier: 0, sizeRequired: 2, techRequired: 0, description: 'Intercepts attacks and anchors the formation.' }),
-    createShopShip({ id: 'striker', name: 'Lance', role: 'striker', loadout: LOADOUTS.striker, basePrice: 900, requiredLevel: 1, size: 'medium', tier: 0, sizeRequired: 1, techRequired: 0, description: 'Short and medium range damage dealer.' }),
-    createShopShip({ id: 'support', name: 'Tender', role: 'support', loadout: LOADOUTS.support, basePrice: 1000, requiredLevel: 1, size: 'large', tier: 0, sizeRequired: 2, techRequired: 0, description: 'Repairs hulls and stabilizes disabled ships.' }),
-    createShopShip({ id: 'scout', name: 'Specter', role: 'scout', loadout: LOADOUTS.scout, basePrice: 1100, requiredLevel: 2, size: 'small', tier: 0, sizeRequired: 0, techRequired: 0, description: 'Detection and electronic warfare.' }),
-    createShopShip({ id: 'artillery', name: 'Siege', role: 'artillery', loadout: LOADOUTS.artillery, basePrice: 1400, requiredLevel: 3, size: 'large', tier: 0, sizeRequired: 2, techRequired: 0, description: 'Long-range firepower; needs reconnaissance.' }),
-    createShopShip({ id: 'command-mk3', name: 'Command Cruiser Mk III', role: 'flagship', loadout: LOADOUTS.flagship, basePrice: 1200, requiredLevel: 3, size: 'large', tier: 1, sizeRequired: 2, techRequired: 1, description: 'Tier 1: Tech 2 command systems.' }),
-    createShopShip({ id: 'bulwark-mk4', name: 'Bulwark Mk IV', role: 'defender', loadout: LOADOUTS.defender, basePrice: 850, requiredLevel: 5, size: 'large', tier: 1, sizeRequired: 2, techRequired: 1, description: 'Tier 1: fortress-grade armor and interception.' }),
-    createShopShip({ id: 'lance-mk4', name: 'Lance Mk IV', role: 'striker', loadout: LOADOUTS.striker, basePrice: 900, requiredLevel: 4, size: 'medium', tier: 1, sizeRequired: 1, techRequired: 1, description: 'Tier 1: high-output assault ship.' }),
-    createShopShip({ id: 'tender-mk3', name: 'Tender Mk III', role: 'support', loadout: LOADOUTS.support, basePrice: 1000, requiredLevel: 4, size: 'large', tier: 1, sizeRequired: 2, techRequired: 1, description: 'Tier 1: mobile repair and logistics platform.' }),
-    createShopShip({ id: 'specter-mk4', name: 'Specter Mk IV', role: 'scout', loadout: LOADOUTS.scout, basePrice: 1100, requiredLevel: 4, size: 'small', tier: 1, sizeRequired: 0, techRequired: 1, description: 'Tier 1: deep reconnaissance and electronic warfare.' }),
-    createShopShip({ id: 'siege-mk7', name: 'Longbow Mk VII', role: 'artillery', loadout: LOADOUTS.artillery, basePrice: 1400, requiredLevel: 7, size: 'large', tier: 1, sizeRequired: 2, techRequired: 1, description: 'Tier 1: strategic artillery with extreme range.' }),
-    createShopShip({ id: 'command-apex', name: 'Aegis Apex', role: 'flagship', loadout: LOADOUTS.flagship, basePrice: 1200, requiredLevel: 10, size: 'large', tier: 2, sizeRequired: 2, techRequired: 2, description: 'Tier 2: Tech 3 command systems.' }),
-    createShopShip({ id: 'siege-apex', name: 'Longbow Apex', role: 'artillery', loadout: LOADOUTS.artillery, basePrice: 1400, requiredLevel: 12, size: 'large', tier: 2, sizeRequired: 2, techRequired: 2, description: 'Tier 2: endgame artillery platform.' }),
-    createShopShip({ id: 'command-leviathan', name: 'Aegis Leviathan', role: 'flagship', loadout: LOADOUTS.flagship, basePrice: 1200, requiredLevel: 20, size: 'large', tier: 3, sizeRequired: 2, techRequired: 3, description: 'Tier 3: Tech 4 command systems.' }),
-    createShopShip({ id: 'siege-leviathan', name: 'Longbow Leviathan', role: 'artillery', loadout: LOADOUTS.artillery, basePrice: 1400, requiredLevel: 24, size: 'large', tier: 3, sizeRequired: 2, techRequired: 3, description: 'Tier 3: superheavy siege platform.' })
+    createShopShip({ id: 'wisp', name: 'Wisp', role: 'scout', loadout: LOADOUTS.scout, basePrice: 250, rank: 1, size: 'small', sizeRequired: 0, techRequired: 0 }),
+    createShopShip({ id: 'needle', name: 'Needle', role: 'artillery', loadout: LOADOUTS.artillery, basePrice: 300, rank: 2, size: 'small', sizeRequired: 0, techRequired: 1, requiredSkills: { sensors: 1, tactics: 1 } }),
+    createShopShip({ id: 'lance', name: 'Lance', role: 'striker', loadout: LOADOUTS.striker, basePrice: 400, rank: 3, size: 'medium', sizeRequired: 1, techRequired: 0, requiredSkills: { navigation: 1, tactics: 1 } }),
+    createShopShip({ id: 'tender', name: 'Tender', role: 'support', loadout: LOADOUTS.support, basePrice: 450, rank: 4, size: 'medium', sizeRequired: 1, techRequired: 1, requiredSkills: { logistics: 1, engineering: 1 } }),
+    createShopShip({ id: 'command-cruiser', name: 'Command Cruiser', role: 'flagship', loadout: LOADOUTS.flagship, basePrice: 625, rank: 5, size: 'large', sizeRequired: 2, techRequired: 0, requiredSkills: { leadership: 2, tactics: 1 } }),
+    createShopShip({ id: 'bulwark', name: 'Bulwark', role: 'defender', loadout: LOADOUTS.defender, basePrice: 750, rank: 6, size: 'large', sizeRequired: 2, techRequired: 0, requiredSkills: { engineering: 2, tactics: 2 } }),
+    createShopShip({ id: 'longbow', name: 'Longbow', role: 'artillery', loadout: LOADOUTS.artillery, basePrice: 300, rank: 7, size: 'large', sizeRequired: 2, techRequired: 2, requiredSkills: { sensors: 2, tactics: 2 } }),
+    createShopShip({ id: 'lance-mk4', name: 'Lance Mk IV', role: 'striker', loadout: LOADOUTS.striker, basePrice: 400, rank: 8, size: 'medium', sizeRequired: 1, techRequired: 3, requiredSkills: { navigation: 3, tactics: 2 } }),
+    createShopShip({ id: 'tender-prime', name: 'Tender Prime', role: 'support', loadout: LOADOUTS.support, basePrice: 450, rank: 9, size: 'large', sizeRequired: 2, techRequired: 2, requiredSkills: { logistics: 3, engineering: 3 } }),
+    createShopShip({ id: 'aegis-apex', name: 'Aegis Apex', role: 'flagship', loadout: LOADOUTS.flagship, basePrice: 625, rank: 10, size: 'large', sizeRequired: 3, techRequired: 1, requiredSkills: { leadership: 3, tactics: 3, sensors: 2 } }),
+    createShopShip({ id: 'bulwark-bastion', name: 'Bulwark Bastion', role: 'defender', loadout: LOADOUTS.defender, basePrice: 750, rank: 11, size: 'large', sizeRequired: 3, techRequired: 1, requiredSkills: { engineering: 4, tactics: 4, leadership: 3 } }),
+    createShopShip({ id: 'longbow-leviathan', name: 'Longbow Leviathan', role: 'artillery', loadout: LOADOUTS.artillery, basePrice: 300, rank: 12, size: 'large', sizeRequired: 3, techRequired: 5, requiredSkills: { tactics: 5, sensors: 4, engineering: 4 } })
 ];
 
 export interface ShopShipStats {
@@ -79,7 +83,8 @@ export function getShopShipStats(offer: ShopShipDefinition): ShopShipStats {
         const weapon = WEAPONS[id];
         return sum + (weapon ? weapon.damage / Math.max(0.1, weapon.cooldown) : 0);
     }, 0) * scale;
-    const utility = offer.role === 'support' || offer.role === 'scout' ? 6 : offer.role === 'defender' || offer.role === 'flagship' ? 5 : 2;
+    const utilityBase = offer.role === 'support' || offer.role === 'scout' ? 6 : offer.role === 'defender' || offer.role === 'flagship' ? 5 : 2;
+    const utility = utilityBase * scale;
     return {
         threat: hull.hull * scale * COMBAT_BALANCE.hullThreatWeight + dps * COMBAT_BALANCE.offenseThreatWeight + utility,
         dps,
@@ -101,26 +106,26 @@ const DOCTRINES: Record<Faction, ShipRole[]> = {
 };
 
 export class FleetGenerator {
-    static generate(budget: number, faction: Faction, maxShips = 8): Ship[] {
-        const targetBudget = Math.max(20, Math.min(280, budget));
+    static generate(targetThreat: number, faction: Faction, maxShips = 8): Ship[] {
+        const target = Math.max(0, targetThreat);
+        const limit = Math.min(8, Math.max(1, Math.floor(maxShips)));
+        const shipCount = Math.min(limit, Math.max(1, Math.round(target / 35)));
         const roles = DOCTRINES[faction] || DOCTRINES.civilian;
+        const veryWeak = target < 35;
         const ships: Ship[] = [];
-        let spent = 0;
-        let cursor = Math.abs(Math.floor(budget * 17 + faction.length * 13)) % roles.length;
 
-        while (ships.length < maxShips) {
-            const role = roles[cursor % roles.length];
+        for (let index = 0; index < shipCount; index++) {
+            const role = veryWeak ? 'striker' : roles[index % roles.length];
             const loadout = LOADOUTS[role];
-            const cost = HULLS[loadout.hullId].tacticalValue;
-            if (ships.length > 0 && spent + cost > targetBudget) break;
             const ship = new Ship({ ...loadout, weaponIds: [...loadout.weaponIds], moduleIds: [...loadout.moduleIds] });
             if (ship.role === 'defender') ship.order = { type: 'protect', issuedAt: 0 };
             if (ship.role === 'support') ship.order = { type: 'repair', issuedAt: 0 };
             ships.push(ship);
-            spent += cost;
-            cursor++;
         }
 
-        return ships.length ? ships : [new Ship(LOADOUTS.scout)];
+        const baseThreat = ships.reduce((sum, ship) => sum + ship.maxCombatRating, 0);
+        const scale = baseThreat > 0 ? target / baseThreat : 1;
+        for (const ship of ships) ship.setStatScale(scale);
+        return ships;
     }
 }
