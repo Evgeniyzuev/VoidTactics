@@ -56,6 +56,8 @@ export class Fleet extends Entity {
     public currentTarget: Fleet | null = null; // Current attack target
     public hostileTo: Set<Fleet> = new Set(); // Persistent hostility to other fleets
     public lootDropped: boolean = false;
+    public worldEventId: string | null = null;
+    public worldEventRole: 'transport' | 'raider' | 'responder' | null = null;
 
     // Money-based progression
     public totalMoneyEarned: number = 0;
@@ -558,9 +560,9 @@ export class Fleet extends Entity {
         if (!this.ships.some(ship => ship.state !== 'destroyed')) return;
         const screen = camera.worldToScreen(this.position);
         const ratio = this.isPlayer ? 1 : this.threatRating / Math.max(1, referenceThreat);
-        const level = this.isPlayer ? 0 : ratio < 0.5 ? 1 : ratio < 0.9 ? 2 : ratio < 1.3 ? 3 : 4;
+        const level = this.isPlayer ? 0 : ratio < 0.55 ? 1 : ratio < 1.5 ? 2 : ratio < 6 ? 3 : 4;
         const color = this.isPlayer ? '#55d8ff' : level === 1 ? '#67dc88' : level === 2 ? '#ffe06b' : level === 3 ? '#ffad5c' : '#ff5f63';
-        const progress = this.isPlayer ? 1 : Math.min(1, ratio / 1.5);
+        const progress = this.isPlayer ? 1 : level === 1 ? 0.25 : level === 2 ? 0.5 : level === 3 ? 0.75 : 1;
         const radius = 10 * Math.max(0.85, Math.min(1.15, camera.zoom));
 
         ctx.save();

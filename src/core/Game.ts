@@ -3,7 +3,7 @@ import { Renderer } from '../renderer/Renderer';
 import { Camera } from '../renderer/Camera';
 import { Vector2 } from '../utils/Vector2';
 import { CelestialBody } from '../entities/CelestialBody';
-import { Fleet, type FleetSkillId } from '../entities/Fleet';
+import { Fleet, type Faction, type FleetSkillId } from '../entities/Fleet';
 import { Entity } from '../entities/Entity';
 import { BubbleZone } from '../entities/BubbleZone';
 import { WarpGate } from '../entities/WarpGate';
@@ -20,10 +20,11 @@ import { SupplyCrate } from '../entities/SupplyCrate';
 import { Ship } from '../tactical/Ship';
 import { RepairService } from '../tactical/RepairService';
 import { WorldEvent } from '../entities/WorldEvent';
-import { getShopMultiplier, getShopRequirements, SHOP_SHIPS } from '../tactical/FleetGenerator';
+import { FleetGenerator, getShopMultiplier, getShopRequirements, SHOP_SHIPS } from '../tactical/FleetGenerator';
 import { CombatEffects } from '../renderer/CombatEffects';
 import { COMBAT_BALANCE, type DamageType } from '../tactical/ShipDefinitions';
 import { bindButtonAction } from '../utils/TouchButton';
+import { assessRelativeThreat } from '../tactical/Ecosystem';
 
 
 export class Game {
@@ -61,20 +62,24 @@ export class Game {
         this.combatEffects.addShot(attacker.position, target.position, type, hit);
     }
 
-    public spawnDebris(x: number, y: number, value: number) {
+    public spawnDebris(x: number, y: number, value: number, kind: 'combat' | 'salvage' = 'combat') {
         // Check for nearby debris to combine
         for (const existing of this.debris) {
             const dist = Vector2.distance(new Vector2(x, y), existing.position);
-            if (dist < 50) { // Combine if within 50 units
+            if (dist < 50 && existing.kind === kind) { // Combine if within 50 units
                 existing.value += value;
                 existing.radius = Math.max(2, Math.min(8, Math.sqrt(existing.value)));
                 return;
             }
         }
         // No nearby debris, create new
-        const newDebris = new Debris(x, y, value);
+        const newDebris = new Debris(x, y, value, kind);
         this.debris.push(newDebris);
         this.entities.push(newDebris);
+    }
+
+    public spawnSalvage(x: number, y: number, value: number) {
+        this.spawnDebris(x, y, value, 'salvage');
     }
 
     private spawnSupplyCrate(x: number, y: number, abilityId: string) {
@@ -423,6 +428,7 @@ export class Game {
             this.ui.updateMoney(this.playerFleet.money);
             this.ui.updateStrength(this.playerFleet.threatRating);
             this.ui.updateFleet(this.playerFleet);
+            this.ui.updateSignals(this.worldEvents);
             this.updateLevelDisplay();
         }
         this.draw();
@@ -609,41 +615,138 @@ export class Game {
     private initializeWorldEvents() {
         const definitions: [number, number, 'anomaly' | 'distress' | 'salvage', string, number][] = [
             [1250, -650, 'anomaly', 'Unknown signal', 420],
-            [-900, 850, 'distress', 'Distress call', 300],
+            [-900, 850, 'distress', 'Damaged transport', 300],
             [1650, 1100, 'salvage', 'Derelict field', 540]
         ];
         this.worldEvents = definitions.map(data => new WorldEvent(...data));
         this.entities.push(...this.worldEvents);
     }
 
+    private createEventFleet(event: WorldEvent, faction: Faction, role: 'transport' | 'raider' | 'responder', targetThreat: number, offset: Vector2) {
+        const colors: Record<Faction, string> = {
+            player: '#00AAFF', civilian: '#32CD32', pirate: '#FF4444', orc: '#9370DB',
+            military: '#FFFF00', raider: '#888888', trader: '#DAA520', mercenary: '#FF8C00'
+        };
+        const fleet = new Fleet(event.position.x + offset.x, event.position.y + offset.y, colors[faction], false);
+        fleet.faction = faction;
+        fleet.ships = FleetGenerator.generate(Math.max(4, targetThreat), faction);
+        fleet.commandCapacity = Math.max(12, fleet.commandUsed);
+        fleet.selectedShipId = fleet.ships[0]?.id || null;
+        fleet.worldEventId = event.id;
+        fleet.worldEventRole = role;
+        if (faction === 'pirate') fleet.doctrine.targetPriority = 'damaged';
+        if (faction === 'military') fleet.doctrine.targetPriority = 'artillery';
+        this.entities.push(fleet);
+        this.npcFleets.push(fleet);
+        return fleet;
+    }
+
+    private startTransportEvent(event: WorldEvent) {
+        if (event.scenarioSpawned) return;
+        event.scenarioSpawned = true;
+        event.setPhase('engaged');
+        const reference = Math.max(10, this.playerFleet.threatRating);
+        const transport = this.createEventFleet(event, 'trader', 'transport', reference * 0.45, new Vector2(-120, 0));
+        const hunter = this.createEventFleet(event, 'pirate', 'raider', reference * 0.75, new Vector2(170, 30));
+        event.transport = transport;
+        event.raiders.push(hunter);
+        transport.setTarget(event.position.add(new Vector2(-1500, 500)));
+        hunter.setFollowTarget(transport, 'contact');
+        this.ui.addEvent('Damaged transport detected: a pirate hunter is closing in.');
+    }
+
+    private reinforceTransportEvent(event: WorldEvent) {
+        if (event.reinforcementsSpawned || !event.transport) return;
+        event.reinforcementsSpawned = true;
+        event.setPhase('reinforcements');
+        const reference = Math.max(10, this.playerFleet.threatRating);
+        const responder = this.createEventFleet(event, 'military', 'responder', reference * 0.9, new Vector2(-420, -180));
+        const predator = this.createEventFleet(event, 'pirate', 'raider', reference * 2.2, new Vector2(520, 180));
+        event.responders.push(responder);
+        event.raiders.push(predator);
+        const firstRaider = event.raiders.find(fleet => fleet.ships.some(ship => ship.alive));
+        if (firstRaider) responder.setFollowTarget(firstRaider, 'contact');
+        predator.setFollowTarget(event.transport, 'contact');
+        this.ui.addEvent('Signal escalation: military response and heavy pirate reinforcements arrived.');
+    }
+
+    private isEventFleetOperational(fleet: Fleet | null) {
+        return !!fleet && this.npcFleets.includes(fleet) && fleet.ships.some(ship => ship.alive);
+    }
+
+    private grantWorldEventOutcome(event: WorldEvent) {
+        if (event.rewardGranted) return;
+        event.rewardGranted = true;
+        const salvagePosition = event.transport?.position || event.position;
+        if (event.outcome === 'transport-saved') {
+            this.spawnSalvage(salvagePosition.x, salvagePosition.y, event.playerInvolved ? 24 : 10);
+            if (event.playerInvolved) {
+                this.awardPlayerMoney(300);
+                this.playerFleet.supplies = Math.min(this.playerFleet.maxSupplies, this.playerFleet.supplies + 8);
+                this.ui.addEvent('Rescue contract paid: +300 credits, +8 supplies; pirate salvage remains.');
+            }
+        } else if (event.outcome === 'transport-lost') {
+            this.spawnSalvage(salvagePosition.x, salvagePosition.y, event.playerInvolved ? 42 : 28);
+            this.ui.addEvent('The transport cargo broke apart into valuable salvage.');
+        } else if (event.outcome === 'missed' && event.scenarioSpawned) {
+            this.spawnSalvage(event.position.x, event.position.y, 8);
+        }
+    }
+
     private updateWorldEvents() {
         for (const event of this.worldEvents) {
             if (!event.active) {
                 if (!event.resolutionReported) {
+                    this.grantWorldEventOutcome(event);
                     event.resolutionReported = true;
-                    this.ui.addEvent(`${event.title} expired; the world moved on without you.`);
+                    if (event.outcome === 'transport-saved') this.ui.addEvent('Transport escaped the ambush.');
+                    else if (event.outcome === 'transport-lost') this.ui.addEvent('The transport was destroyed; only wreckage remains.');
+                    else this.ui.addEvent(`${event.title} expired; the world moved on without you.`);
                 }
                 continue;
             }
-            if (Vector2.distance(event.position, this.playerFleet.position) > 110) continue;
-            event.active = false;
-            event.resolutionReported = true;
+            const playerDistance = Vector2.distance(event.position, this.playerFleet.position);
+            if (!event.discovered && playerDistance <= event.discoveryRadius) {
+                event.setPhase('discovered');
+                this.ui.addEvent(`Signal discovered: ${event.title} · ${Math.ceil(event.timeLeft)}s remaining.`);
+            }
+
+            if (event.kind === 'distress') {
+                if (!event.scenarioSpawned && (playerDistance <= 500 || event.timeLeft <= 260)) {
+                    this.startTransportEvent(event);
+                }
+                if (!event.scenarioSpawned) continue;
+                if (playerDistance <= 1400 || this.playerFleet.currentTarget?.worldEventId === event.id) {
+                    event.playerInvolved = true;
+                }
+                if (!this.isEventFleetOperational(event.transport)) {
+                    event.resolve('transport-lost');
+                    continue;
+                }
+                const activeRaiders = event.raiders.filter(fleet => this.isEventFleetOperational(fleet));
+                if (activeRaiders.length === 0) {
+                    event.resolve('transport-saved');
+                    continue;
+                }
+                if (!event.reinforcementsSpawned && event.phaseAge >= 35) {
+                    this.reinforceTransportEvent(event);
+                }
+                continue;
+            }
+
+            if (playerDistance > event.interactionRadius) continue;
             if (event.kind === 'anomaly') {
+                event.resolve('decoded');
+                event.resolutionReported = true;
                 this.awardPlayerMoney(350);
                 this.playerFleet.commandCapacity += 1;
                 this.ui.addEvent('Anomaly decoded: +350 credits, +1 command capacity.');
             } else if (event.kind === 'salvage') {
+                event.resolve('salvaged');
+                event.resolutionReported = true;
                 this.awardPlayerMoney(180);
                 this.playerFleet.supplies = Math.min(this.playerFleet.maxSupplies, this.playerFleet.supplies + 12);
                 this.ui.addEvent('Derelict salvaged: +180 credits, +12 supplies.');
-            } else {
-                const pirates = this.systemManager.spawnFleetsForSystem(this.currentSystemId, Math.max(60, this.playerFleet.threatRating), this.npcFleets, this.difficultyMultiplier, 'pirate', this.playerFleet.level);
-                const military = this.systemManager.spawnFleetsForSystem(this.currentSystemId, Math.max(45, this.playerFleet.threatRating * 0.7), this.npcFleets, this.difficultyMultiplier, 'military', this.playerFleet.level);
-                for (const fleet of [...pirates, ...military]) {
-                    fleet.position = event.position.add(new Vector2((fleet.faction === 'pirate' ? 1 : -1) * 140, 0));
-                    this.entities.push(fleet); this.npcFleets.push(fleet);
-                }
-                this.ui.addEvent('Distress contact: pirates and a military responder arrived.');
             }
         }
     }
@@ -1187,6 +1290,9 @@ export class Game {
                 const isHostile = this.aiController.isHostile(fleet, this.playerFleet);
                 const status = isHostile ? '<span style="color: red;">Hostile</span>' : '<span style="color: green;">Friendly</span>';
                 info += `${status}<br/>`;
+                const assessment = assessRelativeThreat(fleet.threatRating, this.playerFleet.threatRating);
+                info += `Relative threat: <b>${assessment.ratio.toFixed(2)}× · ${assessment.label}</b><br/>`;
+                info += `<span style="color:#9fb5c7">${assessment.risk}</span><br/>`;
                 const activeShips = fleet.ships.filter(ship => ship.state === 'active').length;
                 const disabledShips = fleet.ships.filter(ship => ship.state === 'disabled').length;
                 info += `Threat: ${formatNumber(fleet.threatRating)}<br/>`;
@@ -1215,7 +1321,7 @@ export class Game {
             }
         } else if (entity instanceof Debris) {
             const debris = entity as Debris;
-            info = `<strong>Space Debris</strong><br/>`;
+            info = `<strong>${debris.kind === 'salvage' ? 'Salvage Cache' : 'Space Debris'}</strong><br/>`;
             info += `Value: ${formatNumber(debris.value)} units<br/>`;
             info += `Pos: (${debris.position.x.toFixed(0)}, ${debris.position.y.toFixed(0)})`;
         } else if (entity instanceof SupplyCrate) {

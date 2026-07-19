@@ -2,6 +2,7 @@ import { formatNumber } from '../utils/NumberFormatter';
 import type { Fleet } from '../entities/Fleet';
 import { COMBAT_BALANCE, type FleetOrderType, type TargetPriority } from '../tactical/ShipDefinitions';
 import { bindButtonAction } from '../utils/TouchButton';
+import type { WorldEvent } from '../entities/WorldEvent';
 
 export class UIManager {
     private container: HTMLElement;
@@ -15,6 +16,7 @@ export class UIManager {
     private onFaq: () => void;
     private fleetPanel!: HTMLElement;
     private eventLog!: HTMLElement;
+    private signalTracker!: HTMLElement;
     private fleetPanelCollapsed: boolean = window.matchMedia('(max-width: 700px)').matches;
     private currentFleet: Fleet | null = null;
 
@@ -186,7 +188,29 @@ export class UIManager {
         // Ability Panel (Bottom Center)
         this.renderAbilityPanel();
         this.renderFleetPanel();
+        this.renderSignalTracker();
         this.renderEventLog();
+    }
+
+    private renderSignalTracker() {
+        const tracker = document.createElement('div');
+        tracker.id = 'signal-tracker';
+        this.container.appendChild(tracker);
+        this.signalTracker = tracker;
+    }
+
+    public updateSignals(events: WorldEvent[]) {
+        if (!this.signalTracker) return;
+        const event = events
+            .filter(candidate => candidate.active && candidate.discovered)
+            .sort((a, b) => a.timeLeft - b.timeLeft)[0];
+        if (!event) {
+            this.signalTracker.classList.remove('visible');
+            this.signalTracker.textContent = '';
+            return;
+        }
+        this.signalTracker.classList.add('visible');
+        this.signalTracker.innerHTML = `<b>SIGNAL</b><span>${event.title}</span><small>${event.phase.toUpperCase()} · ${Math.ceil(event.timeLeft)}s</small>`;
     }
 
     private renderEventLog() {

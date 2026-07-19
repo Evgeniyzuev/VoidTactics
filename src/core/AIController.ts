@@ -2,6 +2,7 @@ import { Vector2 } from '../utils/Vector2';
 import { CelestialBody } from '../entities/CelestialBody';
 import { Fleet } from '../entities/Fleet';
 import { Game } from './Game';
+import { assessRelativeThreat, requiredAttackAdvantage } from '../tactical/Ecosystem';
 
 export class AIController {
     private game: Game;
@@ -18,11 +19,15 @@ export class AIController {
 
         for (const npc of this.game.getNpcFleets()) {
             const allFleets = [this.game.getPlayerFleet(), ...this.game.getNpcFleets()];
+            const relativeToPlayer = assessRelativeThreat(npc.threatRating, this.game.getPlayerFleet().threatRating);
             const hasNearbyAlly = allFleets.some(f =>
                 f !== npc &&
                 this.isAlly(npc, f) &&
                 Vector2.distance(npc.position, f.position) < 800
             );
+            const localPower = npc.threatRating + allFleets
+                .filter(f => f !== npc && !f.isPlayer && this.isAlly(npc, f) && Vector2.distance(npc.position, f.position) < 900)
+                .reduce((sum, ally) => sum + ally.threatRating * 0.55, 0);
             const isMilitaryLike = npc.faction === 'military' || npc.faction === 'mercenary';
 
             // Ability Usage Logic
@@ -34,6 +39,14 @@ export class AIController {
 
                 const isChasing = this.isHostile(npc, npc.followTarget as Fleet);
                 if (isChasing) {
+                    if (!isMilitaryLike && npc.followTarget.threatRating > localPower * 1.15) {
+                        const runDir = npc.position.sub(npc.followTarget.position).normalize();
+                        npc.stopFollowing();
+                        npc.setTarget(npc.position.add(runDir.scale(900)));
+                        npc.state = 'flee';
+                        npc.decisionTimer = 0.8;
+                        continue;
+                    }
                     // Check if target is escaping the system
                     const targetPosMag = npc.followTarget.position.mag();
                     if (targetPosMag > this.game.getSystemRadius() * 0.8) {
@@ -47,7 +60,10 @@ export class AIController {
                         }
                     }
 
-                    if (dist > giveUpRadius || (dist > 1200 && npc.faction === 'pirate' && npc.threatRating < npc.followTarget.threatRating && !hasNearbyAlly)) {
+                    const pursuitRange = relativeToPlayer.band === 'predator' || relativeToPlayer.band === 'apex'
+                        ? giveUpRadius * 1.45
+                        : relativeToPlayer.band === 'prey' ? giveUpRadius * 0.72 : giveUpRadius;
+                    if (dist > pursuitRange || (dist > 1200 && npc.faction === 'pirate' && localPower < npc.followTarget.threatRating && !hasNearbyAlly)) {
                         npc.stopFollowing();
                         if (celestialBodies.length > 0) {
                             const poi = celestialBodies[Math.floor(Math.random() * celestialBodies.length)];
@@ -101,7 +117,7 @@ export class AIController {
                     if (hostileBtoA) {
                         // Civilians are easily spooked, Traders only flee from stronger opponents
                         const fearFactor = ['pirate', 'orc', 'raider'].includes(npc.faction) ? 1.15 : npc.faction === 'civilian' ? 0.5 : (npc.faction === 'trader' ? 1.0 : 1.2);
-                        if (other.threatRating > npc.threatRating * fearFactor) {
+                        if (other.threatRating > localPower * fearFactor) {
                             if (dist < minDistThreat) {
                                 minDistThreat = dist;
                                 closestThreat = other;
@@ -110,23 +126,20 @@ export class AIController {
                     }
 
                     if (hostileAtoB) {
-                        if (dist < minDistHostile) {
-                            minDistHostile = dist;
-                            closestHostile = other;
-                        }
                         let canTarget = false;
                         if (isMilitaryLike) {
                             canTarget = true;
-                        } else if (['pirate', 'orc', 'raider'].includes(npc.faction)) {
-                            canTarget = hasNearbyAlly || npc.threatRating >= other.threatRating * 1.15;
-                        } else if (npc.faction === 'civilian' || npc.faction === 'trader') {
-                            // Only target if very weak (self-defense)
-                            canTarget = other.threatRating < npc.threatRating * 0.4;
+                        } else {
+                            canTarget = localPower >= other.threatRating * requiredAttackAdvantage(npc.faction);
                         }
 
                         if (canTarget) {
+                            if (dist < minDistHostile) {
+                                minDistHostile = dist;
+                                closestHostile = other;
+                            }
                             // Calculate scores
-                            let strengthRatio = npc.threatRating / Math.max(0.1, other.threatRating);
+                            let strengthRatio = localPower / Math.max(0.1, other.threatRating);
                             if (isMilitaryLike || npc.faction === 'pirate') {
                                 strengthRatio = 0.5 + strengthRatio * 0.25;
                             }
@@ -134,9 +147,10 @@ export class AIController {
                             const proximityFactor = 1 - (dist / detectionRadius);
                             const proximityWeight = npc.faction === 'pirate' ? Math.pow(proximityFactor, 2) : proximityFactor;
                             const cargoBonus = (other.faction === 'trader') ? 2.0 : 0;
-                            const combatBonus = (other.state === 'combat') ? 1.5 : 0;
+                            const combatBonus = (other.state === 'combat') ? 0.65 : 0;
+                            const preyBonus = Math.min(2, Math.max(0, strengthRatio - 1));
 
-                            let targetScore = proximityWeight * (strengthRatio + cargoBonus + combatBonus);
+                            let targetScore = proximityWeight * (strengthRatio + preyBonus + cargoBonus + combatBonus);
 
                             // Raiders ignore strength mostly
                             if ((npc.faction as string) === 'raider') targetScore += 5;

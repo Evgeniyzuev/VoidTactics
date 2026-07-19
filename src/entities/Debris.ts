@@ -3,10 +3,12 @@ import { Camera } from '../renderer/Camera';
 
 export class Debris extends Entity {
     public value: number; // Number of debris units
+    public kind: 'combat' | 'salvage';
 
-    constructor(x: number, y: number, value: number = 1) {
+    constructor(x: number, y: number, value: number = 1, kind: 'combat' | 'salvage' = 'combat') {
         super(x, y);
         this.value = value;
+        this.kind = kind;
         this.radius = Math.max(4, Math.min(12, Math.sqrt(value) * 2)); // Size scales with value, clamped, made larger
     }
 
@@ -30,13 +32,13 @@ export class Debris extends Entity {
 
             ctx.beginPath();
             ctx.arc(offsetX, offsetY, pileRadius, 0, Math.PI * 2);
-            ctx.fillStyle = '#CCCCCC'; // Light gray
+            ctx.fillStyle = this.kind === 'salvage' ? '#6DE2B2' : '#CCCCCC';
             ctx.fill();
 
             // Small highlight
             ctx.beginPath();
             ctx.arc(offsetX - pileRadius * 0.3, offsetY - pileRadius * 0.3, pileRadius * 0.3, 0, Math.PI * 2);
-            ctx.fillStyle = '#FFFFFF';
+            ctx.fillStyle = this.kind === 'salvage' ? '#E5FFF5' : '#FFFFFF';
             ctx.fill();
         }
 
