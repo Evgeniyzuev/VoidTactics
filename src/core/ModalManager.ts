@@ -3,6 +3,8 @@ import { SaveSystem } from './SaveSystem';
 import type { FleetSkillId } from '../entities/Fleet';
 import { FLEET_SKILLS } from '../entities/Fleet';
 import { getShopShipStats, getShopSizeMultiplier, getShopTechMultiplier, getShopMultiplier, getShopRequirements, SHOP_SHIPS } from '../tactical/FleetGenerator';
+import { ABILITY_EQUIPMENT_MARKET, type FleetAbilityId } from '../tactical/AbilityService';
+import type { StationServiceMode } from '../tactical/RepairService';
 import { bindButtonAction } from '../utils/TouchButton';
 
 export interface TerraServiceQuoteView {
@@ -11,6 +13,7 @@ export interface TerraServiceQuoteView {
     ammunition: number;
     hull: number;
     armor: number;
+    repairsTotal: number;
     total: number;
 }
 
@@ -25,12 +28,14 @@ export interface TerraDialogState {
     mercenaryCount: number;
     mercenaryMax: number;
     mercenaryCost: number;
+    abilityCharges: Record<FleetAbilityId, number>;
     serviceQuote?: TerraServiceQuoteView;
 }
 
 export interface TerraServicePurchaseResult {
     ok: boolean;
     cost: number;
+    partial?: boolean;
 }
 
 export class ModalManager {
@@ -575,8 +580,9 @@ export class ModalManager {
         onUpgrade: () => boolean,
         onCancel: () => void,
         onBuyAbility: (id: string) => boolean,
+        onSellAbility: (id: string) => boolean,
         onHireMercenary: () => boolean,
-        onPurchaseService?: () => TerraServicePurchaseResult
+        onPurchaseService?: (mode: StationServiceMode) => TerraServicePurchaseResult
     ) {
         this.closeModal();
 
@@ -666,13 +672,18 @@ export class ModalManager {
         section2.style.marginBottom = '20px';
 
         const shopLabel = document.createElement('div');
-        shopLabel.textContent = 'EQUIPMENT SHOP (200$ per unit, max 10)';
+        shopLabel.textContent = `EQUIPMENT MARKET · BUY $${ABILITY_EQUIPMENT_MARKET.buyPrice} · SELL $${ABILITY_EQUIPMENT_MARKET.sellPrice} · MAX ${ABILITY_EQUIPMENT_MARKET.maxCharges}`;
         shopLabel.style.fontSize = '12px';
         shopLabel.style.marginBottom = '10px';
         shopLabel.style.opacity = '0.7';
         section2.appendChild(shopLabel);
 
-        const abilities = [
+        const shopGrid = document.createElement('div');
+        shopGrid.style.display = 'grid';
+        shopGrid.style.gridTemplateColumns = '1fr';
+        shopGrid.style.gap = '8px';
+
+        const abilities: { id: FleetAbilityId; name: string }[] = [
             { id: 'afterburner', name: '🚀 Afterburner' },
             { id: 'bubble', name: '🫧 Bubble' },
             { id: 'cloak', name: '👻 Cloak' },
@@ -681,31 +692,45 @@ export class ModalManager {
             { id: 'fire', name: '🔥 Weapon Overcharge' },
             { id: 'shield', name: '🛡 Shield Cell' }
         ];
-
-        const shopGrid = document.createElement('div');
-        shopGrid.style.display = 'grid';
-        shopGrid.style.gridTemplateColumns = '1fr 1fr';
-        shopGrid.style.gap = '8px';
-
-        const abilityButtons: HTMLButtonElement[] = [];
+        const abilityRows: { id: FleetAbilityId; count: HTMLElement; buy: HTMLButtonElement; sell: HTMLButtonElement }[] = [];
         abilities.forEach(ability => {
-            const btn = document.createElement('button');
-            btn.textContent = ability.name;
-            btn.style.padding = '8px';
-            btn.style.background = state.currentMoney >= 200 ? 'rgba(0, 200, 255, 0.2)' : '#333';
-            btn.style.border = '1px solid rgba(0, 200, 255, 0.4)';
-            btn.style.color = 'white';
-            btn.style.borderRadius = '4px';
-            btn.style.cursor = state.currentMoney >= 200 ? 'pointer' : 'not-allowed';
-            btn.style.fontSize = '12px';
-            btn.style.minHeight = '44px';
-            btn.style.touchAction = 'manipulation';
-            bindButtonAction(btn, () => {
-                const ok = onBuyAbility(ability.id);
-                if (ok) updateUi();
+            const row = document.createElement('div');
+            row.style.display = 'grid';
+            row.style.gridTemplateColumns = 'minmax(0, 1fr) 48px 86px 86px';
+            row.style.gap = '6px';
+            row.style.alignItems = 'center';
+            row.style.padding = '4px 0';
+            const name = document.createElement('span');
+            name.textContent = ability.name;
+            name.style.textAlign = 'left';
+            name.style.fontSize = '12px';
+            const count = document.createElement('span');
+            count.style.color = '#9edfff';
+            count.style.font = '11px monospace';
+            count.style.textAlign = 'center';
+            const buy = document.createElement('button');
+            buy.type = 'button';
+            buy.style.minHeight = '44px';
+            buy.style.touchAction = 'manipulation';
+            buy.style.fontSize = '11px';
+            buy.textContent = `BUY $${ABILITY_EQUIPMENT_MARKET.buyPrice}`;
+            bindButtonAction(buy, () => {
+                onBuyAbility(ability.id);
+                updateUi();
             });
-            shopGrid.appendChild(btn);
-            abilityButtons.push(btn);
+            const sell = document.createElement('button');
+            sell.type = 'button';
+            sell.style.minHeight = '44px';
+            sell.style.touchAction = 'manipulation';
+            sell.style.fontSize = '11px';
+            sell.textContent = `SELL $${ABILITY_EQUIPMENT_MARKET.sellPrice}`;
+            bindButtonAction(sell, () => {
+                onSellAbility(ability.id);
+                updateUi();
+            });
+            row.append(name, count, buy, sell);
+            shopGrid.appendChild(row);
+            abilityRows.push({ id: ability.id, count, buy, sell });
         });
         section2.appendChild(shopGrid);
 
@@ -737,17 +762,44 @@ export class ModalManager {
         serviceButton.style.color = 'white';
         serviceButton.style.fontFamily = 'monospace';
         serviceButton.style.touchAction = 'manipulation';
-        bindButtonAction(serviceButton, () => {
+        const serviceChoiceRow = document.createElement('div');
+        serviceChoiceRow.style.display = 'grid';
+        serviceChoiceRow.style.gridTemplateColumns = '1fr 1fr';
+        serviceChoiceRow.style.gap = '6px';
+        serviceChoiceRow.style.marginBottom = '6px';
+        const fuelButton = document.createElement('button');
+        fuelButton.type = 'button';
+        fuelButton.textContent = 'REFUEL · up to budget';
+        const repairButton = document.createElement('button');
+        repairButton.type = 'button';
+        repairButton.textContent = 'REPAIR · up to budget';
+        for (const button of [fuelButton, repairButton]) {
+            button.style.minHeight = '44px';
+            button.style.padding = '8px';
+            button.style.border = '1px solid rgba(0, 220, 170, 0.4)';
+            button.style.borderRadius = '6px';
+            button.style.color = 'white';
+            button.style.fontFamily = 'monospace';
+            button.style.fontSize = '10px';
+            button.style.touchAction = 'manipulation';
+        }
+        serviceChoiceRow.append(fuelButton, repairButton);
+        const performService = (mode: StationServiceMode) => {
             if (!onPurchaseService) return;
-            const result = onPurchaseService();
+            const result = onPurchaseService(mode);
             serviceStatus.textContent = result.ok
-                ? (result.cost > 0 ? `Fleet serviced for $${formatNumber(result.cost)}.` : 'Fleet systems recharged.')
-                : `Not enough credits: service costs $${formatNumber(result.cost)}.`;
+                ? `${mode === 'fuel' ? 'Refuel' : mode === 'repairs' ? 'Repairs' : 'Service'} complete: $${formatNumber(result.cost)}${result.partial ? ' · budget applied partially' : ''}.`
+                : 'No credits available for this service.';
             serviceStatus.style.color = result.ok ? '#69f0ae' : '#ff8a80';
             updateUi();
+        };
+        bindButtonAction(serviceButton, () => {
+            performService('all');
         });
+        bindButtonAction(fuelButton, () => performService('fuel'));
+        bindButtonAction(repairButton, () => performService('repairs'));
 
-        serviceSection.append(serviceLabel, serviceBreakdown, serviceStatus, serviceButton);
+        serviceSection.append(serviceLabel, serviceBreakdown, serviceStatus, serviceChoiceRow, serviceButton);
 
         // --- MERCENARY SECTION ---
         const section3 = document.createElement('div');
@@ -820,9 +872,15 @@ export class ModalManager {
             upgradeButton.style.background = '#00AA00';
             upgradeButton.style.cursor = 'pointer';
 
-            for (const btn of abilityButtons) {
-                btn.style.background = next.currentMoney >= 200 ? 'rgba(0, 200, 255, 0.2)' : '#333';
-                btn.style.cursor = next.currentMoney >= 200 ? 'pointer' : 'not-allowed';
+            for (const row of abilityRows) {
+                const charges = next.abilityCharges[row.id] || 0;
+                row.count.textContent = `${charges}/${ABILITY_EQUIPMENT_MARKET.maxCharges}`;
+                row.buy.disabled = charges >= ABILITY_EQUIPMENT_MARKET.maxCharges || next.currentMoney < ABILITY_EQUIPMENT_MARKET.buyPrice;
+                row.sell.disabled = charges <= 0;
+                row.buy.style.background = row.buy.disabled ? '#333' : 'rgba(0, 200, 255, 0.2)';
+                row.sell.style.background = row.sell.disabled ? '#333' : 'rgba(255, 185, 80, 0.2)';
+                row.buy.style.cursor = row.buy.disabled ? 'not-allowed' : 'pointer';
+                row.sell.style.cursor = row.sell.disabled ? 'not-allowed' : 'pointer';
             }
 
             const quote = next.serviceQuote;
@@ -830,19 +888,28 @@ export class ModalManager {
                 serviceBreakdown.textContent =
                     `Fuel $${formatNumber(Math.ceil(quote.fuel))} · Supplies $${formatNumber(Math.ceil(quote.supplies))} · ` +
                     `Ammo $${formatNumber(Math.ceil(quote.ammunition))} · Hull $${formatNumber(Math.ceil(quote.hull))} · ` +
-                    `Armor $${formatNumber(Math.ceil(quote.armor))} · Shield/Energy FREE`;
+                    `Armor $${formatNumber(Math.ceil(quote.armor))} · Repairs $${formatNumber(quote.repairsTotal)} · Shield/Energy FREE`;
                 serviceButton.textContent = quote.total > 0
-                    ? `FULL SERVICE · $${formatNumber(quote.total)}`
+                    ? `SERVICE ALL · up to $${formatNumber(quote.total)}`
                     : 'RECHARGE SHIELD & ENERGY · FREE';
-                serviceButton.disabled = !onPurchaseService || quote.total > next.currentMoney;
+                serviceButton.disabled = !onPurchaseService || (quote.total > 0 && next.currentMoney <= 0);
+                fuelButton.disabled = !onPurchaseService || quote.fuel <= 0 || next.currentMoney <= 0;
+                repairButton.disabled = !onPurchaseService || quote.repairsTotal <= 0 || next.currentMoney <= 0;
             } else {
                 serviceBreakdown.textContent = 'Fuel $2/u · Supply $25 · Ammo $1/u · Hull $3/u · Armor $2/u · Shield/Energy FREE';
-                serviceButton.textContent = 'FULL SERVICE · CONNECT GAME CALLBACK';
+                serviceButton.textContent = 'SERVICE ALL · CONNECT GAME CALLBACK';
                 serviceButton.disabled = true;
+                fuelButton.disabled = true;
+                repairButton.disabled = true;
             }
             serviceButton.style.background = serviceButton.disabled ? '#333' : 'rgba(0, 180, 110, 0.32)';
             serviceButton.style.cursor = serviceButton.disabled ? 'not-allowed' : 'pointer';
             serviceButton.style.opacity = serviceButton.disabled ? '0.65' : '1';
+            for (const button of [fuelButton, repairButton]) {
+                button.style.background = button.disabled ? '#333' : 'rgba(0, 180, 110, 0.22)';
+                button.style.cursor = button.disabled ? 'not-allowed' : 'pointer';
+                button.style.opacity = button.disabled ? '0.65' : '1';
+            }
 
             mercLabel.textContent = `HIRE MERCENARY (${next.mercenaryCount}/${next.mercenaryMax} in system)`;
             const nextCanHire = next.mercenaryCount < next.mercenaryMax && next.currentMoney >= next.mercenaryCost;
@@ -859,7 +926,7 @@ export class ModalManager {
         this.modalContainer = this.createOverlay();
         const dialog = this.createDialog('VOIDTACTICS · СПРАВКА', 720);
         const sections = [
-            ['Что показывает зелёный радар?', 'Окружность — номинальная область уверенного обнаружения. Крупный или летящий на форсаже флот может появиться неизвестной отметкой дальше границы, а scout и сенсорные модули увеличивают радиус.'],
+            ['Что показывает зелёный радар?', 'Окружность — строгая номинальная область обнаружения флотов. При входе появляется приблизительный Classified-контакт, точные данные требуют сканирования; вышедший за границу корабль скрывается. Сигналы могут оставаться последней отметкой до 8 секунд.'],
             ['Почему данные о цели неполные?', 'Контакт проходит три стадии: Blip показывает только отметку, Classified — фракцию, Ships и примерный Threat, Identified — точные DPS, readiness, роли и защиту. Оставайтесь рядом до завершения сканирования.'],
             ['Что делает Scan Pulse?', 'Active Scan Pulse на 4 секунды удваивает радиус радара и расходует 15% общей Energy. После импульса ваша Signature 8 секунд удвоена: вы увидите дальше, но противники тоже легче обнаружат вас.'],
             ['Что такое Energy?', 'Это единая шкала корабля для оружия, восстановления shield и активных систем. При пустой Energy стрельба и регенерация щита останавливаются до подзарядки. Старой отдельной шкалы Flux больше нет.'],
@@ -870,7 +937,7 @@ export class ModalManager {
             ['Что делают три аварийных расходника?', 'Emergency Repair чинит только hull выбранного корабля и стабилизирует disabled. Shield Cell мгновенно возвращает 35% shield. Weapon Overcharge даёт +50% damage на 5 секунд ценой ×1,75 Energy cost и 5 readiness после действия.'],
             ['Почему charge не потратился?', 'Сначала проверяются цель и ресурсы. Полный hull/shield, destroyed-цель, cooldown или нехватка Energy, fuel либо readiness отменяют применение без списания charge. Причина появляется в журнале.'],
             ['Как работают сигналы?', 'SignalDirector периодически создаёт до трёх событий: конвой, ловушку-дереликт, аномалию, терпящий бедствие танкер или гонку за salvage. У них есть таймер, несколько решений и самостоятельный исход без игрока.'],
-            ['Что делать на Terra?', 'SHIPYARD меняет состав флота. FULL SERVICE отдельно и за заранее показанную цену восстанавливает fuel, supplies, ammunition, hull и armor; shield и Energy на станции заряжаются бесплатно. Посещение станции само по себе больше не ремонтирует всё.'],
+            ['Что делать на Terra?', 'SHIPYARD меняет состав флота, а EQUIPMENT MARKET позволяет покупать и продавать charges всех расходников. REFUEL, REPAIR и SERVICE ALL работают частично и тратят доступный бюджет, если денег не хватает на полный объём; shield и Energy на станции заряжаются бесплатно.'],
             ['Как понять Threat и увеличить флот?', 'Threat — оценка оружия, корпуса и поддержки, а не здоровье. Каждый корабль занимает 1 command point; Leadership даёт ещё 3. Size и Tech открывают более сильные корпуса и не расходуются при покупке.'],
             ['Зачем нужны роли?', 'Defender перехватывает часть атак, striker наносит урон, artillery стреляет издалека, scout разведывает, support ремонтирует и стабилизирует disabled, flagship обеспечивает командование.']
         ];

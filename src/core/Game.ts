@@ -19,7 +19,7 @@ import { Debris } from '../entities/Debris';
 import { AbilityCrate } from '../entities/AbilityCrate';
 import { ResourceCrate } from '../entities/ResourceCrate';
 import { Ship } from '../tactical/Ship';
-import { RepairService } from '../tactical/RepairService';
+import { RepairService, type StationServiceMode } from '../tactical/RepairService';
 import { WorldEvent } from '../entities/WorldEvent';
 import { FleetGenerator, getShopMultiplier, getShopRequirements, SHOP_SHIPS } from '../tactical/FleetGenerator';
 import { CombatEffects } from '../renderer/CombatEffects';
@@ -27,7 +27,7 @@ import { COMBAT_BALANCE, TACTICAL_BALANCE, type DamageType } from '../tactical/S
 import { bindButtonAction } from '../utils/TouchButton';
 import { assessRelativeThreat } from '../tactical/Ecosystem';
 import { SensorService, type SensorContact } from '../tactical/SensorService';
-import { AbilityService, type FleetAbilityId } from '../tactical/AbilityService';
+import { ABILITY_EQUIPMENT_MARKET, AbilityService, type FleetAbilityId } from '../tactical/AbilityService';
 import { SIGNAL_DEFINITIONS, SIGNAL_EVENT_BALANCE, SignalDirector, toWorldEventConstructorArgs, type SignalDirectorSnapshot, type SignalEventKind, type SignalSpawnDescriptor } from './SignalDirector';
 
 
@@ -2228,6 +2228,7 @@ export class Game {
                     mercenaryCount: this.npcFleets.filter(f => f.faction === 'mercenary').length,
                     mercenaryMax: this.playerFleet.level + 5,
                     mercenaryCost: Math.max(100, this.playerFleet.threatRating * 10),
+                    abilityCharges: this.captureAbilityCharges(),
                     serviceQuote: RepairService.quoteStationService(this.playerFleet)
                 };
             },
@@ -2245,12 +2246,25 @@ export class Game {
             // Ability Purchase Logic
             (abilityId: string) => {
                 const a = (this.playerFleet.abilities as any)[abilityId];
-                if (a && this.playerFleet.money >= 200 && a.charges < 10) {
-                    this.playerFleet.money -= 200;
+                if (a && this.playerFleet.money >= ABILITY_EQUIPMENT_MARKET.buyPrice && a.charges < ABILITY_EQUIPMENT_MARKET.maxCharges) {
+                    this.playerFleet.money -= ABILITY_EQUIPMENT_MARKET.buyPrice;
                     a.charges++;
                     this.ui.updateMoney(this.playerFleet.money);
                     this.ui.updateAbilities(this.playerFleet);
                     SaveSystem.saveAutosaveFleetAbilityCharges(this.captureAbilityCharges());
+                    return true;
+                }
+                return false;
+            },
+            (abilityId: string) => {
+                const a = (this.playerFleet.abilities as any)[abilityId];
+                if (a && a.charges > 0) {
+                    a.charges--;
+                    this.playerFleet.money += ABILITY_EQUIPMENT_MARKET.sellPrice;
+                    this.ui.updateMoney(this.playerFleet.money);
+                    this.ui.updateAbilities(this.playerFleet);
+                    SaveSystem.saveAutosaveFleetAbilityCharges(this.captureAbilityCharges());
+                    this.saveGame();
                     return true;
                 }
                 return false;
@@ -2279,13 +2293,13 @@ export class Game {
                 this.npcFleets.push(...fleets);
                 return true;
             },
-            () => {
-                const result = RepairService.purchaseStationService(this.playerFleet);
+            (mode: StationServiceMode) => {
+                const result = RepairService.purchaseStationService(this.playerFleet, mode);
                 if (result.ok) {
                     this.ui.updateMoney(this.playerFleet.money);
                     this.ui.updateFleet(this.playerFleet);
                     this.ui.addEvent(result.cost > 0
-                        ? `Terra service complete: ${formatNumber(result.cost)} credits.`
+                        ? `Terra ${mode} service: ${formatNumber(result.cost)} credits${result.partial ? ' (partial budget)' : ''}.`
                         : 'Terra recharged shields and Energy for free.');
                     this.saveGame();
                 }

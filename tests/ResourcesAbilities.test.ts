@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { Attack } from '../src/core/Attack';
 import type { Game } from '../src/core/Game';
 import { Fleet } from '../src/entities/Fleet';
-import { ABILITY_DEFINITIONS, AbilityService } from '../src/tactical/AbilityService';
+import { ABILITY_DEFINITIONS, ABILITY_EQUIPMENT_MARKET, AbilityService } from '../src/tactical/AbilityService';
 import { SensorService } from '../src/tactical/SensorService';
 import { RepairService } from '../src/tactical/RepairService';
 import { Ship } from '../src/tactical/Ship';
@@ -418,6 +418,50 @@ describe('supplies and station service', () => {
         expect(ship.armor).toBe(ship.maxArmor - 5);
         expect(fleet.fuel).toBe(fleet.maxFuel - 2);
         expect(fleet.supplies).toBe(fleet.maxSupplies - 1);
+    });
+
+    it('partially refuels with the available station budget', () => {
+        const fleet = createRepairFleet();
+        fleet.fuel = fleet.maxFuel - 10;
+        fleet.money = 3;
+
+        const result = RepairService.purchaseStationService(fleet, 'fuel');
+
+        expect(result.ok).toBe(true);
+        expect(result.partial).toBe(true);
+        expect(result.cost).toBeCloseTo(3, 10);
+        expect(fleet.money).toBeCloseTo(0, 10);
+        expect(fleet.fuel).toBeCloseTo(fleet.maxFuel - 8.5, 10);
+    });
+
+    it('partially repairs hull when a full station repair is unaffordable', () => {
+        const fleet = createRepairFleet();
+        const target = fleet.ships[0];
+        target.hull -= 10;
+        fleet.money = 6;
+
+        const result = RepairService.purchaseStationService(fleet, 'repairs');
+
+        expect(result.ok).toBe(true);
+        expect(result.partial).toBe(true);
+        expect(result.cost).toBeCloseTo(6, 10);
+        expect(target.hull).toBeCloseTo(target.maxHull - 8, 10);
+        expect(fleet.money).toBeCloseTo(0, 10);
+    });
+
+    it('defines a symmetric equipment market for every consumable charge', () => {
+        const fleet = createFleet();
+        fleet.money = ABILITY_EQUIPMENT_MARKET.buyPrice;
+        fleet.abilities.bubble.charges = 1;
+
+        fleet.money -= ABILITY_EQUIPMENT_MARKET.buyPrice;
+        fleet.abilities.bubble.charges++;
+        fleet.money += ABILITY_EQUIPMENT_MARKET.sellPrice;
+        fleet.abilities.bubble.charges--;
+
+        expect(fleet.abilities.bubble.charges).toBe(1);
+        expect(fleet.money).toBe(ABILITY_EQUIPMENT_MARKET.sellPrice);
+        expect(ABILITY_EQUIPMENT_MARKET.maxCharges).toBe(10);
     });
 });
 

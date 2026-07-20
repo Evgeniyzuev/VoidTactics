@@ -7,7 +7,17 @@ export interface StationServiceQuote {
     ammunition: number;
     hull: number;
     armor: number;
+    repairsTotal: number;
     total: number;
+}
+
+export type StationServiceMode = 'all' | 'fuel' | 'repairs';
+
+export interface StationServiceResult {
+    ok: boolean;
+    cost: number;
+    partial: boolean;
+    mode: StationServiceMode;
 }
 
 export class RepairService {
@@ -76,31 +86,72 @@ export class RepairService {
         ), 0) * TACTICAL_BALANCE.stationAmmoPrice;
         const hull = serviceable.reduce((sum, ship) => sum + Math.max(0, ship.maxHull - ship.hull), 0) * TACTICAL_BALANCE.stationHullPrice;
         const armor = serviceable.reduce((sum, ship) => sum + Math.max(0, ship.maxArmor - ship.armor), 0) * TACTICAL_BALANCE.stationArmorPrice;
-        return { fuel, supplies, ammunition, hull, armor, total: Math.ceil(fuel + supplies + ammunition + hull + armor) };
+        const repairsTotal = Math.ceil(supplies + ammunition + hull + armor);
+        return { fuel, supplies, ammunition, hull, armor, repairsTotal, total: Math.ceil(fuel + supplies + ammunition + hull + armor) };
     }
 
-    static purchaseStationService(fleet: Fleet) {
+    static purchaseStationService(fleet: Fleet, mode: StationServiceMode = 'all'): StationServiceResult {
         const quote = this.quoteStationService(fleet);
-        if (quote.total <= 0) {
+        const requestedCost = mode === 'fuel' ? Math.ceil(quote.fuel) : mode === 'repairs' ? quote.repairsTotal : quote.total;
+        const startingMoney = Math.max(0, fleet.money);
+        if (requestedCost <= 0) {
             this.restoreAtStation(fleet);
-            return { ok: true, cost: 0 };
+            return { ok: true, cost: 0, partial: false, mode };
         }
-        if (fleet.money < quote.total) return { ok: false, cost: quote.total };
-        fleet.money -= quote.total;
-        for (const ship of fleet.ships) {
-            if (ship.state === 'destroyed') continue;
-            if (ship.state === 'disabled') ship.stabilize();
-            ship.hull = ship.maxHull;
-            ship.armor = ship.maxArmor;
-            ship.shield = ship.maxShield;
-            ship.energy = ship.maxEnergy;
-            ship.ammunition = ship.definition.ammunition * ship.statScale;
-            ship.crew = ship.definition.crew * ship.statScale;
-            ship.damagedSystems = [];
+
+        let budget = startingMoney;
+        let spent = 0;
+        const buy = (units: number, price: number) => {
+            if (units <= 0 || price <= 0 || budget <= 0) return 0;
+            const purchased = Math.min(units, budget / price);
+            const cost = purchased * price;
+            budget -= cost;
+            spent += cost;
+            return purchased;
+        };
+
+        if (mode === 'all' || mode === 'fuel') {
+            fleet.fuel += buy(Math.max(0, fleet.maxFuel - fleet.fuel), TACTICAL_BALANCE.stationFuelPrice);
         }
-        fleet.fuel = fleet.maxFuel;
-        fleet.supplies = fleet.maxSupplies;
-        fleet.setReadiness(100);
-        return { ok: true, cost: quote.total };
+
+        if (mode === 'all' || mode === 'repairs') {
+            fleet.supplies += buy(Math.max(0, fleet.maxSupplies - fleet.supplies), TACTICAL_BALANCE.stationSupplyPrice);
+
+            const serviceable = fleet.ships.filter(ship => ship.state !== 'destroyed');
+            for (const ship of serviceable) {
+                if (ship.state === 'disabled' && ship.hull < ship.maxHull) ship.stabilize();
+                const ammunition = buy(
+                    Math.max(0, ship.definition.ammunition * ship.statScale - ship.ammunition),
+                    TACTICAL_BALANCE.stationAmmoPrice
+                );
+                ship.ammunition += ammunition;
+            }
+            for (const ship of serviceable) {
+                const hull = buy(Math.max(0, ship.maxHull - ship.hull), TACTICAL_BALANCE.stationHullPrice);
+                ship.hull = Math.min(ship.maxHull, ship.hull + hull);
+            }
+            for (const ship of serviceable) {
+                const armor = buy(Math.max(0, ship.maxArmor - ship.armor), TACTICAL_BALANCE.stationArmorPrice);
+                ship.armor = Math.min(ship.maxArmor, ship.armor + armor);
+            }
+        }
+
+        fleet.money = Math.max(0, budget);
+        this.restoreAtStation(fleet);
+        const fullyPaid = startingMoney >= requestedCost;
+        if (fullyPaid && mode === 'all') {
+            fleet.setReadiness(100);
+        }
+        if (mode !== 'fuel' && fleet.ships.every(ship => ship.state === 'destroyed' || (ship.hull >= ship.maxHull && ship.armor >= ship.maxArmor))) {
+            for (const ship of fleet.ships) {
+                if (ship.state !== 'destroyed') ship.damagedSystems = [];
+            }
+        }
+        return {
+            ok: spent > 0 || quote.total <= 0,
+            cost: spent,
+            partial: !fullyPaid,
+            mode
+        };
     }
 }

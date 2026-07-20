@@ -5,6 +5,12 @@ import { TACTICAL_BALANCE } from './ShipDefinitions';
 export type FleetAbilityId = 'afterburner' | 'cloak' | 'bubble' | 'mine' | 'medkit' | 'fire' | 'shield';
 export type TacticalAbilityId = FleetAbilityId | 'scan';
 
+export const ABILITY_EQUIPMENT_MARKET = {
+    buyPrice: 200,
+    sellPrice: 100,
+    maxCharges: 10
+} as const;
+
 export interface AbilityDefinition {
     id: TacticalAbilityId;
     name: string;
