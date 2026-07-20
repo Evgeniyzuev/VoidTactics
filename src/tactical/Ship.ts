@@ -1,4 +1,4 @@
-import { COMBAT_BALANCE, HULLS, MODULES, WEAPONS, type DamageType, type FleetOrder, type ShipLoadout, type ShipState } from './ShipDefinitions';
+import { COMBAT_BALANCE, HULLS, MODULES, TACTICAL_BALANCE, WEAPONS, type DamageType, type FleetOrder, type ShipLoadout, type ShipState } from './ShipDefinitions';
 
 export interface ShipSnapshot {
     id: string;
@@ -10,13 +10,18 @@ export interface ShipSnapshot {
     order: FleetOrder;
     statScale?: number;
     state?: ShipState;
+    /** Legacy v3 field, used only by save migration. */
     flux?: number;
     targetShipId?: string | null;
     variantName?: string;
     purchasePrice?: number;
     ammunition?: number;
+    /** Legacy v3 field, used only by save migration. */
     fuel?: number;
     crew?: number;
+    damagedSystems?: ('engines' | 'weapons' | 'sensors' | 'command')[];
+    disabledDamage?: number;
+    shieldRechargeDelay?: number;
 }
 
 let nextShipId = 1;
@@ -35,7 +40,6 @@ export class Ship {
     public shieldRechargeDelay = 0;
     public statScale = 1;
     public state: ShipState = 'active';
-    public flux = 0;
     public targetShipId: string | null = null;
     public variantName: string | null = null;
     public purchasePrice = 0;
@@ -43,8 +47,10 @@ export class Ship {
     public disabledDamage = 0;
     public damagedSystems: ('engines' | 'weapons' | 'sensors' | 'command')[] = [];
     public ammunition: number;
-    public fuel: number;
     public crew: number;
+    public overchargeTimer = 0;
+    public emergencyRepairRemaining = 0;
+    public emergencyRepairTimer = 0;
 
     constructor(loadout: ShipLoadout, id = `ship-${nextShipId++}`) {
         this.id = id;
@@ -53,10 +59,9 @@ export class Ship {
         this.hull = hull.hull;
         this.armor = hull.armor;
         this.shield = hull.shield;
-        this.energy = hull.energy + this.modules.reduce((sum, module) => sum + (module.energyModifier || 0), 0);
+        this.energy = hull.energyCapacity + this.modules.reduce((sum, module) => sum + (module.energyCapacityModifier || 0), 0);
         this.weaponCooldowns = loadout.weaponIds.map(() => 0);
         this.ammunition = hull.ammunition;
-        this.fuel = hull.fuel;
         this.crew = hull.crew;
     }
 
@@ -69,8 +74,9 @@ export class Ship {
     get maxHull() { return this.definition.hull * this.statScale; }
     get maxArmor() { return this.definition.armor * this.statScale; }
     get maxShield() { return this.definition.shield * this.statScale; }
-    get maxEnergy() { return (this.definition.energy + this.modules.reduce((sum, module) => sum + (module.energyModifier || 0), 0)) * this.statScale; }
-    get maxFlux() { return this.maxEnergy * 1.5; }
+    get maxEnergy() { return (this.definition.energyCapacity + this.modules.reduce((sum, module) => sum + (module.energyCapacityModifier || 0), 0)) * this.statScale; }
+    get energyRecharge() { return (this.definition.energyRecharge + this.modules.reduce((sum, module) => sum + (module.energyRechargeModifier || 0), 0)) * this.statScale; }
+    get maxFuelCapacity() { return this.definition.fuelCapacity * this.statScale; }
     get integrity() { return this.hull / this.maxHull; }
     get effectiveHealth() { return Math.max(0, this.hull) + Math.max(0, this.armor) + Math.max(0, this.shield); }
     get maxEffectiveHealth() { return this.maxHull + this.maxArmor + this.maxShield; }
@@ -86,17 +92,29 @@ export class Ship {
         return Math.max(0, this.hull) * COMBAT_BALANCE.hullThreatWeight + this.weaponDps * COMBAT_BALANCE.offenseThreatWeight + this.utilityRating;
     }
 
-    update(dt: number) {
-        this.energy = Math.min(this.maxEnergy, this.energy + dt * 8);
-        this.flux = Math.max(0, this.flux - dt * this.maxFlux * 0.08);
+    update(dt: number, readinessEfficiency = 1) {
         this.targetLockTimer = Math.max(0, this.targetLockTimer - dt);
         this.shieldRechargeDelay = Math.max(0, this.shieldRechargeDelay - dt);
-        if (this.shieldRechargeDelay <= 0) {
-            this.shield = Math.min(this.maxShield, this.shield + dt * 2.5 * this.statScale);
-        }
         this.shieldFlash = Math.max(0, this.shieldFlash - dt * 3);
         this.hitFlash = Math.max(0, this.hitFlash - dt * 4);
         this.weaponCooldowns = this.weaponCooldowns.map(value => Math.max(0, value - dt));
+        this.overchargeTimer = Math.max(0, this.overchargeTimer - dt);
+        if (!this.alive) return;
+
+        this.energy = Math.min(this.maxEnergy, this.energy + this.energyRecharge * readinessEfficiency * dt);
+        if (this.emergencyRepairRemaining > 0 && this.emergencyRepairTimer > 0) {
+            const repair = Math.min(this.emergencyRepairRemaining, this.emergencyRepairRemaining / Math.max(dt, this.emergencyRepairTimer) * dt);
+            this.restore(repair);
+            this.emergencyRepairRemaining = Math.max(0, this.emergencyRepairRemaining - repair);
+            this.emergencyRepairTimer = Math.max(0, this.emergencyRepairTimer - dt);
+        }
+        if (this.shieldRechargeDelay <= 0 && this.shield < this.maxShield && this.energy > 0) {
+            const wanted = Math.min(this.maxShield - this.shield, this.maxShield * TACTICAL_BALANCE.shieldRechargeFraction * dt);
+            const affordable = this.energy / TACTICAL_BALANCE.shieldEnergyPerPoint;
+            const restored = Math.min(wanted, affordable);
+            this.shield += restored;
+            this.energy = Math.max(0, this.energy - restored * TACTICAL_BALANCE.shieldEnergyPerPoint);
+        }
     }
 
     applyDamage(amount: number, type: DamageType): number {
@@ -107,16 +125,16 @@ export class Ship {
             return 0;
         }
         let remaining = amount;
+        if (remaining > 0) this.shieldRechargeDelay = TACTICAL_BALANCE.shieldRechargeDelay;
         if (this.shield > 0) {
-            this.shieldRechargeDelay = 4;
-            const modifier = type === 'energy' ? 1.15 : type === 'kinetic' ? 0.8 : 1;
+            const modifier = type === 'kinetic' ? 1.25 : type === 'explosive' ? 0.75 : 1;
             const absorbed = Math.min(this.shield, remaining * modifier);
             this.shield -= absorbed;
             remaining -= absorbed / modifier;
             this.shieldFlash = 1;
         }
         if (remaining > 0 && this.armor > 0) {
-            const modifier = type === 'kinetic' ? 1.2 : type === 'explosive' ? 0.75 : 0.9;
+            const modifier = type === 'explosive' ? 1.35 : type === 'kinetic' ? 0.75 : 1;
             const absorbed = Math.min(this.armor, remaining * modifier);
             this.armor -= absorbed;
             remaining -= absorbed / modifier;
@@ -144,15 +162,28 @@ export class Ship {
         const ratio = next / this.statScale;
         this.statScale = next;
         this.hull *= ratio; this.armor *= ratio; this.shield *= ratio; this.energy *= ratio;
-        this.ammunition *= ratio; this.fuel *= ratio; this.crew *= ratio;
+        this.ammunition *= ratio; this.crew *= ratio;
     }
 
     restore(amount: number) { this.hull = Math.min(this.maxHull, this.hull + amount); }
 
+    restoreShield(amount: number) {
+        const previous = this.shield;
+        this.shield = Math.min(this.maxShield, this.shield + Math.max(0, amount));
+        return this.shield - previous;
+    }
+
+    spendEnergy(amount: number) {
+        const cost = Math.max(0, amount);
+        if (this.energy + 1e-6 < cost) return false;
+        this.energy = Math.max(0, this.energy - cost);
+        return true;
+    }
+
     stabilize() {
         if (this.state !== 'disabled') return false;
         this.state = 'active';
-        this.hull = Math.max(1, this.maxHull * 0.08);
+        this.hull = Math.max(1, this.maxHull * TACTICAL_BALANCE.disabledStabilizeHullFraction);
         this.disabledDamage = 0;
         return true;
     }
@@ -164,7 +195,7 @@ export class Ship {
     }
 
     snapshot(): ShipSnapshot {
-        return { id: this.id, loadout: this.loadout, hull: this.hull, armor: this.armor, shield: this.shield, energy: this.energy, order: this.order, statScale: this.statScale, state: this.state, flux: this.flux, targetShipId: this.targetShipId, variantName: this.variantName || undefined, purchasePrice: this.purchasePrice || undefined, ammunition: this.ammunition, fuel: this.fuel, crew: this.crew };
+        return { id: this.id, loadout: this.loadout, hull: this.hull, armor: this.armor, shield: this.shield, energy: this.energy, order: this.order, statScale: this.statScale, state: this.state, targetShipId: this.targetShipId, variantName: this.variantName || undefined, purchasePrice: this.purchasePrice || undefined, ammunition: this.ammunition, crew: this.crew, damagedSystems: [...this.damagedSystems], disabledDamage: this.disabledDamage, shieldRechargeDelay: this.shieldRechargeDelay };
     }
 
     static fromSnapshot(data: ShipSnapshot) {
@@ -176,14 +207,23 @@ export class Ship {
         ship.energy = data.energy;
         ship.order = data.order;
         ship.state = data.state || (data.hull > 0 ? 'active' : 'disabled');
-        ship.flux = data.flux || 0;
         ship.targetShipId = data.targetShipId || null;
         ship.variantName = data.variantName || null;
         ship.purchasePrice = data.purchasePrice || 0;
         ship.ammunition = data.ammunition ?? ship.definition.ammunition;
-        ship.fuel = data.fuel ?? ship.definition.fuel;
         ship.crew = data.crew ?? ship.definition.crew;
+        ship.damagedSystems = [...new Set(data.damagedSystems ?? [])];
+        ship.disabledDamage = Math.max(0, data.disabledDamage ?? 0);
+        ship.shieldRechargeDelay = Math.max(0, data.shieldRechargeDelay ?? 0);
+        Ship.syncIdSequence([ship.id]);
         return ship;
+    }
+
+    static syncIdSequence(ids: string[]) {
+        for (const id of ids) {
+            const match = /^ship-(\d+)$/.exec(id);
+            if (match) nextShipId = Math.max(nextShipId, Number(match[1]) + 1);
+        }
     }
 }
 

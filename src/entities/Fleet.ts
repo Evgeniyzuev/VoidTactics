@@ -2,17 +2,19 @@ import { Entity } from './Entity';
 import { Camera } from '../renderer/Camera';
 import { Vector2 } from '../utils/Vector2';
 import { Ship, createStarterShips } from '../tactical/Ship';
-import { DEFAULT_FORMATION, type DamageType, type FleetDoctrine, type FleetOrderType } from '../tactical/ShipDefinitions';
+import { DEFAULT_FORMATION, TACTICAL_BALANCE, type DamageType, type FleetDoctrine, type FleetOrderType } from '../tactical/ShipDefinitions';
 import { FleetGenerator } from '../tactical/FleetGenerator';
 import { RepairService } from '../tactical/RepairService';
+import { ABILITY_DEFINITIONS } from '../tactical/AbilityService';
 
 export type Faction = 'civilian' | 'pirate' | 'orc' | 'military' | 'player' | 'raider' | 'trader' | 'mercenary';
+export interface FleetResources { fuel: number; maxFuel: number; supplies: number; maxSupplies: number; readiness: number }
 export type FleetSkillId = 'leadership' | 'logistics' | 'engineering' | 'sensors' | 'navigation' | 'tactics' | 'size' | 'tech';
 export const FLEET_SKILLS: Record<FleetSkillId, { name: string; description: string }> = {
     leadership: { name: 'Leadership', description: '+3 command capacity per level' },
     logistics: { name: 'Logistics', description: '+10 supply capacity and better readiness' },
     engineering: { name: 'Engineering', description: 'Faster field repairs' },
-    sensors: { name: 'Sensors', description: 'Lower fleet signature' },
+    sensors: { name: 'Sensors', description: 'Longer sensor range and lower fleet signature' },
     navigation: { name: 'Navigation', description: 'Higher strategic speed' },
     tactics: { name: 'Tactics', description: 'More defender intercept charges' },
     size: { name: 'Size', description: 'Unlocks medium and large hulls' },
@@ -28,6 +30,8 @@ export class Fleet extends Entity {
     public commandCapacity = 4;
     public supplies = 30;
     public maxSupplies = 30;
+    public fuel = 0;
+    public operationalReadiness = 100;
     public skillPoints = 3;
     public skills: Record<FleetSkillId, number> = { leadership: 0, logistics: 0, engineering: 0, sensors: 0, navigation: 0, tactics: 0, size: 0, tech: 0 };
     public stabilizationProgress = 0;
@@ -67,13 +71,13 @@ export class Fleet extends Entity {
 
     // Abilities State (Player uses charges, others use cooldowns)
     public abilities = {
-        afterburner: { active: false, timer: 0, cooldown: 0, duration: 3, cdMax: 10, charges: 0 },
-        cloak: { active: false, timer: 0, cooldown: 0, duration: 10, cdMax: 12, charges: 0 },
-        bubble: { active: false, timer: 0, cooldown: 0, duration: 10, cdMax: 16, charges: 0 },
-        mine: { active: false, timer: 0, cooldown: 0, duration: 0, cdMax: 5, charges: 0 },
-        medkit: { active: false, timer: 0, cooldown: 0, duration: 10, cdMax: 10, charges: 0 },
-        fire: { active: false, timer: 0, cooldown: 0, duration: 5, cdMax: 10, charges: 0 },
-        shield: { active: false, timer: 0, cooldown: 0, duration: 1, cdMax: 5, charges: 0 }
+        afterburner: { active: false, timer: 0, cooldown: 0, duration: ABILITY_DEFINITIONS.afterburner.duration, cdMax: ABILITY_DEFINITIONS.afterburner.cooldown, charges: 0 },
+        cloak: { active: false, timer: 0, cooldown: 0, duration: ABILITY_DEFINITIONS.cloak.duration, cdMax: ABILITY_DEFINITIONS.cloak.cooldown, charges: 0 },
+        bubble: { active: false, timer: 0, cooldown: 0, duration: ABILITY_DEFINITIONS.bubble.duration, cdMax: ABILITY_DEFINITIONS.bubble.cooldown, charges: 0 },
+        mine: { active: false, timer: 0, cooldown: 0, duration: ABILITY_DEFINITIONS.mine.duration, cdMax: ABILITY_DEFINITIONS.mine.cooldown, charges: 0 },
+        medkit: { active: false, timer: 0, cooldown: 0, duration: ABILITY_DEFINITIONS.medkit.duration, cdMax: ABILITY_DEFINITIONS.medkit.cooldown, charges: 0 },
+        fire: { active: false, timer: 0, cooldown: 0, duration: ABILITY_DEFINITIONS.fire.duration, cdMax: ABILITY_DEFINITIONS.fire.cooldown, charges: 0 },
+        shield: { active: false, timer: 0, cooldown: 0, duration: ABILITY_DEFINITIONS.shield.duration, cdMax: ABILITY_DEFINITIONS.shield.cooldown, charges: 0 }
     };
     public isCloaked: boolean = false;
     public isBubbled: boolean = false; // Set by external bubbles
@@ -92,22 +96,52 @@ export class Fleet extends Entity {
         if (isPlayer) this.faction = 'player';
         this.radius = 8;
         this.ships = isPlayer ? createStarterShips() : [];
-        if (!isPlayer) this.skillPoints = 0;
+        if (!isPlayer) {
+            this.skillPoints = 0;
+            this.abilities.afterburner.charges = 1;
+            this.abilities.mine.charges = 1;
+            this.abilities.bubble.charges = 1;
+            this.abilities.cloak.charges = 1;
+        }
         this.selectedShipId = this.ships[0]?.id || null;
+        this.fuel = this.maxFuel;
         if (isPlayer) this.refreshFleetState();
     }
 
-    public get threatRating() { return this.ships.reduce((sum, ship) => sum + ship.combatRating, 0) * this.readiness; }
+    public get baseThreatRating() { return this.ships.reduce((sum, ship) => sum + ship.combatRating, 0); }
+    public get threatRating() { return this.baseThreatRating * this.readinessEfficiency; }
     public get commandUsed() { return this.ships.filter(ship => ship.state !== 'destroyed').reduce((sum, ship) => sum + ship.commandCost, 0); }
     public get readiness() {
-        const supplyFactor = 0.55 + 0.45 * Math.min(1, this.supplies / Math.max(1, this.maxSupplies));
-        const active = this.ships.filter(ship => ship.state !== 'destroyed');
-        if (!active.length) return 0;
-        const ammoFactor = active.reduce((sum, ship) => sum + Math.min(1, ship.ammunition / Math.max(1, ship.definition.ammunition * ship.statScale)), 0) / active.length;
-        const fuelFactor = active.reduce((sum, ship) => sum + Math.min(1, ship.fuel / Math.max(1, ship.definition.fuel * ship.statScale)), 0) / active.length;
-        return Math.max(0.2, supplyFactor * (0.5 + ammoFactor * 0.25 + fuelFactor * 0.25));
+        if (!this.ships.some(ship => ship.state !== 'destroyed')) return 0;
+        return Math.max(0, Math.min(1, this.operationalReadiness / 100));
     }
-    public get signature() { return this.ships.filter(ship => ship.state !== 'destroyed').reduce((sum, ship) => sum + ship.definition.signature, 0) * Math.max(0.6, 1 - this.skills.sensors * 0.08); }
+    public get readinessEfficiency() {
+        if (this.operationalReadiness >= TACTICAL_BALANCE.lowReadinessThreshold) return 1;
+        const normalized = Math.max(0, this.operationalReadiness) / TACTICAL_BALANCE.lowReadinessThreshold;
+        return TACTICAL_BALANCE.minimumReadinessEfficiency + (1 - TACTICAL_BALANCE.minimumReadinessEfficiency) * normalized;
+    }
+    public get maxFuel() {
+        return this.ships.filter(ship => ship.state !== 'destroyed').reduce((sum, ship) => sum + ship.maxFuelCapacity, 0);
+    }
+    public get totalEnergy() { return this.ships.filter(ship => ship.alive).reduce((sum, ship) => sum + ship.energy, 0); }
+    public get maxEnergy() { return this.ships.filter(ship => ship.alive).reduce((sum, ship) => sum + ship.maxEnergy, 0); }
+    public get fuelBurnPerDistance() {
+        return TACTICAL_BALANCE.fuelPerDistance * this.ships.filter(ship => ship.alive)
+            .reduce((sum, ship) => sum + Math.sqrt(Math.max(0.02, ship.statScale)), 0);
+    }
+    public get estimatedFuelRange() {
+        const burn = this.fuelBurnPerDistance;
+        return burn > 0 ? this.fuel / burn : 0;
+    }
+    public get signature() {
+        let signature = this.ships.filter(ship => ship.alive)
+            .reduce((sum, ship) => sum + ship.definition.signature * Math.sqrt(Math.max(0.02, ship.statScale)), 0);
+        signature *= Math.max(0.6, 1 - this.skills.sensors * 0.08);
+        if (this.isCloaked) signature *= 0.25;
+        if (this.abilities.afterburner.active) signature *= TACTICAL_BALANCE.afterburnerSignatureMultiplier;
+        if (this.fuel <= 0) signature *= TACTICAL_BALANCE.emptyFuelSignatureMultiplier;
+        return Math.max(0.01, signature);
+    }
     public getSkillLevel(skill: FleetSkillId) { return this.skills[skill] || 0; }
     public canLearnSkill(skill: FleetSkillId) { return this.skillPoints > 0 && !!FLEET_SKILLS[skill] && this.skills[skill] < this.level; }
     public learnSkill(skill: FleetSkillId) {
@@ -128,6 +162,51 @@ export class Fleet extends Entity {
         if (this.ships.length > 0) return;
         this.ships = FleetGenerator.generate(this.legacyBudget, this.faction);
         this.selectedShipId = this.ships[0]?.id || null;
+        this.fuel = this.maxFuel;
+        if (!this.isPlayer) {
+            this.abilities.afterburner.charges = 1;
+            this.abilities.mine.charges = 1;
+            if (this.faction === 'military' || this.faction === 'mercenary') this.abilities.bubble.charges = 1;
+            if (this.faction === 'raider') this.abilities.cloak.charges = 1;
+        }
+    }
+
+    public consumeFleetEnergyFraction(fraction: number) {
+        const active = this.ships.filter(ship => ship.alive);
+        const safeFraction = Math.max(0, fraction);
+        if (!active.length || active.some(ship => ship.energy + 1e-6 < ship.maxEnergy * safeFraction)) return false;
+        for (const ship of active) ship.spendEnergy(ship.maxEnergy * safeFraction);
+        return true;
+    }
+
+    /** Spends a fraction of total maximum Energy, shared by current Energy reserves. */
+    public consumePooledEnergyFraction(fraction: number) {
+        const active = this.ships.filter(ship => ship.alive);
+        const safeFraction = Math.max(0, fraction);
+        if (!active.length) return false;
+        const totalAvailable = active.reduce((sum, ship) => sum + ship.energy, 0);
+        const cost = active.reduce((sum, ship) => sum + ship.maxEnergy, 0) * safeFraction;
+        if (totalAvailable + 1e-6 < cost) return false;
+        if (cost <= 0) return true;
+        for (const ship of active) {
+            ship.spendEnergy(cost * ship.energy / totalAvailable);
+        }
+        return true;
+    }
+
+    public clampFuelToCapacity() {
+        this.fuel = Math.max(0, Math.min(this.maxFuel, this.fuel));
+        return this.fuel;
+    }
+
+    public addFuel(amount: number) {
+        const previous = this.fuel;
+        this.fuel = Math.min(this.maxFuel, Math.max(0, this.fuel + amount));
+        return this.fuel - previous;
+    }
+
+    public setReadiness(value: number) {
+        this.operationalReadiness = Math.max(0, Math.min(100, value));
     }
 
     public issueOrder(type: FleetOrderType, shipId?: string) {
@@ -178,12 +257,23 @@ export class Fleet extends Entity {
 
     update(dt: number) {
         this.tacticalClock += dt; this.ensureComposition();
-        for (const ship of this.ships) ship.update(dt);
+        this.clampFuelToCapacity();
+        for (const ship of this.ships) ship.update(dt, this.readinessEfficiency);
         if (this.velocity.mag() > 5) {
-            const fuelUse = this.velocity.mag() * dt * 0.00035;
-            for (const ship of this.ships.filter(ship => ship.alive)) ship.fuel = Math.max(0, ship.fuel - fuelUse);
+            const afterburnerMultiplier = this.abilities.afterburner.active ? TACTICAL_BALANCE.afterburnerFuelMultiplier : 1;
+            const fuelUse = this.velocity.mag() * dt * this.fuelBurnPerDistance * afterburnerMultiplier;
+            this.fuel = Math.max(0, this.fuel - fuelUse);
         }
-        RepairService.update(this, dt, this.state === 'combat' || this.currentTarget !== null);
+        const inCombat = this.state === 'combat' || this.currentTarget !== null;
+        if (inCombat) this.setReadiness(this.operationalReadiness - TACTICAL_BALANCE.combatReadinessPerSecond * dt);
+        if (this.abilities.afterburner.active) {
+            this.setReadiness(this.operationalReadiness - TACTICAL_BALANCE.afterburnerReadinessPerSecond * dt);
+        } else if (!inCombat && this.operationalReadiness < 100 && this.supplies > 0) {
+            const recovery = Math.min(TACTICAL_BALANCE.readinessRecoveryPerSecond * dt, 100 - this.operationalReadiness, this.supplies * TACTICAL_BALANCE.readinessPerSupply);
+            this.setReadiness(this.operationalReadiness + recovery);
+            this.supplies = Math.max(0, this.supplies - recovery / TACTICAL_BALANCE.readinessPerSupply);
+        }
+        RepairService.update(this, dt, inCombat);
         this.refreshFleetState(dt);
         // Sanitize position and velocity to prevent NaN errors
         if (!isFinite(this.position.x) || !isFinite(this.position.y)) this.position = new Vector2(0, 0);
@@ -216,14 +306,12 @@ export class Fleet extends Entity {
                 if (a.timer <= 0) {
                     a.active = false;
                     if (key === 'cloak') this.isCloaked = false;
+                    const definition = ABILITY_DEFINITIONS[key as keyof typeof ABILITY_DEFINITIONS];
+                    if (definition.readinessCost > 0) {
+                        this.setReadiness(this.operationalReadiness - definition.readinessCost);
+                    }
                 }
             }
-        }
-
-        if (this.abilities.medkit.active) {
-            const selected = this.ships.find(ship => ship.id === this.selectedShipId);
-            if (selected?.state === 'disabled') selected.stabilize();
-            if (selected?.alive) selected.restore(selected.maxHull * 0.2 / this.abilities.medkit.duration * dt);
         }
 
         if (this.state === 'combat') {
@@ -243,8 +331,10 @@ export class Fleet extends Entity {
 
         // Ability modifiers
         if (this.abilities.afterburner.active) {
-            currentMaxSpeed *= 1.5;
+            currentMaxSpeed *= TACTICAL_BALANCE.afterburnerSpeedMultiplier;
         }
+        if (this.fuel <= 0) currentMaxSpeed *= TACTICAL_BALANCE.emergencySpeedMultiplier;
+        currentMaxSpeed *= this.readinessEfficiency;
         if (this.abilities.bubble.active) {
             currentMaxSpeed *= 0.5;
         }
@@ -434,7 +524,7 @@ export class Fleet extends Entity {
         ctx.fill();
 
         // Combat Flashes
-        if (this.state === 'combat' && Math.random() > 0.7) {
+        if (this.state === 'combat' && Math.sin(this.tacticalClock * 13 + this.position.x * 0.01) > 0.45) {
             ctx.fillStyle = 'white';
             ctx.fill();
         }
@@ -475,7 +565,7 @@ export class Fleet extends Entity {
             const myScreenPos = camera.worldToScreen(this.position);
 
             // Pulsing attack line with particles
-            const time = Date.now() * 0.005;
+            const time = this.tacticalClock * 5;
             const pulse = 0.5 + 0.5 * Math.sin(time);
             const alpha = 0.8 + 0.2 * Math.sin(time * 2);
 
@@ -495,10 +585,12 @@ export class Fleet extends Entity {
             const numParticles = Math.floor(dist / 20);
             for (let i = 0; i < numParticles; i++) {
                 const t = i / numParticles;
-                const x = myScreenPos.x + (targetScreenPos.x - myScreenPos.x) * t + (Math.random() - 0.5) * 10;
-                const y = myScreenPos.y + (targetScreenPos.y - myScreenPos.y) * t + (Math.random() - 0.5) * 10;
-                const size = 1 + Math.random() * 2;
-                ctx.fillStyle = `rgba(255, 150, 0, ${Math.random() * 0.5})`;
+                const wave = Math.sin(i * 12.9898 + this.tacticalClock * 7.1);
+                const crossWave = Math.cos(i * 8.233 + this.tacticalClock * 5.7);
+                const x = myScreenPos.x + (targetScreenPos.x - myScreenPos.x) * t + wave * 5;
+                const y = myScreenPos.y + (targetScreenPos.y - myScreenPos.y) * t + crossWave * 5;
+                const size = 1 + (wave * 0.5 + 0.5) * 2;
+                ctx.fillStyle = `rgba(255, 150, 0, ${0.15 + (crossWave * 0.5 + 0.5) * 0.35})`;
                 ctx.beginPath();
                 ctx.arc(x, y, size, 0, Math.PI * 2);
                 ctx.fill();

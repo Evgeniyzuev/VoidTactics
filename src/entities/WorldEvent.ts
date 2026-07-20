@@ -4,12 +4,24 @@ import type { Fleet } from './Fleet';
 
 export type WorldEventKind = 'anomaly' | 'distress' | 'salvage';
 export type WorldEventPhase = 'hidden' | 'discovered' | 'engaged' | 'reinforcements' | 'resolved' | 'expired';
-export type WorldEventOutcome = 'transport-saved' | 'transport-lost' | 'salvaged' | 'decoded' | 'missed' | null;
+export type WorldEventOutcome = string | null;
+export interface WorldEventPendingChoice {
+    kind: 'combat';
+    choiceId: string;
+    victoryOutcome: string;
+    defeatOutcome: string;
+    victoryDangerDelta: number;
+    defeatDangerDelta: number;
+}
 
 let nextWorldEventId = 1;
 
 export class WorldEvent extends Entity {
     public readonly id = `event-${nextWorldEventId++}`;
+    public directorId: string | null = null;
+    public definitionId: string | null = null;
+    public threatBudget = 0;
+    public externallyManaged = false;
     public active = true;
     public discovered = false;
     public resolutionReported = false;
@@ -17,6 +29,7 @@ export class WorldEvent extends Entity {
     public phase: WorldEventPhase = 'hidden';
     public phaseAge = 0;
     public outcome: WorldEventOutcome = null;
+    public pendingChoice: WorldEventPendingChoice | null = null;
     public discoveryRadius = 900;
     public interactionRadius = 110;
     public scenarioSpawned = false;
@@ -46,11 +59,16 @@ export class WorldEvent extends Entity {
 
     resolve(outcome: Exclude<WorldEventOutcome, null>) {
         this.outcome = outcome;
+        this.pendingChoice = null;
         this.setPhase(outcome === 'missed' ? 'expired' : 'resolved');
     }
 
+    setPendingChoice(choice: Readonly<WorldEventPendingChoice> | null) {
+        this.pendingChoice = choice ? { ...choice } : null;
+    }
+
     update(dt: number) {
-        if (!this.active) return;
+        if (!this.active || this.externallyManaged) return;
         this.phaseAge += dt;
         this.timeLeft = Math.max(0, this.timeLeft - dt);
         if (this.timeLeft <= 0) this.resolve('missed');

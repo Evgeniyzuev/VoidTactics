@@ -276,13 +276,19 @@ export class SystemManager {
         return true;
     }
 
-    public spawnFleetsForSystem(systemId: number, playerStrength: number, fleets: Fleet[], difficultyMultiplier: number, forcedFaction?: Faction, playerLevel: number = 1): Fleet[] {
+    public spawnFleetsForSystem(systemId: number, playerStrength: number, fleets: Fleet[], difficultyMultiplier: number, forcedFaction?: Faction, playerLevel: number = 1, systemDanger: number = 0): Fleet[] {
         void difficultyMultiplier;
         const system = this.systems.get(systemId);
         if (!system) return [];
 
         const rules = system.spawnRules;
-        const levelAdjustedWeights = this.getLevelAdjustedWeights(rules.factionWeights, playerLevel);
+        const danger = Math.max(0, Math.min(100, systemDanger));
+        const levelAdjustedWeights = this.getLevelAdjustedWeights(rules.factionWeights, playerLevel).map(entry => ({
+            ...entry,
+            weight: entry.weight * (entry.type === 'pirate' || entry.type === 'raider'
+                ? 1 + danger / 50
+                : entry.type === 'military' ? 1 + danger / 200 : 1)
+        }));
 
         // Pick faction based on weights with percentage restrictions
         let selectedFaction: Faction = 'civilian';
@@ -366,6 +372,7 @@ export class SystemManager {
         const variance = 0.7 + Math.random() * 0.6;
         const fleetBudget = Math.max(0, playerStrength * coefficient * variance);
         npc.ships = FleetGenerator.generate(fleetBudget, selectedFaction);
+        npc.fuel = npc.maxFuel;
         npc.commandCapacity = Math.max(12, npc.commandUsed);
         npc.selectedShipId = npc.ships[0]?.id || null;
         if (selectedFaction === 'military' || selectedFaction === 'mercenary') npc.doctrine.targetPriority = 'artillery';

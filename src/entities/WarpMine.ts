@@ -54,7 +54,7 @@ export class WarpMine extends Entity {
         this.isExploded = true;
 
         // Create a short-lived bubble (1/5th of standard 10s = 2s)
-        const bubble = new BubbleZone(this.position.x, this.position.y, 200);
+        const bubble = new BubbleZone(this.position.x, this.position.y, 200, 8, 0.2, this.owner);
         bubble.duration = 2.0;
         addBubble(bubble);
 

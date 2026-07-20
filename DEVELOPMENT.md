@@ -1,98 +1,114 @@
-# VoidTactics Development Documentation
+# VoidTactics: документация разработки
 
-Игровые правила текущей вертикальной срезки, прогрессия, роли и FAQ описаны в [src/PROGRESSION.md](src/PROGRESSION.md).
+## Цель текущего вертикального среза
 
-## 1. Technology Stack
-*   **Language**: TypeScript (Strict typing for reliability).
-*   **Bundler**: Vite (Fast startup, HMR).
-*   **Rendering**: HTML5 Canvas API (Maximum performance for 2D, native control).
-*   **Platform**: Web browser (PC/Mobile). PWA (planned).
+VoidTactics должна связывать тактический бой и живую стратегическую карту в один короткий цикл:
 
-## 2. Project Architecture
-The project is built on a modular Object-Oriented Architecture (OOP) with elements of ECS (for future optimization).
+`обнаружить контакт → оценить риск → потратить fuel, Energy и readiness → принять решение в событии → израсходовать supplies → получить награду и последствие`.
 
-### Main Modules
-*   **Core**:
-    *   `Game`: Main controller. Manages the game loop (`loop`), updates (`update`) and rendering (`draw`). Owns the list of entities.
-    *   `InputManager`: Abstracts input. Unifies Mouse and Touch events into a single interface (cursor position, clicks, gestures).
-*   **Renderer**:
-    *   `Renderer`: Wrapper over `CanvasRenderingContext2D`. Handles window resize, DPI (Retina), frame clearing.
-    *   `Camera`: Manages the "window" into the game world. Transforms coordinates World <-> Screen. Supports target tracking and zoom.
-*   **Entities**:
-    *   `Entity` (Abstract): Base class for all objects. Has position (`Vector2`), methods `update(dt)` and `draw(ctx, camera)`.
-    *   `Fleet`: Player or AI. Implements movement physics (inertia, acceleration).
-    *   `CelestialBody`: Planets, Stars, Asteroids. Implements lighting (shadows relative to the sun).
-*   **Utils**:
-    *   `Vector2`: Vector math (addition, subtraction, normalization) for physics.
+Текущая реализация ограничивается одной бесшовной системой, небольшими флотами и сессиями по 5–12 минут. На карте флот остаётся одной Canvas-иконкой, а его корабли существуют как данные. Управление и интерфейс должны одинаково работать мышью и touch.
 
-### Interaction Diagram (Current)
-```mermaid
-graph TD
-    Main --> Game
-    Game --> Renderer
-    Game --> InputManager
-    Game --> Camera
-    Game --> EntityList
-    EntityList -- contains --> Fleet
-    EntityList -- contains --> CelestialBody
-    Fleet -- uses --> Vector2
-    CelestialBody -- uses --> Vector2
-```
+Игровые правила и FAQ находятся в [src/PROGRESSION.md](src/PROGRESSION.md), подробная разбивка механик и событий — в [src/ECOSYSTEM_ROADMAP.md](src/ECOSYSTEM_ROADMAP.md).
 
-### Principles (Refactoring Goals)
-*   **Avoid Hardcoding**: Currently world initialization (`initWorld`) is inside `Game.ts`. Plans to extract this to `SceneManager` or `LevelLoader`.
-*   **Configuration**: Ship and planet parameters should be loaded from JSON/Config files, not hardcoded in code.
+## Технологический стек
 
-## 3. Current Status (Implemented)
-*   [x] **Game Engine**: Loop, Time delta, Canvas Setup.
-*   [x] **Camera**: Smooth tracking (Lerp), zoom (mouse wheel/pinch).
-*   [x] **Controls**: Touch/Mouse click for movement, double-click in inspection mode.
-*   [x] **Fleet Physics**: Acceleration, inertia, drift (Drift).
-*   [x] **Marker Visual**: Animated Bubble Target.
-*   [x] **Space**:
-*   [x] Star (Sol) with shader glow.
-*   [x] Planets with dynamic shadows (Day/Night cycle) depending on Sun position.
-*   [x] Background (Space Background).
-*   [x] Asteroids
-*   [x] **Selection System** (click detection on objects).
-*   [x] **Planet/Ship Selection** - show information with action buttons.
-*   [x] **Fleet Interaction System**:
-    *   "Approach" mode - following selected fleet at distance.
-    *   Visual indication (dashed line) when following.
-    *   Contact dialog when approaching (Communicate/Attack/Cancel).
-    *   Basic battle screen (placeholder).
+- TypeScript в строгом режиме.
+- Vite для сборки и dev-server.
+- HTML5 Canvas для мира и DOM/CSS для HUD и окон.
+- Десктопные и мобильные браузеры; PWA остаётся последующим этапом.
+- Конфигурации корпусов, оружия, способностей, сенсоров и событий хранят коэффициенты отдельно от `Game` и `draw()`.
+- Seeded RNG используется для событий, сохранений и воспроизводимых тестов.
 
-## 4. Development Plan (Roadmap)
+## Архитектура P0
 
-### Phase 2: Interactivity and UI (In Progress)
+- `Game` управляет циклом, состоянием мира и связывает сервисы, но не содержит формулы баланса.
+- `Fleet` хранит корабли, приказ, топливо, supplies и readiness. Threat всегда вычисляется, а не расходуется как здоровье.
+- `Ship` хранит shield, armor, hull, единую Energy, боезапас, состояние систем и `active/disabled/destroyed`.
+- `SensorService` является единственным источником уровней контакта для рендера, AI, команд, tooltip и событий.
+- `AbilityService` валидирует цель, charge, cooldown, Energy, fuel и readiness до списания ресурсов.
+- `RepairService` разделяет стабилизацию, полевой ремонт и обслуживание на станции.
+- `SignalDirector` по seed создаёт, обновляет и самостоятельно разрешает события.
+- `SaveSystem` хранит снимки кораблей, ресурсов и событий в версии v4.
 
-2.  **HUD (Interface)**:
-    *   "Dock" button when approaching a planet.
-3.  **Orbital Mechanics**:
-    *   Make planets move in orbits (realistic or simplified).
+Полная тактическая симуляция используется рядом с игроком или камерой. Стратегические флоты и сенсоры обновляются с частотой 5–10 Гц, дальние бои — агрегированными раундами. Визуальные снаряды и эффекты не обязаны быть отдельными игровыми сущностями.
 
-### Phase 3: Gameplay and Economy
-1.  **Inventory and Resources**:
-    *   Fuel, Supplies.
-    *   Trading at stations (UI Modal windows).
-2.  **System Generation**:
-    *   Procedural generation of star systems (JSON data).
-    *   Transitions between systems (Hyperjump).
-3.  **Communications System**:
-    *   Dialogs with NPC fleets.
-    *   Trading and quests through communications.
+## Публичные данные P0
 
-### Phase 4: Combat System
-1.  **Weapons**: Ship slots, projectiles (Projectiles).
-2.  **AI**: Enemy behavior (Orbit, Chase, Attack).
-3.  **Damage Model**: Shields, Armor, Structure (like in Starsector).
-4.  **Detailed Battle Screen**: Weapon control, shields, maneuvers.
+Новые или обновлённые интерфейсы:
 
-## 5. Game Systems
-*   **Ability System**:
-    *   Consumables: Afterburner, Bubble, Cloak, Warp Mine.
-    *   Charges management ($50 per unit at Terra, max 10).
-    *   Ability panel with cooldowns and charge badges.
-*   **Tactical Entities**:
-    *   `WarpMine`: Proximity trigger, explosion damage, and short-stasis effect (3 damage + 5% size).
-    *   `BubbleZone`: Area-of-effect stasis field that slows ships by 90%.
+- `ContactLevel = 'blip' | 'classified' | 'identified'`;
+- `SensorContact` — стабильный id, уровень, последнее положение, прогресс сканирования и время устаревания;
+- `SensorProfile` — range, scan resolution, signature и временные модификаторы;
+- `FleetResources` — fuel/maxFuel, supplies/maxSupplies и readiness;
+- `HullDefinition` — `energyCapacity`, `energyRecharge`, `scanResolution` вместо старой модели flux;
+- `AbilityDefinition` и `AbilityActivationResult` — стоимость, цель, длительность и причина отказа;
+- `SignalDefinition`, `SignalDirectorSnapshot`, `WorldEventSnapshot` — тип, фазы, TTL, участники, результат и флаг выданной награды;
+- `GameSaveDataV4` — world seed/RNG state, system danger, ресурсы флота и активные события.
+
+## Порядок реализации
+
+### P0 — сенсоры, логистика и живые сигналы
+
+1. Зафиксировать формулы и конфигурационные значения в документации и игровых config-файлах.
+2. Перевести оружие, щиты и активные системы с flux на одну шкалу Energy.
+3. Сделать fuel, supplies и readiness хранимыми и реально расходуемыми ресурсами.
+4. Добавить `SensorService`, зелёную границу радара, три качества контакта и Active Scan Pulse.
+5. Перевести форсаж, Emergency Repair, Shield Cell и Weapon Overcharge на `AbilityService`.
+6. Добавить платное обслуживание на Terra и раздельные `AbilityCrate`/`ResourceCrate`.
+7. Заменить фиксированные сигналы на `SignalDirector` и пять первых событий.
+8. Выполнить миграцию v3 → v4, автоматические тесты, production build и touch-проверку.
+
+Критерий готовности P0: любой видимый ресурс влияет на правила; неизвестный флот нельзя изучить или атаковать без контакта; событие может завершиться без игрока; одинаковый seed воспроизводит одинаковую последовательность.
+
+### P1 — тактическая специализация
+
+- Сенсорная сеть флота, EWAR, разведывательная подсветка и дальний target lock.
+- Различия kinetic/explosive/energy, применение тяжёлого оружия по размеру цели.
+- Ограниченные перехваты защитников и защита от повторного bubble по одной цели.
+- Disabled-корабли, эвакуация, salvage и восстановление судов.
+- Fitting корпусов и модулей с понятными компромиссами.
+
+### P2 — последствия и расширение мира
+
+- Системные повреждения от перегрева и низкой readiness.
+- Более длинные цепочки событий, отношения, репутация и контракты.
+- Артефакты и технологии, меняющие правила сборки вместо линейного бонуса.
+- Производство, торговые маршруты и несколько связанных систем.
+
+## Сохранения v4 и совместимость
+
+- Загрузка поддерживает цепочку `v4 → v3 → v2`; старый ключ не удаляется до успешного сохранения v4.
+- Старые корабли и их id, деньги, навыки, прогресс, charges и supplies сохраняются.
+- Fleet fuel v3 получается суммированием топлива кораблей и ограничивается новой capacity.
+- Energy мигрирует по формуле `maxEnergy × (1 − oldFlux/maxFlux)`; при отсутствующем/нулевом `maxFlux` используется сохранённая доля Energy либо 100%.
+- Идентификаторы `medkit`, `shield` и `fire` не меняются, меняется только отображаемое имя и действие.
+- Для старой игры создаются пустой список событий, детерминированный world seed и нейтральный `systemDanger`.
+- После загрузки счётчик `ship-*` синхронизируется с максимальным существующим id.
+- Повторная загрузка или миграция не должна повторно выдавать награды событий.
+
+## Проверка качества
+
+Автоматические тесты должны покрывать:
+
+- границы сенсора, signature, повреждение сенсоров, прогресс сканирования и устаревание контакта;
+- невозможность инспекции/атаки невидимой цели;
+- обычный и форсажный fuel burn, аварийную скорость при пустом баке;
+- расход/регенерацию Energy оружием и щитом, отсутствие регенерации у disabled;
+- действие трёх расходников только на заявленный слой и отсутствие списания при ошибке;
+- снижение readiness и точный расход supplies при восстановлении;
+- детерминированность событий, лимит активных сигналов и single-reward;
+- round-trip v4 и миграцию v2/v3 без потери кораблей и прогрессии;
+- полный DPS/Threat у исправного флота;
+- обновление 100 стратегических флотов без покадрового полного расчёта;
+- раскрытие/сворачивание панели флота и все команды на touch-экране.
+
+Перед релизом обязательны `tsc`, production build и ручной сценарий: обнаружение → сканирование → форсаж → бой → расходник → salvage → платный ремонт → сохранение/загрузка.
+
+## Источники принципов
+
+Используются отдельные удачные принципы, но не MMO-масштаб и не полный микроменеджмент референсов:
+
+- живой мир, разные занятия и активная пауза — [Space Rangers Legacy](https://www.fulqrumpublishing.com/game/721-space-rangers-legacy);
+- сенсоры, CR и экспедиционная логистика — [Starsector: Active Sensor Burst](https://fractalsoftworks.com/tag/active-sensor-burst/) и [официальные patch notes](https://fractalsoftworks.com/forum/index.php?topic=8810.0);
+- capacitor, signature, target lock и EWAR — [EVE Combat Mechanics](https://www.eveonline.com/eve-academy/ships/combat-mechanics);
+- специализация fitting и защиты — [EVE Academy: fitting](https://www.eveonline.com/news/view/eve-academy-fitting-your-ship).

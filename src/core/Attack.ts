@@ -1,10 +1,9 @@
 import { Fleet } from '../entities/Fleet';
 import { Vector2 } from '../utils/Vector2';
 import { Game } from './Game';
-import { BubbleZone } from '../entities/BubbleZone';
 import { CelestialBody } from '../entities/CelestialBody';
 import { TargetResolver } from '../tactical/TargetResolver';
-import { COMBAT_BALANCE } from '../tactical/ShipDefinitions';
+import { COMBAT_BALANCE, TACTICAL_BALANCE } from '../tactical/ShipDefinitions';
 
 export class Attack {
     public attacker: Fleet;
@@ -16,22 +15,22 @@ export class Attack {
         this.attacker = attacker;
         this.target = target;
         this.game = game;
+        if (target instanceof CelestialBody) {
+            attacker.state = 'mining';
+            return;
+        }
         // Set attack states
         attacker.currentTarget = target;
         attacker.state = 'combat';
+        attacker.activeBattle = this;
+        target.state = 'combat';
+        if (!target.activeBattle) target.activeBattle = this;
 
         // Disable cloak if player is attacking
         if (attacker.isPlayer) {
             attacker.abilities.cloak.active = false;
             attacker.isCloaked = false;
         }
-    }
-
-    private createBubbleForAttacker() {
-        // Fixed radius for all bubbles
-        const radius = 200;
-        const bubbleZone = new BubbleZone(this.attacker.position.x, this.attacker.position.y, radius);
-        this.game.getBubbleZones().push(bubbleZone);
     }
 
     update(dt: number) {
@@ -43,8 +42,10 @@ export class Attack {
             // Reset states
             this.attacker.state = 'normal';
             this.attacker.currentTarget = null;
+            if (this.attacker.activeBattle === this) this.attacker.activeBattle = null;
             this.target.state = 'normal';
             this.target.currentTarget = null;
+            if (this.target.activeBattle === this) this.target.activeBattle = null;
             return;
         }
 
@@ -88,18 +89,17 @@ export class Attack {
         let totalDamage = 0;
         let totalHullDamage = 0;
         for (const ship of firingShips) {
-            if (ship.flux >= ship.maxFlux * 0.92) continue;
             const targetShip = TargetResolver.resolve(ship, this.target.ships, this.attacker.doctrine, firingShips);
             if (!targetShip) continue;
             const weaponsPenalty = ship.damagedSystems.includes('weapons') ? 0.55 : 1;
             for (const weapon of ship.weapons) {
                 const usesAmmo = weapon.damageType !== 'energy';
                 if (usesAmmo && ship.ammunition <= 0) continue;
-                const fluxPerSecond = weapon.energyCost / Math.max(0.1, weapon.cooldown);
-                if (ship.flux + fluxPerSecond * dt > ship.maxFlux) continue;
-                let damage = weapon.damage / Math.max(0.1, weapon.cooldown) * COMBAT_BALANCE.damageScale * dt * weaponsPenalty * this.attacker.readiness;
-                if (this.attacker.abilities.fire.active) damage *= 2;
-                ship.flux += fluxPerSecond * dt;
+                const overcharged = ship.overchargeTimer > 0;
+                const energyPerSecond = weapon.energyCost / Math.max(0.1, weapon.cooldown) * (overcharged ? TACTICAL_BALANCE.overchargeEnergyMultiplier : 1);
+                if (!ship.spendEnergy(energyPerSecond * dt)) continue;
+                let damage = weapon.damage * ship.statScale / Math.max(0.1, weapon.cooldown) * COMBAT_BALANCE.damageScale * dt * weaponsPenalty * this.attacker.readinessEfficiency;
+                if (overcharged) damage *= TACTICAL_BALANCE.overchargeDamageMultiplier;
                 if (usesAmmo) ship.ammunition = Math.max(0, ship.ammunition - dt / Math.max(0.1, weapon.cooldown) * 0.05);
                 totalDamage += damage;
                 const hullDamage = this.target.receiveTacticalDamage(damage, weapon.damageType, targetShip.id);
@@ -142,8 +142,7 @@ export class Attack {
                 (!this.target.isBubbled || this.target.bubbleDistance > 180) &&
                 !bubbleAlreadyQueued &&
                 this.attacker.threatRating > this.target.threatRating) {
-                this.createBubbleForAttacker();
-                this.attacker.abilities.bubble.cooldown = this.attacker.abilities.bubble.cdMax;
+                this.game.activateNpcAbility(this.attacker, 'bubble');
             }
 
             // Target responds if not attacking anyone (skip for asteroids)
@@ -161,10 +160,12 @@ export class Attack {
             if (this.attacker.ships.some(ship => ship.alive)) {
                 this.attacker.state = 'normal';
                 this.attacker.currentTarget = null;
+                if (this.attacker.activeBattle === this) this.attacker.activeBattle = null;
             }
             if (this.target.ships.some(ship => ship.alive)) {
                 this.target.state = 'normal';
                 this.target.currentTarget = null;
+                if (this.target.activeBattle === this) this.target.activeBattle = null;
             }
         }
     }

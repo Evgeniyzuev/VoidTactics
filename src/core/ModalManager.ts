@@ -5,6 +5,34 @@ import { FLEET_SKILLS } from '../entities/Fleet';
 import { getShopShipStats, getShopSizeMultiplier, getShopTechMultiplier, getShopMultiplier, getShopRequirements, SHOP_SHIPS } from '../tactical/FleetGenerator';
 import { bindButtonAction } from '../utils/TouchButton';
 
+export interface TerraServiceQuoteView {
+    fuel: number;
+    supplies: number;
+    ammunition: number;
+    hull: number;
+    armor: number;
+    total: number;
+}
+
+export interface TerraDialogState {
+    currentStrength: number;
+    currentMaxStrength: number;
+    currentMoney: number;
+    commandUsed: number;
+    commandCapacity: number;
+    shipCost: number;
+    levelInfo: string;
+    mercenaryCount: number;
+    mercenaryMax: number;
+    mercenaryCost: number;
+    serviceQuote?: TerraServiceQuoteView;
+}
+
+export interface TerraServicePurchaseResult {
+    ok: boolean;
+    cost: number;
+}
+
 export class ModalManager {
     private modalContainer: HTMLDivElement | null = null;
     private modalRefreshTimer: number | null = null;
@@ -543,22 +571,12 @@ export class ModalManager {
      * Show Terra upgrade dialog
      */
     showTerraUpgradeDialog(
-        getState: () => {
-            currentStrength: number,
-            currentMaxStrength: number,
-            currentMoney: number,
-            commandUsed: number,
-            commandCapacity: number,
-            shipCost: number,
-            levelInfo: string,
-            mercenaryCount: number,
-            mercenaryMax: number,
-            mercenaryCost: number
-        },
+        getState: () => TerraDialogState,
         onUpgrade: () => boolean,
         onCancel: () => void,
         onBuyAbility: (id: string) => boolean,
-        onHireMercenary: () => boolean
+        onHireMercenary: () => boolean,
+        onPurchaseService?: () => TerraServicePurchaseResult
     ) {
         this.closeModal();
 
@@ -578,14 +596,17 @@ export class ModalManager {
 
         const dialog = document.createElement('div');
         dialog.style.background = 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)';
-        dialog.style.padding = '30px';
+        dialog.style.padding = 'clamp(14px, 4vw, 30px)';
         dialog.style.borderRadius = '12px';
         dialog.style.border = '2px solid rgba(0, 200, 255, 0.5)';
         dialog.style.boxShadow = '0 8px 32px rgba(0, 200, 255, 0.3)';
         dialog.style.color = 'white';
         dialog.style.fontFamily = 'monospace';
         dialog.style.textAlign = 'center';
-        dialog.style.minWidth = '400px';
+        dialog.style.width = 'min(92vw, 620px)';
+        dialog.style.maxHeight = '92vh';
+        dialog.style.overflowY = 'auto';
+        dialog.style.boxSizing = 'border-box';
 
         const title = document.createElement('h2');
         title.textContent = '🌍 Terra Station';
@@ -627,10 +648,12 @@ export class ModalManager {
         upgradeButton.style.background = '#00AA00';
         upgradeButton.style.color = 'white';
         upgradeButton.style.cursor = 'pointer';
-        upgradeButton.onclick = () => {
+        upgradeButton.style.minHeight = '44px';
+        upgradeButton.style.touchAction = 'manipulation';
+        bindButtonAction(upgradeButton, () => {
             onUpgrade();
             updateUi();
-        };
+        });
 
         section1.appendChild(upgradeLabel);
         section1.appendChild(upgradeButton);
@@ -650,13 +673,13 @@ export class ModalManager {
         section2.appendChild(shopLabel);
 
         const abilities = [
-            { id: 'afterburner', name: '🚀 Boost' },
+            { id: 'afterburner', name: '🚀 Afterburner' },
             { id: 'bubble', name: '🫧 Bubble' },
             { id: 'cloak', name: '👻 Cloak' },
             { id: 'mine', name: '💣 Warp Mine' },
             { id: 'medkit', name: '✚ Emergency Repair' },
-            { id: 'fire', name: '🔥 Fire' },
-            { id: 'shield', name: '🛡 Shield' }
+            { id: 'fire', name: '🔥 Weapon Overcharge' },
+            { id: 'shield', name: '🛡 Shield Cell' }
         ];
 
         const shopGrid = document.createElement('div');
@@ -675,14 +698,56 @@ export class ModalManager {
             btn.style.borderRadius = '4px';
             btn.style.cursor = state.currentMoney >= 200 ? 'pointer' : 'not-allowed';
             btn.style.fontSize = '12px';
-            btn.onclick = () => {
+            btn.style.minHeight = '44px';
+            btn.style.touchAction = 'manipulation';
+            bindButtonAction(btn, () => {
                 const ok = onBuyAbility(ability.id);
                 if (ok) updateUi();
-            };
+            });
             shopGrid.appendChild(btn);
             abilityButtons.push(btn);
         });
         section2.appendChild(shopGrid);
+
+        // --- FULL SERVICE SECTION ---
+        const serviceSection = document.createElement('div');
+        serviceSection.style.background = 'rgba(255, 255, 255, 0.05)';
+        serviceSection.style.padding = '15px';
+        serviceSection.style.borderRadius = '8px';
+        serviceSection.style.marginBottom = '20px';
+
+        const serviceLabel = document.createElement('div');
+        serviceLabel.textContent = 'FLEET SERVICE · FULL REPAIR AND RESUPPLY';
+        serviceLabel.style.fontSize = '12px';
+        serviceLabel.style.marginBottom = '8px';
+        serviceLabel.style.opacity = '0.8';
+
+        const serviceBreakdown = document.createElement('div');
+        serviceBreakdown.style.cssText = 'font-size:11px;line-height:1.55;color:#a7c7d9;margin-bottom:10px;text-align:left';
+
+        const serviceStatus = document.createElement('div');
+        serviceStatus.style.cssText = 'min-height:16px;font-size:11px;margin-bottom:8px;color:#ffd166';
+
+        const serviceButton = document.createElement('button');
+        serviceButton.style.padding = '10px 20px';
+        serviceButton.style.width = '100%';
+        serviceButton.style.minHeight = '44px';
+        serviceButton.style.border = '1px solid rgba(0, 255, 160, 0.5)';
+        serviceButton.style.borderRadius = '6px';
+        serviceButton.style.color = 'white';
+        serviceButton.style.fontFamily = 'monospace';
+        serviceButton.style.touchAction = 'manipulation';
+        bindButtonAction(serviceButton, () => {
+            if (!onPurchaseService) return;
+            const result = onPurchaseService();
+            serviceStatus.textContent = result.ok
+                ? (result.cost > 0 ? `Fleet serviced for $${formatNumber(result.cost)}.` : 'Fleet systems recharged.')
+                : `Not enough credits: service costs $${formatNumber(result.cost)}.`;
+            serviceStatus.style.color = result.ok ? '#69f0ae' : '#ff8a80';
+            updateUi();
+        });
+
+        serviceSection.append(serviceLabel, serviceBreakdown, serviceStatus, serviceButton);
 
         // --- MERCENARY SECTION ---
         const section3 = document.createElement('div');
@@ -707,10 +772,12 @@ export class ModalManager {
         mercBtn.style.background = canHire ? 'rgba(255, 200, 0, 0.2)' : '#333';
         mercBtn.style.color = 'white';
         mercBtn.style.cursor = canHire ? 'pointer' : 'not-allowed';
-        mercBtn.onclick = () => {
+        mercBtn.style.minHeight = '44px';
+        mercBtn.style.touchAction = 'manipulation';
+        bindButtonAction(mercBtn, () => {
             const ok = onHireMercenary();
             if (ok) updateUi();
-        };
+        });
 
         section3.appendChild(mercLabel);
         section3.appendChild(mercBtn);
@@ -725,16 +792,20 @@ export class ModalManager {
         closeBtn.style.color = 'white';
         closeBtn.style.borderRadius = '6px';
         closeBtn.style.cursor = 'pointer';
-        closeBtn.onclick = () => {
+        closeBtn.style.minHeight = '44px';
+        closeBtn.style.minWidth = '44px';
+        closeBtn.style.touchAction = 'manipulation';
+        bindButtonAction(closeBtn, () => {
             onCancel();
             this.closeModal();
-        };
+        });
 
         dialog.appendChild(title);
         dialog.appendChild(info);
         dialog.appendChild(levelText);
         dialog.appendChild(section1);
         dialog.appendChild(section2);
+        dialog.appendChild(serviceSection);
         dialog.appendChild(section3);
         dialog.appendChild(closeBtn);
         this.modalContainer.appendChild(dialog);
@@ -754,6 +825,25 @@ export class ModalManager {
                 btn.style.cursor = next.currentMoney >= 200 ? 'pointer' : 'not-allowed';
             }
 
+            const quote = next.serviceQuote;
+            if (quote) {
+                serviceBreakdown.textContent =
+                    `Fuel $${formatNumber(Math.ceil(quote.fuel))} · Supplies $${formatNumber(Math.ceil(quote.supplies))} · ` +
+                    `Ammo $${formatNumber(Math.ceil(quote.ammunition))} · Hull $${formatNumber(Math.ceil(quote.hull))} · ` +
+                    `Armor $${formatNumber(Math.ceil(quote.armor))} · Shield/Energy FREE`;
+                serviceButton.textContent = quote.total > 0
+                    ? `FULL SERVICE · $${formatNumber(quote.total)}`
+                    : 'RECHARGE SHIELD & ENERGY · FREE';
+                serviceButton.disabled = !onPurchaseService || quote.total > next.currentMoney;
+            } else {
+                serviceBreakdown.textContent = 'Fuel $2/u · Supply $25 · Ammo $1/u · Hull $3/u · Armor $2/u · Shield/Energy FREE';
+                serviceButton.textContent = 'FULL SERVICE · CONNECT GAME CALLBACK';
+                serviceButton.disabled = true;
+            }
+            serviceButton.style.background = serviceButton.disabled ? '#333' : 'rgba(0, 180, 110, 0.32)';
+            serviceButton.style.cursor = serviceButton.disabled ? 'not-allowed' : 'pointer';
+            serviceButton.style.opacity = serviceButton.disabled ? '0.65' : '1';
+
             mercLabel.textContent = `HIRE MERCENARY (${next.mercenaryCount}/${next.mercenaryMax} in system)`;
             const nextCanHire = next.mercenaryCount < next.mercenaryMax && next.currentMoney >= next.mercenaryCost;
             mercBtn.textContent = `Hire mercenary (${formatNumber(next.mercenaryCost)}$)`;
@@ -769,15 +859,20 @@ export class ModalManager {
         this.modalContainer = this.createOverlay();
         const dialog = this.createDialog('VOIDTACTICS · СПРАВКА', 720);
         const sections = [
-            ['Как понять угрозу?', 'Стартовый флот — один Skiff с Threat примерно 10. Threat — компактная оценка боевой опасности флота: корпус кораблей, оружие и поддержка. Это не запас здоровья.'],
-            ['Почему щит не пробивается?', 'Урон проходит слоями: щит → броня → корпус. Щит восстанавливается после паузы, броня и корпус — только поддержкой, припасами или на станции. Поэтому фокусируйте огонь и следите за DPS.'],
-            ['Что означает форма и цвет?', 'Силуэт показывает роль флагмана. Цвет кольца — экосистемная категория: зелёная добыча ниже 0,55× вашей силы, жёлтый конкурент до 1,5×, оранжевый хищник до 6×, красная сверхугроза ещё выше.'],
-            ['Как ведут себя флоты?', 'Слабый враждебный флот старается разорвать контакт. Равный вступает в бой только с преимуществом или союзниками. Хищники ищут слабые ценные цели и преследуют дольше. Военные могут принять невыгодный бой, защищая союзника.'],
-            ['Что такое SIGNAL?', 'Сигналы имеют таймер и развиваются без игрока. В событии повреждённого транспорта пираты атакуют конвой, а позже прибывают военные и тяжёлое подкрепление. За участие в спасении платят контракт; уничтоженный транспорт оставляет больше salvage, но не безопасную награду.'],
-            ['Как растёт флот?', 'Деньги зачисляются только за урон по корпусу. NPC получают Threat относительно вашей силы по циклу 1/8…16 с разбросом ±30%. Каждый корабль занимает 1 command point. На Terra кнопка SHIPYARD открывает корпуса по rank; требований уровня нет, но могут требоваться несколько навыков.'],
-            ['Зачем нужны роли?', 'Defender перехватывает часть атак, striker наносит урон, artillery стреляет издалека, scout раскрывает цели и ставит помехи, support ремонтирует и стабилизирует disabled-корабли, flagship задаёт командование.'],
-            ['Как работают уровни и навыки?', 'Каждые 1000 заработанных кредитов открывают уровень (следующий порог растёт в 1,5 раза) и дают 3 очка навыков. Навык можно поднять только ниже текущего уровня игрока: текущий уровень — это cap. Leadership увеличивает command capacity на 3, остальные навыки улучшают снабжение, ремонт, сенсоры, скорость и перехваты.'],
-            ['Что делать после боя?', 'Проверьте disabled-корабли, прикажите REPAIR и пополните припасы. На станции можно полностью восстановить флот. Бой можно покинуть — повреждения и трофеи сохраняются.']
+            ['Что показывает зелёный радар?', 'Окружность — номинальная область уверенного обнаружения. Крупный или летящий на форсаже флот может появиться неизвестной отметкой дальше границы, а scout и сенсорные модули увеличивают радиус.'],
+            ['Почему данные о цели неполные?', 'Контакт проходит три стадии: Blip показывает только отметку, Classified — фракцию, Ships и примерный Threat, Identified — точные DPS, readiness, роли и защиту. Оставайтесь рядом до завершения сканирования.'],
+            ['Что делает Scan Pulse?', 'Active Scan Pulse на 4 секунды удваивает радиус радара и расходует 15% общей Energy. После импульса ваша Signature 8 секунд удвоена: вы увидите дальше, но противники тоже легче обнаружат вас.'],
+            ['Что такое Energy?', 'Это единая шкала корабля для оружия, восстановления shield и активных систем. При пустой Energy стрельба и регенерация щита останавливаются до подзарядки. Старой отдельной шкалы Flux больше нет.'],
+            ['Как работают слои защиты?', 'Урон проходит как shield → armor → hull. Shield восстанавливается после 4 секунд без попаданий и тратит Energy. Armor и hull сами не чинятся; при нуле hull корабль становится disabled.'],
+            ['Зачем нужны fuel и supplies?', 'Fuel тратится только в движении. Supplies оплачивают стабилизацию, ремонт hull/armor, боезапас и восстановление readiness. При нуле fuel остаётся аварийная скорость 25%, но форсаж недоступен.'],
+            ['Что означает readiness?', 'Бой и форсаж снижают боеготовность. Ниже 50 постепенно падают damage, скорость и Energy recharge; ниже 15 нельзя включить форсаж. Вне боя readiness восстанавливается за supplies.'],
+            ['Какова цена форсажа?', 'Afterburner даёт ×1,75 скорости на 3 секунды, но расходует Energy, снижает readiness, умножает расход fuel на 2,5 и Signature на 1,75. Это средство перехвата или отхода, а не постоянный режим.'],
+            ['Что делают три аварийных расходника?', 'Emergency Repair чинит только hull выбранного корабля и стабилизирует disabled. Shield Cell мгновенно возвращает 35% shield. Weapon Overcharge даёт +50% damage на 5 секунд ценой ×1,75 Energy cost и 5 readiness после действия.'],
+            ['Почему charge не потратился?', 'Сначала проверяются цель и ресурсы. Полный hull/shield, destroyed-цель, cooldown или нехватка Energy, fuel либо readiness отменяют применение без списания charge. Причина появляется в журнале.'],
+            ['Как работают сигналы?', 'SignalDirector периодически создаёт до трёх событий: конвой, ловушку-дереликт, аномалию, терпящий бедствие танкер или гонку за salvage. У них есть таймер, несколько решений и самостоятельный исход без игрока.'],
+            ['Что делать на Terra?', 'SHIPYARD меняет состав флота. FULL SERVICE отдельно и за заранее показанную цену восстанавливает fuel, supplies, ammunition, hull и armor; shield и Energy на станции заряжаются бесплатно. Посещение станции само по себе больше не ремонтирует всё.'],
+            ['Как понять Threat и увеличить флот?', 'Threat — оценка оружия, корпуса и поддержки, а не здоровье. Каждый корабль занимает 1 command point; Leadership даёт ещё 3. Size и Tech открывают более сильные корпуса и не расходуются при покупке.'],
+            ['Зачем нужны роли?', 'Defender перехватывает часть атак, striker наносит урон, artillery стреляет издалека, scout разведывает, support ремонтирует и стабилизирует disabled, flagship обеспечивает командование.']
         ];
         for (const [title, body] of sections) {
             const item = document.createElement('section');
@@ -899,7 +994,7 @@ export class ModalManager {
 
     private makeButton(text: string, color: string, callback: () => void) {
         const button = document.createElement('button');
-        button.textContent = text; button.style.cssText = `padding:7px 12px;border:1px solid rgba(255,255,255,.18);border-radius:5px;background:${color};color:white;font:12px monospace;cursor:pointer`;
+        button.textContent = text; button.style.cssText = `min-width:44px;min-height:44px;padding:7px 12px;border:1px solid rgba(255,255,255,.18);border-radius:5px;background:${color};color:white;font:12px monospace;cursor:pointer;touch-action:manipulation`;
         bindButtonAction(button, () => callback()); return button;
     }
 

@@ -4,14 +4,16 @@ import { Vector2 } from '../utils/Vector2';
 import { Fleet } from './Fleet';
 
 export class BubbleZone extends Entity {
+    public owner: Fleet | null;
     public radius: number;
     public duration: number;
     public deployTime: number;
     public timeElapsed: number = 0;
     public isDeployed: boolean = false;
 
-    constructor(x: number, y: number, radius: number, duration: number = 8, deployTime: number = 0.2) {
+    constructor(x: number, y: number, radius: number, duration: number = 8, deployTime: number = 0.2, owner: Fleet | null = null) {
         super(x, y);
+        this.owner = owner;
         this.radius = radius;
         this.duration = duration;
         this.deployTime = deployTime;

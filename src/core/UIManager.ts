@@ -1,8 +1,9 @@
 import { formatNumber } from '../utils/NumberFormatter';
 import type { Fleet } from '../entities/Fleet';
-import { COMBAT_BALANCE, type FleetOrderType, type TargetPriority } from '../tactical/ShipDefinitions';
+import { COMBAT_BALANCE, TACTICAL_BALANCE, type FleetOrderType, type TargetPriority } from '../tactical/ShipDefinitions';
 import { bindButtonAction } from '../utils/TouchButton';
 import type { WorldEvent } from '../entities/WorldEvent';
+import type { SensorContact } from '../tactical/SensorService';
 
 export class UIManager {
     private container: HTMLElement;
@@ -14,9 +15,14 @@ export class UIManager {
     private onOrder: (order: FleetOrderType) => void;
     private onDoctrine: (priority: TargetPriority) => void;
     private onFaq: () => void;
+    private onSignalAction: (action: 'track' | 'inspect', event: WorldEvent) => void;
     private fleetPanel!: HTMLElement;
     private eventLog!: HTMLElement;
     private signalTracker!: HTMLElement;
+    private signalTitle!: HTMLElement;
+    private signalDetails!: HTMLElement;
+    private trackedSignal: WorldEvent | null = null;
+    private ignoredSignals = new Set<string>();
     private fleetPanelCollapsed: boolean = window.matchMedia('(max-width: 700px)').matches;
     private currentFleet: Fleet | null = null;
 
@@ -28,6 +34,7 @@ export class UIManager {
 
     private abilityButtons: Record<string, HTMLButtonElement> = {};
     private abilityCooldowns: Record<string, HTMLElement> = {};
+    private abilityTimers: Record<string, HTMLElement> = {};
     private levelDisplay!: HTMLElement;
 
     constructor(
@@ -40,7 +47,8 @@ export class UIManager {
             onMenu: () => void,
             onOrder: (order: FleetOrderType) => void,
             onDoctrine: (priority: TargetPriority) => void,
-            onFaq: () => void
+            onFaq: () => void,
+            onSignalAction: (action: 'track' | 'inspect', event: WorldEvent) => void
         }
     ) {
         const el = document.getElementById(containerId);
@@ -54,6 +62,7 @@ export class UIManager {
         this.onOrder = callbacks.onOrder;
         this.onDoctrine = callbacks.onDoctrine;
         this.onFaq = callbacks.onFaq;
+        this.onSignalAction = callbacks.onSignalAction;
 
         this.render();
     }
@@ -95,7 +104,7 @@ export class UIManager {
         minusBtn.innerText = '−';
         minusBtn.title = 'Decrease Speed (-10%)';
         minusBtn.style.padding = '4px 8px';
-        minusBtn.style.minWidth = '30px';
+        minusBtn.style.minWidth = '44px';
         bindButtonAction(minusBtn, () => {
             this.currentSpeed = Math.max(0.1, Math.round((this.currentSpeed - 0.1) * 10) / 10);
             this.onSpeedChange(this.currentSpeed);
@@ -151,7 +160,7 @@ export class UIManager {
         plusBtn.innerText = '+';
         plusBtn.title = 'Increase Speed (+10%)';
         plusBtn.style.padding = '4px 8px';
-        plusBtn.style.minWidth = '30px';
+        plusBtn.style.minWidth = '44px';
         bindButtonAction(plusBtn, () => {
             this.currentSpeed = Math.min(4.0, Math.round((this.currentSpeed + 0.1) * 10) / 10);
             this.onSpeedChange(this.currentSpeed);
@@ -195,22 +204,59 @@ export class UIManager {
     private renderSignalTracker() {
         const tracker = document.createElement('div');
         tracker.id = 'signal-tracker';
+        const badge = document.createElement('b');
+        badge.textContent = 'SIGNAL';
+        this.signalTitle = document.createElement('span');
+        this.signalDetails = document.createElement('small');
+        const actions = document.createElement('div');
+        actions.className = 'signal-actions';
+        const addAction = (label: string, action: 'track' | 'inspect' | 'ignore') => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = label;
+            bindButtonAction(button, () => {
+                const event = this.trackedSignal;
+                if (!event) return;
+                if (action === 'ignore') {
+                    this.ignoredSignals.add(event.id);
+                    this.trackedSignal = null;
+                    this.updateSignals([], this.currentFleet || undefined);
+                    return;
+                }
+                this.onSignalAction(action, event);
+            });
+            actions.appendChild(button);
+        };
+        addAction('Track', 'track');
+        addAction('Inspect', 'inspect');
+        addAction('Ignore', 'ignore');
+        tracker.append(badge, this.signalTitle, this.signalDetails, actions);
         this.container.appendChild(tracker);
         this.signalTracker = tracker;
     }
 
-    public updateSignals(events: WorldEvent[]) {
+    public updateSignals(events: WorldEvent[], player?: Fleet, getContact?: (event: WorldEvent) => SensorContact | null) {
         if (!this.signalTracker) return;
-        const event = events
-            .filter(candidate => candidate.active && candidate.discovered)
-            .sort((a, b) => a.timeLeft - b.timeLeft)[0];
-        if (!event) {
+        const tracked = events
+            .filter(candidate => candidate.active && candidate.discovered && !this.ignoredSignals.has(candidate.id))
+            .map(event => ({ event, contact: getContact?.(event) || null }))
+            .filter(entry => !getContact || entry.contact !== null)
+            .sort((a, b) => a.event.timeLeft - b.event.timeLeft)[0];
+        if (!tracked) {
             this.signalTracker.classList.remove('visible');
-            this.signalTracker.textContent = '';
+            this.trackedSignal = null;
             return;
         }
+        const { event, contact } = tracked;
+        this.trackedSignal = event;
         this.signalTracker.classList.add('visible');
-        this.signalTracker.innerHTML = `<b>SIGNAL</b><span>${event.title}</span><small>${event.phase.toUpperCase()} · ${Math.ceil(event.timeLeft)}s</small>`;
+        const distance = player ? Math.round(Math.hypot(event.position.x - player.position.x, event.position.y - player.position.y)) : 0;
+        const knownThreat = contact?.intel.threat || 0;
+        const relativeRisk = player && knownThreat ? knownThreat / Math.max(1, player.threatRating) : 0;
+        const risk = !player ? '' : relativeRisk < 0.65 ? 'LOW' : relativeRisk < 1.25 ? 'EVEN' : relativeRisk < 2 ? 'HIGH' : 'EXTREME';
+        const quality = contact?.stale ? 'stale' : contact?.level || 'lost';
+        this.signalTitle.textContent = contact?.level === 'identified' ? (contact.intel.signalTitle || event.title) : 'CLASSIFIED SIGNAL';
+        this.signalDetails.textContent = `${distance ? `${formatNumber(distance)}u · ` : ''}${risk ? `${risk} · ` : ''}${quality ? `${quality.toUpperCase()} · ` : ''}${Math.ceil(event.timeLeft)}s`;
     }
 
     private renderEventLog() {
@@ -300,7 +346,9 @@ export class UIManager {
             const shield = Math.max(0, Math.ceil(ship.shield));
             const armor = Math.max(0, Math.ceil(ship.armor));
             const hull = Math.max(0, Math.ceil(ship.hull));
-            row.innerHTML = `<i></i><span><b>${ship.displayName}</b><small>${ship.role} · ${ship.state} · ${ship.order.type}</small><small class="defense-stats">S ${shield}/${Math.ceil(ship.maxShield)} · A ${armor}/${Math.ceil(ship.maxArmor)} · H ${hull}/${Math.ceil(ship.maxHull)} · F ${Math.round(ship.flux)}/${Math.round(ship.maxFlux)} · AM ${Math.floor(ship.ammunition)}</small></span><em>${hp}%</em>`;
+            const effect = ship.overchargeTimer > 0 ? ` · OVR +${Math.round((TACTICAL_BALANCE.overchargeDamageMultiplier - 1) * 100)}% ${ship.overchargeTimer.toFixed(1)}s`
+                : ship.emergencyRepairTimer > 0 ? ` · REPAIR ${ship.emergencyRepairTimer.toFixed(1)}s` : '';
+            row.innerHTML = `<i></i><span><b>${ship.displayName}</b><small>${ship.role} · ${ship.state} · ${ship.order.type}${effect}</small><small class="defense-stats">S ${shield}/${Math.ceil(ship.maxShield)} · A ${armor}/${Math.ceil(ship.maxArmor)} · H ${hull}/${Math.ceil(ship.maxHull)} · E ${Math.round(ship.energy)}/${Math.round(ship.maxEnergy)} · AM ${Math.floor(ship.ammunition)}</small></span><em>${hp}%</em>`;
             roster.appendChild(row);
             existingRows.delete(ship.id);
         }
@@ -310,14 +358,22 @@ export class UIManager {
     private updateFleetSummary(fleet: Fleet, active = fleet.ships.filter(ship => ship.state === 'active').length, disabled = fleet.ships.filter(ship => ship.state === 'disabled').length) {
         const summary = this.fleetPanel.querySelector('.fleet-summary');
         if (!summary) return;
-        const dps = fleet.ships.filter(ship => ship.alive && ship.order.type !== 'repair').reduce((sum, ship) => sum + ship.weaponDps * fleet.readiness * COMBAT_BALANCE.damageScale, 0);
+        const dps = fleet.ships.filter(ship => ship.alive && ship.order.type !== 'repair').reduce((sum, ship) => sum + ship.weaponDps * fleet.readinessEfficiency * COMBAT_BALANCE.damageScale * (ship.overchargeTimer > 0 ? TACTICAL_BALANCE.overchargeDamageMultiplier : 1), 0);
+        const energy = Math.ceil(fleet.totalEnergy);
+        const maxEnergy = Math.ceil(fleet.maxEnergy);
+        const selected = fleet.ships.find(ship => ship.id === fleet.selectedShipId);
+        const selectedStatus = selected ? ` · SEL ${selected.displayName}${selected.overchargeTimer > 0 ? ` OVR ${selected.overchargeTimer.toFixed(1)}s` : ''}` : '';
+        const resourceDisplay = document.getElementById('strength-display');
+        if (resourceDisplay && fleet.isPlayer) {
+            resourceDisplay.textContent = `T ${formatNumber(fleet.threatRating)} · F ${Math.floor(fleet.fuel)}/${Math.ceil(fleet.maxFuel)} (~${formatNumber(Math.round(fleet.estimatedFuelRange))}u) · S ${Math.floor(fleet.supplies)}/${fleet.maxSupplies} · E ${energy}/${maxEnergy} · R ${Math.round(fleet.operationalReadiness)}%`;
+        }
         if (this.fleetPanelCollapsed) {
             summary.textContent = `T ${Math.round(fleet.threatRating)} · DPS ${dps.toFixed(0)} · ${active}/${fleet.ships.length} SHIPS`;
             return;
         }
         const defenses = fleet.ships.reduce((sum, ship) => sum + ship.effectiveHealth, 0);
         const maxDefenses = fleet.ships.reduce((sum, ship) => sum + ship.maxEffectiveHealth, 0);
-        summary.textContent = `T ${Math.round(fleet.threatRating)} · DEF ${Math.ceil(defenses)}/${Math.ceil(maxDefenses)} · DPS ${dps.toFixed(0)} · ${active}A/${disabled}D · C ${fleet.commandUsed}/${fleet.commandCapacity} · R ${Math.round(fleet.readiness * 100)}%${fleet.isPlayer ? ` · Lv ${fleet.level} · SP ${fleet.skillPoints}` : ''}`;
+        summary.textContent = `T ${Math.round(fleet.threatRating)}/${Math.round(fleet.baseThreatRating)} · DEF ${Math.ceil(defenses)}/${Math.ceil(maxDefenses)} · DPS ${dps.toFixed(0)} · ${active}A/${disabled}D · C ${fleet.commandUsed}/${fleet.commandCapacity} · R ${Math.round(fleet.operationalReadiness)}% · FUEL ${Math.floor(fleet.fuel)}/${Math.ceil(fleet.maxFuel)} · SUP ${Math.floor(fleet.supplies)}/${fleet.maxSupplies} · E ${energy}/${maxEnergy}${selectedStatus}${fleet.isPlayer ? ` · Lv ${fleet.level} · SP ${fleet.skillPoints}` : ''}`;
     }
 
     private renderAbilityPanel() {
@@ -370,20 +426,22 @@ export class UIManager {
         // Level display removed from bottom panel by request
 
         const abilities = [
+            { id: 'scan', icon: '◎', color: '#68FF9A', title: 'Active Scan Pulse (2x radar, costs 15% Energy)' },
             { id: 'afterburner', icon: '🚀', color: '#FF4400', title: 'Afterburner (Boost Speed)' },
             { id: 'bubble', icon: '🫧', color: '#00AAFF', title: 'Bubble (Stop Nearby)' },
             { id: 'cloak', icon: '👻', color: '#AAAAAA', title: 'Cloak (Invisibility)' },
             { id: 'mine', icon: '💣', color: '#FF0000', title: 'Warp Mine (Proximity Trap)' },
             { id: 'medkit', icon: '✚', color: '#00C8FF', title: 'Emergency Repair (stabilize and repair selected ship)' },
-            { id: 'fire', icon: '🔥', color: '#FF5500', title: 'Fire (2x damage for 5s)' },
-            { id: 'shield', icon: '🛡', color: '#66CCFF', title: 'Shield (Untargetable 1s)' }
+            { id: 'fire', icon: '🔥', color: '#FF5500', title: `Weapon Overcharge (+${Math.round((TACTICAL_BALANCE.overchargeDamageMultiplier - 1) * 100)}% selected ship damage, +${Math.round((TACTICAL_BALANCE.overchargeEnergyMultiplier - 1) * 100)}% Energy use)` },
+            { id: 'shield', icon: '🛡', color: '#66CCFF', title: `Shield Cell (+${Math.round(TACTICAL_BALANCE.shieldCellFraction * 100)}% selected ship shield)` }
         ];
 
         abilities.forEach(ability => {
             const btn = document.createElement('button');
             btn.className = 'ability-btn';
-            btn.style.width = isCompact ? '32px' : '40px';
-            btn.style.height = isCompact ? '32px' : '40px';
+            btn.style.width = '44px';
+            btn.style.height = '44px';
+            btn.style.minWidth = '44px';
             btn.style.borderRadius = '50%';
             btn.style.border = '2px solid rgba(255, 255, 255, 0.1)';
             btn.style.background = 'rgba(20, 20, 25, 0.8)';
@@ -435,6 +493,7 @@ export class UIManager {
 
             this.abilityButtons[ability.id] = btn;
             this.abilityCooldowns[ability.id] = overlay;
+            this.abilityTimers[ability.id] = timerText;
             panel.appendChild(btn);
         });
 
@@ -503,6 +562,16 @@ export class UIManager {
             }
         }
 
+    }
+
+    public updateScanPulse(secondsRemaining: number) {
+        const btn = this.abilityButtons.scan;
+        const timer = this.abilityTimers.scan;
+        if (!btn || !timer) return;
+        const active = secondsRemaining > 0;
+        timer.textContent = active ? secondsRemaining.toFixed(1) : '';
+        btn.style.border = active ? '2px solid #68FF9A' : '2px solid rgba(255, 255, 255, 0.1)';
+        btn.style.boxShadow = active ? '0 0 18px rgba(104,255,154,.8)' : 'none';
     }
 
     private toggleCameraFollow() {

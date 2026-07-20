@@ -12,71 +12,85 @@ export class AIController {
     }
 
     processAI() {
-        const detectionRadius = 2000;
         const giveUpRadius = 2500;
         const backupRadius = 4000;
         const celestialBodies = this.game.getEntities().filter(e => e instanceof CelestialBody) as CelestialBody[];
+        const player = this.game.getPlayerFleet();
+        const npcs = this.game.getNpcFleets();
+        const allFleets = [player, ...npcs];
 
-        for (const npc of this.game.getNpcFleets()) {
-            const allFleets = [this.game.getPlayerFleet(), ...this.game.getNpcFleets()];
-            const relativeToPlayer = assessRelativeThreat(npc.threatRating, this.game.getPlayerFleet().threatRating);
-            const hasNearbyAlly = allFleets.some(f =>
-                f !== npc &&
-                this.isAlly(npc, f) &&
-                Vector2.distance(npc.position, f.position) < 800
-            );
-            const localPower = npc.threatRating + allFleets
-                .filter(f => f !== npc && !f.isPlayer && this.isAlly(npc, f) && Vector2.distance(npc.position, f.position) < 900)
-                .reduce((sum, ally) => sum + ally.threatRating * 0.55, 0);
+        for (const npc of npcs) {
             const isMilitaryLike = npc.faction === 'military' || npc.faction === 'mercenary';
+            let followedFleet = npc.followTarget instanceof Fleet ? npc.followTarget : null;
+
+            // Never retain the live Entity position or threat after the sensor
+            // solution is lost. The next decision pass may reacquire the contact.
+            if (followedFleet && !this.game.canFleetTarget(npc, followedFleet)) {
+                npc.stopFollowing();
+                npc.decisionTimer = 0;
+                followedFleet = null;
+            }
 
             // Ability Usage Logic
             this.handleAbilities(npc);
 
-            // Give up chase/flee if too far or futility
-            if (npc.followTarget instanceof Fleet) {
-                const dist = Vector2.distance(npc.position, npc.followTarget.position);
+            // Avoid O(N) tactical assessment on every rendered frame. Sensor loss
+            // above is still handled immediately; normal decisions use reaction time.
+            if (npc.decisionTimer > 0) continue;
+            const isChasing = !!followedFleet && this.isHostile(npc, followedFleet);
 
-                const isChasing = this.isHostile(npc, npc.followTarget as Fleet);
-                if (isChasing) {
-                    if (!isMilitaryLike && npc.followTarget.threatRating > localPower * 1.15) {
-                        const runDir = npc.position.sub(npc.followTarget.position).normalize();
-                        npc.stopFollowing();
-                        npc.setTarget(npc.position.add(runDir.scale(900)));
-                        npc.state = 'flee';
-                        npc.decisionTimer = 0.8;
-                        continue;
-                    }
-                    // Check if target is escaping the system
-                    const targetPosMag = npc.followTarget.position.mag();
-                    if (targetPosMag > this.game.getSystemRadius() * 0.8) {
-                        const dirToTarget = npc.followTarget.position.normalize();
-                        const targetVelDir = npc.followTarget.velocity.normalize();
-                        if (dirToTarget.dot(targetVelDir) > 0.5) { // moving outward
-                            npc.stopFollowing();
-                            npc.setTarget(new Vector2((Math.random() - 0.5) * 1000, (Math.random() - 0.5) * 1000));
-                            npc.decisionTimer = 2.0;
-                            continue;
-                        }
-                    }
+            const detectionRadius = Math.max(600, this.game.getFleetSensorRange(npc) * 2);
+            const knownFleets = allFleets.filter(fleet =>
+                fleet === npc || this.game.canFleetTarget(npc, fleet)
+            );
+            const hasNearbyAlly = knownFleets.some(f =>
+                f !== npc &&
+                this.isAlly(npc, f) &&
+                Vector2.distance(npc.position, f.position) < 800
+            );
+            const localPower = npc.threatRating + knownFleets
+                .filter(f => f !== npc && !f.isPlayer && this.isAlly(npc, f) && Vector2.distance(npc.position, f.position) < 900)
+                .reduce((sum, ally) => sum + ally.threatRating * 0.55, 0);
 
-                    const pursuitRange = relativeToPlayer.band === 'predator' || relativeToPlayer.band === 'apex'
-                        ? giveUpRadius * 1.45
-                        : relativeToPlayer.band === 'prey' ? giveUpRadius * 0.72 : giveUpRadius;
-                    if (dist > pursuitRange || (dist > 1200 && npc.faction === 'pirate' && localPower < npc.followTarget.threatRating && !hasNearbyAlly)) {
+            // Give up chase/flee if too far or futile.
+            if (followedFleet && isChasing) {
+                const dist = Vector2.distance(npc.position, followedFleet.position);
+                if (!isMilitaryLike && followedFleet.threatRating > localPower * 1.15) {
+                    const runDir = npc.position.sub(followedFleet.position).normalize();
+                    npc.stopFollowing();
+                    npc.setTarget(npc.position.add(runDir.scale(900)));
+                    npc.state = 'flee';
+                    npc.decisionTimer = 0.8;
+                    continue;
+                }
+
+                const targetPosMag = followedFleet.position.mag();
+                if (targetPosMag > this.game.getSystemRadius() * 0.8) {
+                    const dirToTarget = followedFleet.position.normalize();
+                    const targetVelDir = followedFleet.velocity.normalize();
+                    if (dirToTarget.dot(targetVelDir) > 0.5) {
                         npc.stopFollowing();
-                        if (celestialBodies.length > 0) {
-                            const poi = celestialBodies[Math.floor(Math.random() * celestialBodies.length)];
-                            npc.setTarget(poi.position.add(new Vector2((Math.random() - 0.5) * 200, (Math.random() - 0.5) * 200)));
-                        }
-                        npc.decisionTimer = 1.0;
+                        npc.setTarget(new Vector2((Math.random() - 0.5) * 1000, (Math.random() - 0.5) * 1000));
+                        npc.decisionTimer = 2.0;
                         continue;
                     }
                 }
-            }
 
-            // Reaction Time: Only rethink if timer is zero
-            if (npc.decisionTimer > 0) continue;
+                const relativeToTarget = assessRelativeThreat(npc.threatRating, followedFleet.threatRating);
+                const pursuitRange = relativeToTarget.band === 'predator' || relativeToTarget.band === 'apex'
+                    ? giveUpRadius * 1.45
+                    : relativeToTarget.band === 'prey' ? giveUpRadius * 0.72 : giveUpRadius;
+                if (dist > pursuitRange || (dist > 1200 && npc.faction === 'pirate' &&
+                    localPower < followedFleet.threatRating && !hasNearbyAlly)) {
+                    npc.stopFollowing();
+                    if (celestialBodies.length > 0) {
+                        const poi = celestialBodies[Math.floor(Math.random() * celestialBodies.length)];
+                        npc.setTarget(poi.position.add(new Vector2((Math.random() - 0.5) * 200, (Math.random() - 0.5) * 200)));
+                    }
+                    npc.decisionTimer = 1.0;
+                    continue;
+                }
+            }
 
             let bestTarget: Fleet | null = null;
             let bestTargetScore = -1;
@@ -87,13 +101,20 @@ export class AIController {
 
             // 1. Guardian Instinct / Backup Logic for Military
             if (isMilitaryLike) {
-                for (const other of allFleets) {
+                for (const other of knownFleets) {
                     if (this.isAlly(npc, other) && (other.state === 'combat' || other.currentTarget)) {
                         const dist = Vector2.distance(npc.position, other.position);
                         if (dist < backupRadius) {
                             // Rush to help ally
-                            const threat = other.currentTarget || (other.activeBattle ? other.activeBattle.participants.find((p: Fleet) => this.isHostile(npc, p)) : null);
-                            if (threat) {
+                            const battle = other.activeBattle as { participants?: Fleet[]; attacker?: Fleet; target?: Fleet } | null;
+                            const battleFleets = battle
+                                ? (Array.isArray(battle.participants)
+                                    ? battle.participants
+                                    : [battle.attacker, battle.target].filter((fleet): fleet is Fleet => fleet instanceof Fleet))
+                                : [];
+                            const threat = other.currentTarget || battleFleets.find(fleet => this.isHostile(npc, fleet)) || null;
+                            if (threat && threat !== npc && this.isHostile(npc, threat) &&
+                                this.game.canFleetTarget(npc, threat)) {
                                 bestTarget = threat;
                                 bestTargetScore = 999; // Maximum priority
                                 break;
@@ -104,8 +125,8 @@ export class AIController {
             }
 
             if (bestTargetScore < 999) {
-                for (const other of allFleets) {
-                    if (npc === other || other.isCloaked) continue;
+                for (const other of knownFleets) {
+                    if (npc === other) continue;
 
                     const dist = Vector2.distance(npc.position, other.position);
                     if (dist > detectionRadius) continue;
@@ -175,7 +196,7 @@ export class AIController {
             }
 
             // Decide action
-            const isMilitaryWithAllies = isMilitaryLike && allFleets.some(f => f !== npc && this.isAlly(npc, f) && Vector2.distance(npc.position, f.position) < 1000);
+            const isMilitaryWithAllies = isMilitaryLike && knownFleets.some(f => f !== npc && this.isAlly(npc, f) && Vector2.distance(npc.position, f.position) < 1000);
 
             if (closestThreat && !isMilitaryLike && !isMilitaryWithAllies) {
                 // Aggressive factions still disengage when they are outmatched and alone.
@@ -197,8 +218,8 @@ export class AIController {
 
                 // Traders always seek debris, pirates and civilians seek when safe
                 let foundDebris = false;
-                if (npc.faction === 'mercenary') {
-                    npc.setFollowTarget(this.game.getPlayerFleet(), 'approach');
+                if (npc.faction === 'mercenary' && this.game.canFleetTarget(npc, player)) {
+                    npc.setFollowTarget(player, 'approach');
                     npc.decisionTimer = 2.5;
                     foundDebris = true;
                 }
@@ -261,40 +282,35 @@ export class AIController {
     private handleAbilities(npc: Fleet) {
         // Afterburner
         if (npc.state === 'flee') {
-            if (npc.abilities.afterburner.cooldown <= 0) {
-                npc.abilities.afterburner.active = true;
-                npc.abilities.afterburner.timer = npc.abilities.afterburner.duration;
-                npc.abilities.afterburner.cooldown = npc.abilities.afterburner.cdMax;
-            }
+            this.game.activateNpcAbility(npc, 'afterburner');
         }
 
         // Raider Special: Cloak & Ambush
-        if (npc.faction === 'raider' && npc.followTarget) {
+        if (npc.faction === 'raider' && npc.followTarget instanceof Fleet &&
+            this.game.canFleetTarget(npc, npc.followTarget)) {
             const dist = Vector2.distance(npc.position, npc.followTarget.position);
 
             // Cloak when closing in (ambush)
             if (dist < 1200 && dist > 400 && npc.abilities.cloak.cooldown <= 0) {
-                npc.abilities.cloak.active = true;
-                npc.abilities.cloak.timer = npc.abilities.cloak.duration;
-                npc.abilities.cloak.cooldown = npc.abilities.cloak.cdMax;
-                npc.isCloaked = true;
+                this.game.activateNpcAbility(npc, 'cloak');
             }
 
             // Afterburner to catch up
             if (dist > 800 && npc.abilities.afterburner.cooldown <= 0) {
-                npc.abilities.afterburner.active = true;
-                npc.abilities.afterburner.timer = npc.abilities.afterburner.duration;
-                npc.abilities.afterburner.cooldown = npc.abilities.afterburner.cdMax;
+                this.game.activateNpcAbility(npc, 'afterburner');
             }
         }
 
         // Military/Mercenary: Bubble to trap fleeing targets
         if ((npc.faction === 'military' || npc.faction === 'mercenary') && npc.followTarget instanceof Fleet) {
-            if (npc.followTarget.state === 'flee' && Vector2.distance(npc.position, npc.followTarget.position) < 600) {
-                if (npc.abilities.bubble.cooldown <= 0) {
-                    npc.abilities.bubble.active = true;
-                    npc.abilities.bubble.timer = npc.abilities.bubble.duration;
-                    npc.abilities.bubble.cooldown = npc.abilities.bubble.cdMax;
+            const target = npc.followTarget;
+            const bubbleAlreadyQueued = this.game.getBubbleZones().some(zone =>
+                Vector2.distance(zone.position, target.position) < zone.radius
+            );
+            if (this.game.canFleetTarget(npc, target) && target.state === 'flee' &&
+                Vector2.distance(npc.position, target.position) < 600) {
+                if (npc.abilities.bubble.cooldown <= 0 && !bubbleAlreadyQueued) {
+                    this.game.activateNpcAbility(npc, 'bubble');
                 }
             }
         }
