@@ -5,6 +5,7 @@ import { Vector2 } from '../utils/Vector2';
 import { CelestialBody } from '../entities/CelestialBody';
 import { Fleet, type Faction, type FleetSkillId } from '../entities/Fleet';
 import { Entity } from '../entities/Entity';
+import { MilitaryStation } from '../entities/MilitaryStation';
 import { BubbleZone } from '../entities/BubbleZone';
 import { WarpGate } from '../entities/WarpGate';
 import { SaveSystem, type EventFleetSnapshot, type WorldEventRuntimeSnapshot } from './SaveSystem';
@@ -1472,6 +1473,7 @@ export class Game {
 
         // 4. Update Entities
         for (const e of this.entities) e.update(dt);
+        this.updateMilitaryStations();
 
         // Update Mines
         const fleets = [this.playerFleet, ...this.npcFleets];
@@ -1548,6 +1550,11 @@ export class Game {
 
 
 
+    private updateMilitaryStations() {
+        const stations = this.entities.filter((entity): entity is MilitaryStation => entity instanceof MilitaryStation);
+        for (const station of stations) station.engage(this.npcFleets);
+    }
+
     private processCombat(dt: number) {
         const allFleets = [this.playerFleet, ...this.npcFleets];
 
@@ -1584,6 +1591,7 @@ export class Game {
                 const dist = Vector2.distance(attacker.position, target.position);
 
                 // Start NEW attack if hostile and not attacking
+                if (target.isCloaked) continue;
                 if (this.aiController.isHostile(attacker, target)) {
                     const hasSensorSolution = this.sensors.canAttack(attacker, target) || target.currentTarget === attacker;
                     if (!hasSensorSolution) continue;
@@ -2442,10 +2450,18 @@ export class Game {
         }
 
         // Draw BubbleZones
+        const playerSensorRange = this.getFleetSensorRange(this.playerFleet);
         for (const bubble of this.bubbleZones) {
             if (bubble.owner && bubble.owner !== this.playerFleet) {
                 const contact = this.sensors.getContact(this.playerFleet, bubble.owner);
-                if (!contact || contact.stale) continue;
+                const distanceToBubble = Vector2.distance(this.playerFleet.position, bubble.position);
+                const playerInside = bubble.isDeployed && distanceToBubble <= bubble.radius;
+                const bubbleTouchesRadar = distanceToBubble <= playerSensorRange + bubble.radius;
+                // A hidden or out-of-range owner must not make an active hazard
+                // invisible. Render it when the zone affects the player or
+                // touches the current radar envelope; otherwise keep distant
+                // enemy bubbles hidden.
+                if ((!contact || contact.stale) && !playerInside && !bubbleTouchesRadar) continue;
             }
             bubble.draw(ctx, this.camera);
         }

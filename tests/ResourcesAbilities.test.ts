@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { Attack } from '../src/core/Attack';
 import type { Game } from '../src/core/Game';
 import { Fleet } from '../src/entities/Fleet';
+import { MilitaryStation } from '../src/entities/MilitaryStation';
 import { ABILITY_DEFINITIONS, ABILITY_EQUIPMENT_MARKET, AbilityService } from '../src/tactical/AbilityService';
+import { SystemManager } from '../src/core/SystemManager';
 import { SensorService } from '../src/tactical/SensorService';
 import { RepairService } from '../src/tactical/RepairService';
 import { Ship } from '../src/tactical/Ship';
@@ -497,5 +499,33 @@ describe('ship tactical persistence', () => {
         expect(restored.damagedSystems).not.toBe(ship.damagedSystems);
         expect(restored.disabledDamage).toBe(13.5);
         expect(restored.shieldRechargeDelay).toBe(2.75);
+    });
+});
+
+describe('Terra defense ring', () => {
+    it('creates six fixed military stations around Terra', () => {
+        const entities = new SystemManager().getSystemEntities(1);
+        const stations = entities.filter(entity => entity instanceof MilitaryStation);
+
+        expect(stations).toHaveLength(6);
+        expect(new Set(stations.map(station => station.name)).size).toBe(6);
+        expect(stations.every(station => station.radius > 0 && station.defenseRadius > station.radius)).toBe(true);
+    });
+
+    it('fires at hostile raiders but ignores civilian traffic', () => {
+        const station = new MilitaryStation(0, 0, 'Test Defense');
+        const raider = createFleet(100);
+        raider.faction = 'raider';
+        raider.ships[0].shield = 0;
+        raider.ships[0].armor = 0;
+        const hullBefore = raider.ships[0].hull;
+
+        expect(station.engage([raider])).toBe(raider);
+        expect(raider.ships[0].hull).toBeLessThan(hullBefore);
+
+        station.update(1);
+        const civilian = createFleet(100);
+        civilian.faction = 'civilian';
+        expect(station.engage([civilian])).toBeNull();
     });
 });

@@ -122,6 +122,19 @@ describe('SensorService contacts', () => {
         expect(contact.intel.threat).toBeCloseTo(target.threatRating, 8);
     });
 
+    it('removes attack permission from a cloaked fleet even when its old contact remains', () => {
+        const observer = createFleet(0);
+        const target = createFleet(500, 'lance', { faction: 'raider' });
+        const service = exactRangeService();
+        const ref = { contactId: 'cloaked-target', entity: target } as const;
+
+        const contact = service.update(observer, [ref], 4, 4)[0];
+        expect(service.canAttack(observer, contact)).toBe(true);
+
+        target.isCloaked = true;
+        expect(service.canAttack(observer, contact)).toBe(false);
+    });
+
     it('does not scan a high-signature blip beyond nominal sensor range', () => {
         const observer = createFleet(0);
         const target = createFleet(3000, 'bulwark', { statScale: 4 });

@@ -336,11 +336,13 @@ export class SensorService {
 
     public canAttack(observer: Fleet, targetOrContact: SensorTarget | SensorContact | string) {
         const contact = this.resolveContact(observer, targetOrContact);
+        const target = contact?.targetKind === 'fleet' ? contact.target as Fleet : null;
         return contact !== null
             && !contact.stale
             && contact.targetKind === 'fleet'
             && contact.level !== 'blip'
-            && (contact.target as Fleet).ships.some(ship => ship.state === 'active');
+            && !target?.isCloaked
+            && target?.ships.some(ship => ship.state === 'active') === true;
     }
 
     private updateTarget(

@@ -34,6 +34,13 @@ export class Attack {
     }
 
     update(dt: number) {
+        // Cloak breaks an incoming lock before the next tactical salvo.
+        // New attacks are also blocked by Game.processCombat and SensorService.
+        if (this.target.isCloaked) {
+            this.finished = true;
+            return;
+        }
+
         // Check if attack should be interrupted (distance > 2 * interception radius)
         const dist = Vector2.distance(this.attacker.position, this.target.position);
         const maxDist = 200; // 2 * 100 (interception radius)

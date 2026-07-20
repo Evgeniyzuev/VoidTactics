@@ -45,6 +45,9 @@ export class AbilityService {
         if (!ability) return { ok: false, reason: 'Unknown system.' };
         if (ability.active || ability.cooldown > 0) return { ok: false, reason: 'System is cooling down.' };
         if (ability.charges <= 0) return { ok: false, reason: 'No charges.' };
+        if (id === 'cloak' && fleet.currentTarget) {
+            return { ok: false, reason: 'Cannot cloak while attacking.' };
+        }
 
         const selected = fleet.ships.find(ship => ship.id === fleet.selectedShipId);
         if (id === 'afterburner') {
