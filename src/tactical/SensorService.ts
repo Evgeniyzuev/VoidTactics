@@ -69,6 +69,9 @@ export interface SensorServiceConfig {
     afterburnerSignatureMultiplier: number;
     emptyFuelSignatureMultiplier: number;
     baseSensorRangeMultiplier: number;
+    fleetRangeUsesNominalBoundary: boolean;
+    classifyFleetsAtNominalBoundary: boolean;
+    retainFleetStaleContacts: boolean;
     scanPulseRangeMultiplier: number;
     scanPulseSignatureMultiplier: number;
     scanPulseRangeDuration: number;
@@ -95,6 +98,9 @@ export const DEFAULT_SENSOR_CONFIG: Readonly<SensorServiceConfig> = {
     afterburnerSignatureMultiplier: TACTICAL_BALANCE.afterburnerSignatureMultiplier,
     emptyFuelSignatureMultiplier: TACTICAL_BALANCE.emptyFuelSignatureMultiplier,
     baseSensorRangeMultiplier: TACTICAL_BALANCE.baseSensorRangeMultiplier,
+    fleetRangeUsesNominalBoundary: true,
+    classifyFleetsAtNominalBoundary: true,
+    retainFleetStaleContacts: false,
     scanPulseRangeMultiplier: TACTICAL_BALANCE.scanPulseRangeMultiplier,
     scanPulseSignatureMultiplier: TACTICAL_BALANCE.scanPulseSignatureMultiplier,
     scanPulseRangeDuration: TACTICAL_BALANCE.scanPulseDuration,
@@ -316,8 +322,11 @@ export class SensorService {
     public canRender(observer: Fleet, targetOrContact: SensorTarget | SensorContact | string) {
         const contact = this.resolveContact(observer, targetOrContact);
         // Expired contacts are removed during update; retained stale contacts are
-        // deliberately renderable as last-known-position markers for eight seconds.
-        return contact !== null;
+        // useful for signals, but fleets leaving the nominal radar boundary
+        // disappear from the tactical map immediately.
+        if (!contact) return false;
+        if (!contact.stale) return true;
+        return contact.targetKind !== 'fleet' || this.config.retainFleetStaleContacts;
     }
 
     public canInspect(observer: Fleet, targetOrContact: SensorTarget | SensorContact | string) {
@@ -350,7 +359,11 @@ export class SensorService {
             this.config.minimumDetectionSignatureMultiplier,
             this.config.maximumDetectionSignatureMultiplier
         );
-        const detectionRange = observerProfile.sensorRange * signatureRangeMultiplier;
+        const signatureDetectionRange = observerProfile.sensorRange * signatureRangeMultiplier;
+        const isFleetTarget = !isWorldEvent(target);
+        const detectionRange = isFleetTarget && this.config.fleetRangeUsesNominalBoundary
+            ? observerProfile.sensorRange
+            : signatureDetectionRange;
         const targetIsActive = !isWorldEvent(target) || target.active;
         const detected = targetIsActive && distance <= detectionRange && observerProfile.sensorRange > 0;
         let contact = state.contacts.get(id);
@@ -362,6 +375,13 @@ export class SensorService {
 
         if (!contact) {
             contact = this.createContact(target, id, distance, detectionRange, observerProfile.sensorRange, now);
+            // A fleet crossing the nominal radar boundary immediately provides
+            // an approximate tactical estimate. Exact roles and defenses still
+            // require normal scan progress to reach Identified.
+            if (isFleetTarget && this.config.classifyFleetsAtNominalBoundary) {
+                contact.scanProgress = this.config.classifiedProgress;
+                contact.level = 'classified';
+            }
             state.contacts.set(id, contact);
         }
         contact.target = target;

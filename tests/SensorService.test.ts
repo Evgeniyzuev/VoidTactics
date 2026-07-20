@@ -94,7 +94,7 @@ describe('SensorService contacts', () => {
 
         expect(contacts.map(contact => contact.id)).toEqual(['boundary']);
         expect(contacts[0].distance).toBeCloseTo(1000, 8);
-        expect(contacts[0].level).toBe('blip');
+        expect(contacts[0].level).toBe('classified');
     });
 
     it('advances scan progress by caller-provided dt and unlocks gates by level', () => {
@@ -103,22 +103,20 @@ describe('SensorService contacts', () => {
         const service = exactRangeService();
         const ref = { contactId: 'scan-target', entity: target } as const;
 
-        let contact = service.update(observer, [ref], 0.5, 0.5)[0];
-        expect(contact.scanProgress).toBeCloseTo(0.125, 8);
-        expect(contact.level).toBe('blip');
-        expect(service.canInspect(observer, contact)).toBe(false);
-        expect(service.canAttack(observer, contact)).toBe(false);
-
-        contact = service.update(observer, [ref], 0.5, 1)[0];
+        let contact = service.update(observer, [ref], 0, 0)[0];
         expect(contact.scanProgress).toBeCloseTo(0.25, 8);
         expect(contact.level).toBe('classified');
         expect(service.canInspect(observer, contact)).toBe(true);
         expect(service.canAttack(observer, contact)).toBe(true);
+
+        contact = service.update(observer, [ref], 0.5, 0.5)[0];
+        expect(contact.scanProgress).toBeCloseTo(0.375, 8);
+        expect(contact.level).toBe('classified');
         expect(contact.intel.faction).toBe('raider');
         expect(contact.intel.roles).toBeNull();
 
-        contact = service.update(observer, [ref], 3, 4)[0];
-        expect(contact.scanProgress).toBe(1);
+        contact = service.update(observer, [ref], 2.5, 3)[0];
+        expect(contact.scanProgress).toBeCloseTo(1, 8);
         expect(contact.level).toBe('identified');
         expect(contact.intel.roles).toEqual(['striker']);
         expect(contact.intel.threat).toBeCloseTo(target.threatRating, 8);
@@ -131,11 +129,7 @@ describe('SensorService contacts', () => {
 
         const contact = service.update(observer, [{ contactId: 'large-target', entity: target }], 10, 10)[0];
 
-        expect(contact).toBeDefined();
-        expect(contact.distance).toBeGreaterThan(contact.nominalScanRange);
-        expect(contact.detectionRange).toBeGreaterThan(contact.distance);
-        expect(contact.scanProgress).toBe(0);
-        expect(contact.level).toBe('blip');
+        expect(contact).toBeUndefined();
     });
 
     it('keeps a stale last-known contact for eight seconds, then forgets it', () => {
@@ -151,7 +145,7 @@ describe('SensorService contacts', () => {
         contact = service.update(observer, [ref], 0.1, 4.1)[0];
         expect(contact.stale).toBe(true);
         expect(contact.lastKnownPosition.x).toBe(200);
-        expect(service.canRender(observer, contact)).toBe(true);
+        expect(service.canRender(observer, contact)).toBe(false);
         expect(service.canInspect(observer, contact)).toBe(false);
         expect(service.canAttack(observer, contact)).toBe(false);
 

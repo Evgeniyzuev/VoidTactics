@@ -2365,6 +2365,7 @@ export class Game {
             if (e instanceof Fleet && e !== this.playerFleet) {
                 const contact = this.sensors.getContact(this.playerFleet, e);
                 if (!contact) continue;
+                if (contact.stale && !this.sensors.canRender(this.playerFleet, contact)) continue;
                 if (contact.stale || contact.level === 'blip') {
                     this.drawSensorBlip(ctx, contact);
                     continue;
@@ -2528,7 +2529,15 @@ export class Game {
     }
 
     private drawSensorBlip(ctx: CanvasRenderingContext2D, contact: SensorContact) {
-        const screen = this.camera.worldToScreen(new Vector2(contact.lastKnownPosition.x, contact.lastKnownPosition.y));
+        // Sensor updates run at 10 Hz. Extrapolate the last known signal for a
+        // fraction of a second so blips glide between sensor ticks instead of
+        // teleporting every update.
+        const prediction = Math.min(0.35, Math.max(0, this.gameClock - contact.lastSeenAt));
+        const smoothPosition = new Vector2(
+            contact.lastKnownPosition.x + contact.lastKnownVelocity.x * prediction,
+            contact.lastKnownPosition.y + contact.lastKnownVelocity.y * prediction
+        );
+        const screen = this.camera.worldToScreen(smoothPosition);
         const alpha = contact.stale ? 0.28 : 0.75;
         ctx.save();
         ctx.translate(screen.x, screen.y);
