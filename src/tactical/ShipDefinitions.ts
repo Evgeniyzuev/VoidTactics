@@ -32,6 +32,7 @@ export const TACTICAL_BALANCE = {
     criticalReadinessThreshold: 15,
     minimumReadinessEfficiency: 0.65,
     scanPulseRangeMultiplier: 2,
+    baseSensorRangeMultiplier: 2,
     scanPulseSignatureMultiplier: 2,
     scanPulseEnergyFraction: 0.15,
     scanPulseDuration: 4,

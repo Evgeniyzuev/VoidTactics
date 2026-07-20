@@ -33,6 +33,17 @@ function createGameStub(player: Fleet) {
 }
 
 describe('fleet fuel and readiness', () => {
+    it('allows the player to steer while an active battle is running', () => {
+        const fleet = new Fleet(0, 0, '#fff', true);
+        fleet.activeBattle = {};
+        fleet.state = 'combat';
+        fleet.setTarget(new Vector2(500, 0));
+
+        fleet.update(0.5);
+
+        expect(fleet.position.x).toBeGreaterThan(0);
+    });
+
     it('reports full base Threat only at full hull and full readiness', () => {
         const fleet = createFleet();
         const ship = fleet.ships[0];

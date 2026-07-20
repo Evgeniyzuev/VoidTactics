@@ -24,6 +24,7 @@ function createFleet(
 
 function exactRangeService() {
     return new SensorService({
+        baseSensorRangeMultiplier: 1,
         minimumDetectionSignatureMultiplier: 1,
         maximumDetectionSignatureMultiplier: 1,
         minimumScanSeconds: 4,
@@ -37,14 +38,14 @@ describe('SensorService profiles', () => {
         const fleet = createFleet(0, 'specter', { moduleIds: ['electronicSuite'] });
 
         const healthy = service.getFleetProfile(fleet, 0);
-        expect(healthy.sensorRange).toBeCloseTo(2100, 6);
+        expect(healthy.sensorRange).toBeCloseTo(4200, 6);
         expect(healthy.scanResolution).toBeCloseTo(2.1, 6);
 
         fleet.ships[0].damagedSystems.push('sensors', 'command');
         fleet.skills.sensors = 4;
         const damaged = service.getFleetProfile(fleet, 0);
 
-        expect(damaged.sensorRange).toBeCloseTo((1750 + 350) * 0.55 * 1.1, 6);
+        expect(damaged.sensorRange).toBeCloseTo((1750 + 350) * 0.55 * 1.1 * 2, 6);
         expect(damaged.scanResolution).toBeCloseTo(2.1 * 0.75, 6);
         expect(damaged.sensorRange).toBeLessThan(healthy.sensorRange);
     });
@@ -65,13 +66,13 @@ describe('SensorService profiles', () => {
             baseSignature * skillMultiplier * 0.25 * 1.75 * 1.25 * 2,
             8
         );
-        expect(duringPulse.sensorRange).toBeCloseTo(1000 * (1 + 0.05 * Math.sqrt(2)) * 2, 8);
+        expect(duringPulse.sensorRange).toBeCloseTo(1000 * (1 + 0.05 * Math.sqrt(2)) * 2 * 2, 8);
         expect(duringPulse.scanPulseActive).toBe(true);
 
         const afterRangePulse = service.getFleetProfile(fleet, 15);
         expect(afterRangePulse.scanPulseActive).toBe(false);
         expect(afterRangePulse.scanPulseSignatureActive).toBe(true);
-        expect(afterRangePulse.sensorRange).toBeCloseTo(1000 * (1 + 0.05 * Math.sqrt(2)), 8);
+        expect(afterRangePulse.sensorRange).toBeCloseTo(1000 * (1 + 0.05 * Math.sqrt(2)) * 2, 8);
 
         const afterPulse = service.getFleetProfile(fleet, 19);
         expect(afterPulse.scanPulseSignatureActive).toBe(false);
@@ -125,7 +126,7 @@ describe('SensorService contacts', () => {
 
     it('does not scan a high-signature blip beyond nominal sensor range', () => {
         const observer = createFleet(0);
-        const target = createFleet(1500, 'bulwark', { statScale: 4 });
+        const target = createFleet(3000, 'bulwark', { statScale: 4 });
         const service = new SensorService({ minimumScanSeconds: 1, maximumScanSeconds: 1 });
 
         const contact = service.update(observer, [{ contactId: 'large-target', entity: target }], 10, 10)[0];

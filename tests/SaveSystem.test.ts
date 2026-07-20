@@ -53,6 +53,22 @@ function makeSnapshot(
 describe('SaveSystem v4', () => {
     beforeEach(() => storage.clear());
 
+    it('migrates a legacy save without ship snapshots into one repaired flagship with fuel', () => {
+        storage.setItem('vt_save_v2', JSON.stringify({
+            player: { x: 10, y: -20, vx: 0, vy: 0, color: '#33ccff', strength: 10, maxStrength: 42, faction: 'player' },
+            npcs: [],
+            lastSaveTime: 123
+        }));
+
+        const migrated = SaveSystem.load();
+
+        expect(migrated?.version).toBe(4);
+        expect(migrated?.playerShips).toHaveLength(1);
+        expect(migrated?.playerShips[0]?.variantName).toBe('Legacy Flagship');
+        expect(migrated?.resources.maxFuel).toBeGreaterThan(0);
+        expect(migrated?.resources.fuel).toBe(migrated?.resources.maxFuel);
+    });
+
     it('round-trips ships, resources, progression, charges, and the signal director snapshot', () => {
         const player = new Fleet(125, -275, '#19bfff', true);
         const flagship = new Ship({

@@ -12,6 +12,8 @@ export interface SavedFleetState {
     vy: number;
     color: string;
     strength: number;
+    /** Legacy v2/v3 alias; old saves sometimes called this maxStrength. */
+    maxStrength?: number;
     faction: string;
 }
 
@@ -301,7 +303,12 @@ export class SaveSystem {
     }
 
     private static migrateV3(old: LegacyV3Save): GameSaveData {
-        const originalShips = old.playerShips || [];
+        // Some v2 saves predate concrete ship snapshots. Preserve the old
+        // strength budget by turning it into one stable, fully repaired
+        // command ship instead of restoring an empty fleet with zero fuel.
+        const originalShips = old.playerShips?.length
+            ? old.playerShips
+            : [this.createLegacyFlagshipSnapshot(old.player)];
         const playerShips = originalShips.map(snapshot => this.migrateShipSnapshot(snapshot));
         const maxFuel = originalShips.reduce((sum, snapshot) => sum + this.snapshotFuelCapacity(snapshot), 0);
         const fuel = originalShips.reduce((sum, snapshot) => (
@@ -347,6 +354,18 @@ export class SaveSystem {
             ? Math.max(0, Math.min(maxEnergy, snapshot.energy ?? maxEnergy))
             : maxEnergy * (1 - Math.max(0, Math.min(1, snapshot.flux / Math.max(1, oldMaxFlux))));
         return { ...snapshot, energy, flux: undefined, fuel: undefined };
+    }
+
+    private static createLegacyFlagshipSnapshot(player: SavedFleetState): ShipSnapshot {
+        const ship = new Ship({
+            hullId: 'command',
+            weaponIds: ['pulse', 'autocannon'],
+            moduleIds: ['commandLink']
+        }, 'ship-legacy-flagship');
+        const legacyThreat = Math.max(1, Number(player?.maxStrength ?? player?.strength) || 10);
+        ship.setStatScale(Math.max(0.02, legacyThreat / Math.max(1, ship.maxCombatRating)));
+        ship.variantName = 'Legacy Flagship';
+        return ship.snapshot();
     }
 
     private static snapshotFuelCapacity(snapshot: ShipSnapshot) {

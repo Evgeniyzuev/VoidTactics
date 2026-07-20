@@ -321,10 +321,15 @@ export class Fleet extends Entity {
                 return;
             }
             this.combatTimer -= dt;
-            // Movement is restricted during combat
-            this.velocity = this.velocity.scale(0.9);
-            this.position = this.position.add(this.velocity.scale(dt));
-            return;
+            // NPCs keep their tactical engagement orbit, while the player may
+            // still steer the flagship/flotilla in real time during combat.
+            // The normal movement code below applies the combat speed cap and
+            // still honours direct targets and manual steering.
+            if (!this.isPlayer) {
+                this.velocity = this.velocity.scale(0.9);
+                this.position = this.position.add(this.velocity.scale(dt));
+                return;
+            }
         }
 
         let currentMaxSpeed = this.maxSpeed * (this.isPlayer ? 1 + this.skills.navigation * 0.04 : 1);

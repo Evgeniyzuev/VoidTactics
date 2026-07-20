@@ -68,6 +68,7 @@ export interface SensorServiceConfig {
     cloakSignatureMultiplier: number;
     afterburnerSignatureMultiplier: number;
     emptyFuelSignatureMultiplier: number;
+    baseSensorRangeMultiplier: number;
     scanPulseRangeMultiplier: number;
     scanPulseSignatureMultiplier: number;
     scanPulseRangeDuration: number;
@@ -93,6 +94,7 @@ export const DEFAULT_SENSOR_CONFIG: Readonly<SensorServiceConfig> = {
     cloakSignatureMultiplier: 0.25,
     afterburnerSignatureMultiplier: TACTICAL_BALANCE.afterburnerSignatureMultiplier,
     emptyFuelSignatureMultiplier: TACTICAL_BALANCE.emptyFuelSignatureMultiplier,
+    baseSensorRangeMultiplier: TACTICAL_BALANCE.baseSensorRangeMultiplier,
     scanPulseRangeMultiplier: TACTICAL_BALANCE.scanPulseRangeMultiplier,
     scanPulseSignatureMultiplier: TACTICAL_BALANCE.scanPulseSignatureMultiplier,
     scanPulseRangeDuration: TACTICAL_BALANCE.scanPulseDuration,
@@ -247,7 +249,7 @@ export class SensorService {
         ), 0) * signatureSkillMultiplier * signatureMultiplier;
 
         return {
-            sensorRange: sensorRange * skillRangeMultiplier * rangeMultiplier,
+            sensorRange: sensorRange * this.config.baseSensorRangeMultiplier * skillRangeMultiplier * rangeMultiplier,
             scanResolution: Math.max(this.config.minimumScanResolution, scanResolution),
             signature: Math.max(0.01, signature),
             rangeMultiplier,
