@@ -1586,7 +1586,7 @@ export class Game {
                 // Skip if attacker is already attacking someone
                 if (attacker.currentTarget) continue;
 
-                const baseTriggerDist = 100; // Fixed interception radius
+                const baseTriggerDist = attacker.attackRadius;
 
                 const dist = Vector2.distance(attacker.position, target.position);
 
@@ -1853,7 +1853,7 @@ export class Game {
                 info += `Scan: ${Math.round(contact.scanProgress * 100)}%`;
             } else {
                 info = `<strong>${factionNames[fleet.faction] || 'Unknown'}</strong><br/>`;
-                if (isStation) info += 'Fixed defense platform · attack radius ×2<br/>';
+                if (isStation) info += 'Station: ' + (fleet as MilitaryStation).name + ' · fixed defense · attack radius ×2 (' + Math.round((fleet as MilitaryStation).attackRadius) + ')<br/>';
                 const isHostile = this.aiController.isHostile(fleet, this.playerFleet);
                 const status = isHostile ? '<span style="color: red;">Hostile</span>' : '<span style="color: green;">Friendly</span>';
                 info += `${status}<br/>`;

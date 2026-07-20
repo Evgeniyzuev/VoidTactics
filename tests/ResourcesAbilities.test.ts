@@ -510,6 +510,7 @@ describe('Terra defense ring', () => {
         expect(stations).toHaveLength(6);
         expect(new Set(stations.map(station => station.name)).size).toBe(6);
         expect(stations.every(station => station.radius > 0 && station.defenseRadius > station.radius)).toBe(true);
+        expect(stations.every(station => station.attackRadius === 200)).toBe(true);
     });
 
     it('fires at hostile raiders but ignores civilian traffic', () => {

@@ -2,6 +2,7 @@ import { Camera } from '../renderer/Camera';
 import { Vector2 } from '../utils/Vector2';
 import { Fleet } from './Fleet';
 import { FleetGenerator } from '../tactical/FleetGenerator';
+import { COMBAT_BALANCE } from '../tactical/ShipDefinitions';
 
 /**
  * A stationary fleet-shaped defense platform.
@@ -12,7 +13,6 @@ import { FleetGenerator } from '../tactical/FleetGenerator';
  */
 export class MilitaryStation extends Fleet {
     public readonly name: string;
-    public readonly attackRadius: number;
     public readonly damagePerShot: number;
     public readonly fireInterval: number;
     public cooldown = 0;
@@ -41,13 +41,14 @@ export class MilitaryStation extends Fleet {
         this.maxSpeed = 0;
         this.velocity = new Vector2(0, 0);
         this.attackRadius = options.attackRadius ?? 200;
-        this.damagePerShot = options.damagePerShot ?? 55;
         this.fireInterval = options.fireInterval ?? 1;
 
         // These are real ships for inspection and threat calculation, not a
         // giant visual marker. A platform is powerful but still readable.
         this.ships = FleetGenerator.generate(options.threatBudget ?? 1800, 'military');
         this.selectedShipId = this.ships[0]?.id || null;
+        const stationDps = this.ships.reduce((sum, ship) => sum + ship.weaponDps, 0) * COMBAT_BALANCE.damageScale;
+        this.damagePerShot = options.damagePerShot ?? Math.max(55, stationDps * 0.35);
         this.commandCapacity = Math.max(12, this.commandUsed);
         this.maxSupplies = 120;
         this.supplies = this.maxSupplies;

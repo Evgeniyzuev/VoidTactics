@@ -44,6 +44,8 @@ export class Fleet extends Entity {
     public manualSteerTarget: Vector2 | null = null; // Manual override for interception
 
     public maxSpeed: number = 500;
+    /** Distance at which a fleet can initiate a tactical interception. */
+    public attackRadius: number = 100;
     private stopThreshold: number = 5;
 
     private rotation: number = 0;
