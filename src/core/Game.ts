@@ -1172,7 +1172,7 @@ export class Game {
                 this.ui.addEvent(`Signal classified · ${Math.ceil(event.timeLeft)}s remaining. Continue scanning for exact data.`);
             }
         }
-        if ((this.inspectedEntity instanceof Fleet && this.inspectedEntity !== this.playerFleet) ||
+        if ((this.inspectedEntity instanceof Fleet && this.inspectedEntity !== this.playerFleet && !(this.inspectedEntity instanceof MilitaryStation)) ||
             this.inspectedEntity instanceof WorldEvent) {
             const contact = this.sensors.getContact(this.playerFleet, this.inspectedEntity);
             if (!contact || contact.stale) this.closeTooltip();
@@ -1731,7 +1731,7 @@ export class Game {
                         minDist = dist;
                     }
                 } else if (e instanceof Fleet) {
-                    if (e !== this.playerFleet && !this.sensors.canRender(this.playerFleet, e)) continue;
+                    if (e !== this.playerFleet && !(e instanceof MilitaryStation) && !this.sensors.canRender(this.playerFleet, e)) continue;
                     // Interaction radius: at least 40 pixels on screen or 20 world units
                     const interactionRadius = Math.max(20, 40 / this.camera.zoom);
                     if (dist <= interactionRadius) {
@@ -1826,6 +1826,7 @@ export class Game {
         } else if (entity instanceof Fleet) {
             const fleet = entity as Fleet;
             const isPlayer = fleet === this.playerFleet;
+            const isStation = fleet instanceof MilitaryStation;
             const factionNames: any = {
                 'player': 'Player Fleet',
                 'civilian': 'Civilian',
@@ -1837,8 +1838,8 @@ export class Game {
                 'mercenary': 'Mercenary'
             };
 
-            const contact = isPlayer ? null : this.sensors.getContact(this.playerFleet, fleet);
-            if (!isPlayer && (!contact || contact.stale || contact.level === 'blip')) {
+            const contact = isPlayer || isStation ? null : this.sensors.getContact(this.playerFleet, fleet);
+            if (!isPlayer && !isStation && (!contact || contact.stale || contact.level === 'blip')) {
                 info = `<strong>${contact?.stale ? 'LAST KNOWN CONTACT' : 'UNKNOWN CONTACT'}</strong><br/>`;
                 info += 'Hold inside the green radar ring to classify.<br/>';
                 info += contact ? `Scan: ${Math.round(contact.scanProgress * 100)}%` : 'No sensor solution';
@@ -1852,6 +1853,7 @@ export class Game {
                 info += `Scan: ${Math.round(contact.scanProgress * 100)}%`;
             } else {
                 info = `<strong>${factionNames[fleet.faction] || 'Unknown'}</strong><br/>`;
+                if (isStation) info += 'Fixed defense platform · attack radius ×2<br/>';
                 const isHostile = this.aiController.isHostile(fleet, this.playerFleet);
                 const status = isHostile ? '<span style="color: red;">Hostile</span>' : '<span style="color: green;">Friendly</span>';
                 info += `${status}<br/>`;
@@ -1882,7 +1884,7 @@ export class Game {
                 info += `Pos: (${fleet.position.x.toFixed(0)}, ${fleet.position.y.toFixed(0)})`;
             }
 
-            if (!isPlayer) {
+            if (!isPlayer && !isStation) {
                 showApproach = true;
                 showContact = !!contact && this.sensors.canAttack(this.playerFleet, contact);
             }
@@ -2385,7 +2387,7 @@ export class Game {
         const ctx = this.renderer.getContext();
         this.drawRadarOverlay(ctx);
         for (const e of this.entities) {
-            if (e instanceof Fleet && e !== this.playerFleet) {
+            if (e instanceof Fleet && e !== this.playerFleet && !(e instanceof MilitaryStation)) {
                 const contact = this.sensors.getContact(this.playerFleet, e);
                 if (!contact) continue;
                 if (contact.stale && !this.sensors.canRender(this.playerFleet, contact)) continue;
@@ -2419,6 +2421,9 @@ export class Game {
                 if (!contact || contact.stale || contact.level !== 'identified') continue;
             }
             fleet.drawThreatIndicator(ctx, this.camera, threatReference);
+        }
+        for (const station of this.entities.filter((entity): entity is MilitaryStation => entity instanceof MilitaryStation)) {
+            station.drawThreatIndicator(ctx, this.camera, threatReference);
         }
 
         // Draw debris collection animation

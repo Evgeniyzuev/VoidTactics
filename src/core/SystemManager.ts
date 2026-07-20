@@ -89,7 +89,7 @@ export class SystemManager {
         // Terra is ringed by six permanent defense platforms. Their fixed
         // positions make the home base readable at a glance and give hostile
         // fleets a clear reason to stay away from the inner system.
-        const defenseRingRadius = 280;
+        const defenseRingRadius = 180;
         for (let i = 0; i < 6; i++) {
             const angle = i * Math.PI / 3;
             entities.push(new MilitaryStation(
