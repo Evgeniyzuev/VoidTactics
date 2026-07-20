@@ -449,6 +449,25 @@ describe('supplies and station service', () => {
         expect(fleet.money).toBeCloseTo(0, 10);
     });
 
+    it('does not stabilize a disabled ship for free at Terra', () => {
+        const fleet = createRepairFleet();
+        const target = fleet.ships[0];
+        target.state = 'disabled';
+        target.hull = 0;
+        fleet.money = 0;
+
+        const unpaid = RepairService.purchaseStationService(fleet, 'repairs');
+        expect(unpaid.ok).toBe(false);
+        expect(target.state).toBe('disabled');
+        expect(target.hull).toBe(0);
+
+        fleet.money = 22;
+        const paid = RepairService.purchaseStationService(fleet, 'repairs');
+        expect(paid.ok).toBe(true);
+        expect(target.state).toBe('active');
+        expect(target.hull).toBeGreaterThanOrEqual(target.maxHull * TACTICAL_BALANCE.disabledStabilizeHullFraction);
+    });
+
     it('defines a symmetric equipment market for every consumable charge', () => {
         const fleet = createFleet();
         fleet.money = ABILITY_EQUIPMENT_MARKET.buyPrice;

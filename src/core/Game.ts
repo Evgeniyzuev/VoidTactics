@@ -2252,6 +2252,7 @@ export class Game {
                     this.ui.updateMoney(this.playerFleet.money);
                     this.ui.updateAbilities(this.playerFleet);
                     SaveSystem.saveAutosaveFleetAbilityCharges(this.captureAbilityCharges());
+                    this.saveGame();
                     return true;
                 }
                 return false;

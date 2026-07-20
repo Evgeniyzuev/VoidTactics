@@ -115,25 +115,31 @@ export class RepairService {
         }
 
         if (mode === 'all' || mode === 'repairs') {
-            fleet.supplies += buy(Math.max(0, fleet.maxSupplies - fleet.supplies), TACTICAL_BALANCE.stationSupplyPrice);
-
             const serviceable = fleet.ships.filter(ship => ship.state !== 'destroyed');
+
+            // Put a limited repair budget into the most tangible damage first.
+            // A disabled ship only returns to combat after enough paid hull has
+            // been restored to reach the normal stabilization threshold.
             for (const ship of serviceable) {
-                if (ship.state === 'disabled' && ship.hull < ship.maxHull) ship.stabilize();
+                const hull = buy(Math.max(0, ship.maxHull - ship.hull), TACTICAL_BALANCE.stationHullPrice);
+                ship.hull = Math.min(ship.maxHull, ship.hull + hull);
+                if (ship.state === 'disabled' && ship.hull >= ship.maxHull * TACTICAL_BALANCE.disabledStabilizeHullFraction) {
+                    ship.state = 'active';
+                    ship.disabledDamage = 0;
+                }
+            }
+            for (const ship of serviceable) {
+                const armor = buy(Math.max(0, ship.maxArmor - ship.armor), TACTICAL_BALANCE.stationArmorPrice);
+                ship.armor = Math.min(ship.maxArmor, ship.armor + armor);
+            }
+            for (const ship of serviceable) {
                 const ammunition = buy(
                     Math.max(0, ship.definition.ammunition * ship.statScale - ship.ammunition),
                     TACTICAL_BALANCE.stationAmmoPrice
                 );
                 ship.ammunition += ammunition;
             }
-            for (const ship of serviceable) {
-                const hull = buy(Math.max(0, ship.maxHull - ship.hull), TACTICAL_BALANCE.stationHullPrice);
-                ship.hull = Math.min(ship.maxHull, ship.hull + hull);
-            }
-            for (const ship of serviceable) {
-                const armor = buy(Math.max(0, ship.maxArmor - ship.armor), TACTICAL_BALANCE.stationArmorPrice);
-                ship.armor = Math.min(ship.maxArmor, ship.armor + armor);
-            }
+            fleet.supplies += buy(Math.max(0, fleet.maxSupplies - fleet.supplies), TACTICAL_BALANCE.stationSupplyPrice);
         }
 
         fleet.money = Math.max(0, budget);
