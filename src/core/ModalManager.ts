@@ -5,6 +5,7 @@ import { FLEET_SKILLS } from '../entities/Fleet';
 import { getShopShipStats, getShopSizeMultiplier, getShopTechMultiplier, getShopMultiplier, getShopRequirements, SHOP_SHIPS } from '../tactical/FleetGenerator';
 import { ABILITY_EQUIPMENT_MARKET, type FleetAbilityId } from '../tactical/AbilityService';
 import type { StationServiceMode } from '../tactical/RepairService';
+import { TACTICAL_BALANCE } from '../tactical/ShipDefinitions';
 import { bindButtonAction } from '../utils/TouchButton';
 
 export interface TerraServiceQuoteView {
@@ -690,7 +691,8 @@ export class ModalManager {
             { id: 'mine', name: '💣 Warp Mine' },
             { id: 'medkit', name: '✚ Emergency Repair' },
             { id: 'fire', name: '🔥 Weapon Overcharge' },
-            { id: 'shield', name: '🛡 Shield Cell' }
+            { id: 'shield', name: '🛡 Shield Cell' },
+            { id: 'net', name: '🕸 Stasis Net' }
         ];
         const abilityRows: { id: FleetAbilityId; count: HTMLElement; buy: HTMLButtonElement; sell: HTMLButtonElement }[] = [];
         abilities.forEach(ability => {
@@ -886,9 +888,9 @@ export class ModalManager {
             const quote = next.serviceQuote;
             if (quote) {
                 serviceBreakdown.textContent =
-                    `Fuel $${formatNumber(Math.ceil(quote.fuel))} · Supplies $${formatNumber(Math.ceil(quote.supplies))} · ` +
-                    `Ammo $${formatNumber(Math.ceil(quote.ammunition))} · Hull $${formatNumber(Math.ceil(quote.hull))} · ` +
-                    `Armor $${formatNumber(Math.ceil(quote.armor))} · Repairs $${formatNumber(quote.repairsTotal)} · Shield/Energy FREE`;
+                    `Fuel $${formatNumber(quote.fuel)} · Supplies $${formatNumber(quote.supplies)} · ` +
+                    `Ammo $${formatNumber(quote.ammunition)} · Hull $${formatNumber(quote.hull)} · ` +
+                    `Armor $${formatNumber(quote.armor)} · Repairs $${formatNumber(quote.repairsTotal)} · Shield/Energy FREE`;
                 serviceButton.textContent = quote.total > 0
                     ? `SERVICE ALL · up to $${formatNumber(quote.total)}`
                     : 'RECHARGE SHIELD & ENERGY · FREE';
@@ -896,7 +898,11 @@ export class ModalManager {
                 fuelButton.disabled = !onPurchaseService || quote.fuel <= 0 || next.currentMoney <= 0;
                 repairButton.disabled = !onPurchaseService || quote.repairsTotal <= 0 || next.currentMoney <= 0;
             } else {
-                serviceBreakdown.textContent = 'Fuel $2/u · Supply $25 · Ammo $1/u · Hull $3/u · Armor $2/u · Shield/Energy FREE';
+                serviceBreakdown.textContent = 'Fuel $' + formatNumber(TACTICAL_BALANCE.stationFuelPrice) + '/u · Supply $' +
+                    formatNumber(TACTICAL_BALANCE.stationSupplyPrice) + ' · Ammo $' +
+                    formatNumber(TACTICAL_BALANCE.stationAmmoPrice) + '/u · Hull $' +
+                    formatNumber(TACTICAL_BALANCE.stationHullPrice) + ' · Armor $' +
+                    formatNumber(TACTICAL_BALANCE.stationArmorPrice) + ' · Shield/Energy FREE';
                 serviceButton.textContent = 'SERVICE ALL · CONNECT GAME CALLBACK';
                 serviceButton.disabled = true;
                 fuelButton.disabled = true;
@@ -930,12 +936,12 @@ export class ModalManager {
             ['Почему данные о цели неполные?', 'Контакт проходит три стадии: Blip показывает только отметку, Classified — фракцию, Ships и примерный Threat, Identified — точные DPS, readiness, роли и защиту. Оставайтесь рядом до завершения сканирования.'],
             ['Что делает Scan Pulse?', 'Active Scan Pulse на 4 секунды удваивает радиус радара и расходует 15% общей Energy. После импульса ваша Signature 8 секунд удвоена: вы увидите дальше, но противники тоже легче обнаружат вас.'],
             ['Почему bubble иногда появляется без видимого владельца?', 'Bubble считается зоной угрозы. Если её центр или край входит в ваш радар, либо вы уже попали внутрь, зона отображается даже при скрытом владельце. Дальние зоны без сенсорного контакта намеренно не рисуются.'],
-            ['Что такое Energy?', 'Это единая шкала корабля для оружия, восстановления shield и активных систем. При пустой Energy стрельба и регенерация щита останавливаются до подзарядки. Старой отдельной шкалы Flux больше нет.'],
-            ['Как работают слои защиты?', 'Урон проходит как shield → armor → hull. Shield восстанавливается после 4 секунд без попаданий и тратит Energy. Armor и hull сами не чинятся; при нуле hull корабль становится disabled.'],
-            ['Зачем нужны fuel и supplies?', 'Fuel тратится только в движении. Supplies оплачивают стабилизацию, ремонт hull/armor, боезапас и восстановление readiness. При нуле fuel остаётся аварийная скорость 25%, но форсаж недоступен.'],
+            ['Что такое Energy?', 'Это единая шкала корабля для оружия, восстановления shield и активных систем. На восстановление 100 Energy тратится 1 fuel. При нулевой Energy снижаются скорость и урон, а shield, hull и armor не восстанавливаются, пока не появится Energy. Старой отдельной шкалы Flux больше нет.'],
+            ['Как работают слои защиты?', 'Урон проходит как shield → armor → hull. Shield восстанавливается после 4 секунд без попаданий и тратит Energy. Support медленно чинит hull и armor в космосе только при наличии supplies и Energy; на Terra ремонт платный.'],
+            ['Зачем нужны fuel и supplies?', 'Fuel тратится в движении и при восстановлении Energy. Supplies оплачивают стабилизацию, ремонт hull/armor, боезапас и восстановление readiness. При нуле fuel остаётся аварийная скорость 25%, форсаж недоступен и Energy не восстанавливается.'],
             ['Что означает readiness?', 'Бой и форсаж снижают боеготовность. Ниже 50 постепенно падают damage, скорость и Energy recharge; ниже 15 нельзя включить форсаж. Вне боя readiness восстанавливается за supplies.'],
             ['Какова цена форсажа?', 'Afterburner даёт ×1,75 скорости на 3 секунды, но расходует Energy, снижает readiness, умножает расход fuel на 2,5 и Signature на 1,75. Это средство перехвата или отхода, а не постоянный режим.'],
-            ['Что делают три аварийных расходника?', 'Emergency Repair чинит только hull выбранного корабля и стабилизирует disabled. Shield Cell мгновенно возвращает 35% shield. Weapon Overcharge даёт +50% damage на 5 секунд ценой ×1,75 Energy cost и 5 readiness после действия.'],
+            ['Что делают расходники?', 'Emergency Repair восстанавливает до 20% hull выбранного корабля за 6 секунд. Shield Cell восстанавливает до 30% общего shield флота за 10 секунд. Weapon Overcharge даёт +50% damage на 5 секунд ценой ×1,75 Energy cost. Stasis Net в бою вдвое снижает скорость цели на 5 секунд; военные станции имеют бесконечный запас, NPC получают 0–3 сетки.'],
             ['Почему charge не потратился?', 'Сначала проверяются цель и ресурсы. Полный hull/shield, destroyed-цель, cooldown или нехватка Energy, fuel либо readiness отменяют применение без списания charge. Причина появляется в журнале.'],
             ['Как работают сигналы?', 'SignalDirector периодически создаёт до трёх событий: конвой, ловушку-дереликт, аномалию, терпящий бедствие танкер или гонку за salvage. У них есть таймер, несколько решений и самостоятельный исход без игрока.'],
             ['Что делать на Terra?', 'SHIPYARD меняет состав флота, а EQUIPMENT MARKET позволяет покупать и продавать charges всех расходников. REFUEL, REPAIR и SERVICE ALL работают частично и тратят доступный бюджет, если денег не хватает на полный объём; shield и Energy на станции заряжаются бесплатно.'],

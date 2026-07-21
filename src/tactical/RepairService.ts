@@ -26,11 +26,14 @@ export class RepairService {
         if (!support || fleet.supplies <= 0) return;
 
         const disabled = fleet.ships.find(ship => ship.state === 'disabled');
-        if (disabled && support.order.type === 'repair' && fleet.supplies >= TACTICAL_BALANCE.disabledStabilizeSupplyCost) {
+        if (disabled && support.order.type === 'repair' &&
+            fleet.supplies >= TACTICAL_BALANCE.disabledStabilizeSupplyCost &&
+            fleet.totalEnergy >= TACTICAL_BALANCE.disabledStabilizeEnergyCost) {
             fleet.stabilizationProgress += dt;
             if (fleet.stabilizationProgress >= TACTICAL_BALANCE.disabledStabilizeSeconds) {
                 disabled.stabilize();
                 fleet.supplies -= TACTICAL_BALANCE.disabledStabilizeSupplyCost;
+                fleet.consumePooledEnergy(TACTICAL_BALANCE.disabledStabilizeEnergyCost);
                 fleet.stabilizationProgress = 0;
             }
             return;
@@ -41,21 +44,39 @@ export class RepairService {
         if (inCombat && support.order.type !== 'repair') return;
 
         const engineeringBonus = 1 + fleet.getSkillLevel('engineering') * 0.2;
+        const repairWithResources = (desired: number, energyPerUnit: number, unitsPerSupply: number) => {
+            const repair = Math.min(
+                Math.max(0, desired),
+                fleet.supplies * unitsPerSupply,
+                fleet.totalEnergy / Math.max(0.001, energyPerUnit)
+            );
+            if (repair <= 0) return 0;
+            fleet.supplies = Math.max(0, fleet.supplies - repair / unitsPerSupply);
+            fleet.consumePooledEnergy(repair * energyPerUnit);
+            return repair;
+        };
+
         if (damaged) {
             const rate = (inCombat ? TACTICAL_BALANCE.combatHullRepairPerSecond : TACTICAL_BALANCE.fieldHullRepairPerSecond) * engineeringBonus;
-            const repair = Math.min(rate * dt, damaged.maxHull - damaged.hull, fleet.supplies * TACTICAL_BALANCE.fieldHullPerSupply);
+            const repair = repairWithResources(
+                Math.min(rate * dt, damaged.maxHull - damaged.hull),
+                TACTICAL_BALANCE.fieldRepairEnergyPerHull,
+                TACTICAL_BALANCE.fieldHullPerSupply
+            );
             damaged.restore(repair);
-            fleet.supplies = Math.max(0, fleet.supplies - repair / TACTICAL_BALANCE.fieldHullPerSupply);
             return;
         }
-        if (inCombat) return;
 
         const armorTarget = fleet.ships.filter(ship => ship.alive && ship.armor < ship.maxArmor)
             .sort((a, b) => a.armor / Math.max(1, a.maxArmor) - b.armor / Math.max(1, b.maxArmor))[0];
         if (armorTarget) {
-            const repair = Math.min(TACTICAL_BALANCE.fieldArmorRepairPerSecond * engineeringBonus * dt, armorTarget.maxArmor - armorTarget.armor, fleet.supplies * TACTICAL_BALANCE.fieldArmorPerSupply);
+            const armorRate = (inCombat ? TACTICAL_BALANCE.fieldArmorRepairPerSecond * 0.35 : TACTICAL_BALANCE.fieldArmorRepairPerSecond) * engineeringBonus;
+            const repair = repairWithResources(
+                Math.min(armorRate * dt, armorTarget.maxArmor - armorTarget.armor),
+                TACTICAL_BALANCE.fieldRepairEnergyPerArmor,
+                TACTICAL_BALANCE.fieldArmorPerSupply
+            );
             armorTarget.armor += repair;
-            fleet.supplies = Math.max(0, fleet.supplies - repair / TACTICAL_BALANCE.fieldArmorPerSupply);
             return;
         }
 
@@ -86,13 +107,13 @@ export class RepairService {
         ), 0) * TACTICAL_BALANCE.stationAmmoPrice;
         const hull = serviceable.reduce((sum, ship) => sum + Math.max(0, ship.maxHull - ship.hull), 0) * TACTICAL_BALANCE.stationHullPrice;
         const armor = serviceable.reduce((sum, ship) => sum + Math.max(0, ship.maxArmor - ship.armor), 0) * TACTICAL_BALANCE.stationArmorPrice;
-        const repairsTotal = Math.ceil(supplies + ammunition + hull + armor);
-        return { fuel, supplies, ammunition, hull, armor, repairsTotal, total: Math.ceil(fuel + supplies + ammunition + hull + armor) };
+        const repairsTotal = supplies + ammunition + hull + armor;
+        return { fuel, supplies, ammunition, hull, armor, repairsTotal, total: fuel + supplies + ammunition + hull + armor };
     }
 
     static purchaseStationService(fleet: Fleet, mode: StationServiceMode = 'all'): StationServiceResult {
         const quote = this.quoteStationService(fleet);
-        const requestedCost = mode === 'fuel' ? Math.ceil(quote.fuel) : mode === 'repairs' ? quote.repairsTotal : quote.total;
+        const requestedCost = mode === 'fuel' ? quote.fuel : mode === 'repairs' ? quote.repairsTotal : quote.total;
         const startingMoney = Math.max(0, fleet.money);
         if (requestedCost <= 0) {
             this.restoreAtStation(fleet);
@@ -144,7 +165,7 @@ export class RepairService {
 
         fleet.money = Math.max(0, budget);
         this.restoreAtStation(fleet);
-        const fullyPaid = startingMoney >= requestedCost;
+        const fullyPaid = startingMoney + 1e-6 >= requestedCost;
         if (fullyPaid && mode === 'all') {
             fleet.setReadiness(100);
         }

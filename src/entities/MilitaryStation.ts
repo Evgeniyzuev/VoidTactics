@@ -3,6 +3,7 @@ import { Vector2 } from '../utils/Vector2';
 import { Fleet } from './Fleet';
 import { FleetGenerator } from '../tactical/FleetGenerator';
 import { COMBAT_BALANCE } from '../tactical/ShipDefinitions';
+import { AbilityService } from '../tactical/AbilityService';
 
 /**
  * A stationary fleet-shaped defense platform.
@@ -37,6 +38,7 @@ export class MilitaryStation extends Fleet {
     ) {
         super(x, y, '#5f86d6', false);
         this.name = name;
+        this.isStation = true;
         this.faction = 'military';
         this.maxSpeed = 0;
         this.velocity = new Vector2(0, 0);
@@ -59,6 +61,12 @@ export class MilitaryStation extends Fleet {
     override update(dt: number) {
         this.cooldown = Math.max(0, this.cooldown - Math.max(0, dt));
         this.beamTimer = Math.max(0, this.beamTimer - Math.max(0, dt));
+        const net = this.abilities.net;
+        net.cooldown = Math.max(0, net.cooldown - Math.max(0, dt));
+        if (net.active) {
+            net.timer -= Math.max(0, dt);
+            if (net.timer <= 0) net.active = false;
+        }
         this.velocity = new Vector2(0, 0);
         this.isBubbled = false;
     }
@@ -78,6 +86,9 @@ export class MilitaryStation extends Fleet {
         this.lastTarget = target;
         if (!target || this.cooldown > 0) return null;
 
+        this.currentTarget = target;
+        AbilityService.activate(this, 'net');
+        this.currentTarget = null;
         target.receiveTacticalDamage(this.damagePerShot, 'energy');
         this.cooldown = this.fireInterval;
         this.beamTimer = 0.18;

@@ -46,6 +46,7 @@ export class Fleet extends Entity {
     public maxSpeed: number = 500;
     /** Distance at which a fleet can initiate a tactical interception. */
     public attackRadius: number = 100;
+    public isStation = false;
     private stopThreshold: number = 5;
 
     private rotation: number = 0;
@@ -79,11 +80,15 @@ export class Fleet extends Entity {
         mine: { active: false, timer: 0, cooldown: 0, duration: ABILITY_DEFINITIONS.mine.duration, cdMax: ABILITY_DEFINITIONS.mine.cooldown, charges: 0 },
         medkit: { active: false, timer: 0, cooldown: 0, duration: ABILITY_DEFINITIONS.medkit.duration, cdMax: ABILITY_DEFINITIONS.medkit.cooldown, charges: 0 },
         fire: { active: false, timer: 0, cooldown: 0, duration: ABILITY_DEFINITIONS.fire.duration, cdMax: ABILITY_DEFINITIONS.fire.cooldown, charges: 0 },
-        shield: { active: false, timer: 0, cooldown: 0, duration: ABILITY_DEFINITIONS.shield.duration, cdMax: ABILITY_DEFINITIONS.shield.cooldown, charges: 0 }
+        shield: { active: false, timer: 0, cooldown: 0, duration: ABILITY_DEFINITIONS.shield.duration, cdMax: ABILITY_DEFINITIONS.shield.cooldown, charges: 0 },
+        net: { active: false, timer: 0, cooldown: 0, duration: ABILITY_DEFINITIONS.net.duration, cdMax: ABILITY_DEFINITIONS.net.cooldown, charges: 0 }
     };
     public isCloaked: boolean = false;
     public isBubbled: boolean = false; // Set by external bubbles
     public bubbleDistance: number = 0; // Distance to bubble center
+    public netSlowTimer = 0;
+    public shieldCellRemaining = 0;
+    public shieldCellRate = 0;
     public stunTimer: number = 0;
     public money: number = 0; // Only for player
 
@@ -122,11 +127,19 @@ export class Fleet extends Entity {
         const normalized = Math.max(0, this.operationalReadiness) / TACTICAL_BALANCE.lowReadinessThreshold;
         return TACTICAL_BALANCE.minimumReadinessEfficiency + (1 - TACTICAL_BALANCE.minimumReadinessEfficiency) * normalized;
     }
+    public get energyEfficiency() {
+        const maximum = this.maxEnergy;
+        if (maximum <= 0) return 0;
+        const ratio = Math.max(0, Math.min(1, this.totalEnergy / maximum));
+        return TACTICAL_BALANCE.minimumEnergyEfficiency
+            + (1 - TACTICAL_BALANCE.minimumEnergyEfficiency) * ratio;
+    }
     public get maxFuel() {
         return this.ships.filter(ship => ship.state !== 'destroyed').reduce((sum, ship) => sum + ship.maxFuelCapacity, 0);
     }
     public get totalEnergy() { return this.ships.filter(ship => ship.alive).reduce((sum, ship) => sum + ship.energy, 0); }
     public get maxEnergy() { return this.ships.filter(ship => ship.alive).reduce((sum, ship) => sum + ship.maxEnergy, 0); }
+    public get maxShield() { return this.ships.filter(ship => ship.alive).reduce((sum, ship) => sum + ship.maxShield, 0); }
     public get fuelBurnPerDistance() {
         return TACTICAL_BALANCE.fuelPerDistance * this.ships.filter(ship => ship.alive)
             .reduce((sum, ship) => sum + Math.sqrt(Math.max(0.02, ship.statScale)), 0);
@@ -167,8 +180,9 @@ export class Fleet extends Entity {
         this.fuel = this.maxFuel;
         if (!this.isPlayer) {
             this.abilities.afterburner.charges = 1;
-            this.abilities.mine.charges = 1;
-            if (this.faction === 'military' || this.faction === 'mercenary') this.abilities.bubble.charges = 1;
+           this.abilities.mine.charges = 1;
+            this.abilities.net.charges = Math.floor(Math.random() * 4);
+           if (this.faction === 'military' || this.faction === 'mercenary') this.abilities.bubble.charges = 1;
             if (this.faction === 'raider') this.abilities.cloak.charges = 1;
         }
     }
@@ -181,6 +195,19 @@ export class Fleet extends Entity {
         return true;
     }
 
+    /** Consume a concrete pooled Energy amount, distributing it by current reserve. */
+    public consumePooledEnergy(amount: number) {
+        const active = this.ships.filter(ship => ship.alive);
+        const requested = Math.max(0, amount);
+        const available = active.reduce((sum, ship) => sum + ship.energy, 0);
+        const consumed = Math.min(requested, available);
+        if (consumed <= 0 || available <= 0) return 0;
+        for (const ship of active) {
+            ship.spendEnergy(consumed * ship.energy / available);
+        }
+        return consumed;
+    }
+
     /** Spends a fraction of total maximum Energy, shared by current Energy reserves. */
     public consumePooledEnergyFraction(fraction: number) {
         const active = this.ships.filter(ship => ship.alive);
@@ -190,10 +217,7 @@ export class Fleet extends Entity {
         const cost = active.reduce((sum, ship) => sum + ship.maxEnergy, 0) * safeFraction;
         if (totalAvailable + 1e-6 < cost) return false;
         if (cost <= 0) return true;
-        for (const ship of active) {
-            ship.spendEnergy(cost * ship.energy / totalAvailable);
-        }
-        return true;
+        return this.consumePooledEnergy(cost) + 1e-6 >= cost;
     }
 
     public clampFuelToCapacity() {
@@ -257,10 +281,47 @@ export class Fleet extends Entity {
         this.target = null;
     }
 
+    private updateShieldCell(dt: number) {
+        if (this.shieldCellRemaining <= 0 || this.shieldCellRate <= 0) return;
+        const wanted = Math.min(this.shieldCellRemaining, this.shieldCellRate * Math.max(0, dt));
+        let remaining = wanted;
+       const targets = this.ships
+           .filter(ship => ship.alive && ship.shield < ship.maxShield)
+           .sort((a, b) => a.shield / Math.max(1, a.maxShield) - b.shield / Math.max(1, b.maxShield));
+        if (targets.length === 0) {
+            this.shieldCellRemaining = 0;
+            this.shieldCellRate = 0;
+            return;
+        }
+       for (const ship of targets) {
+            if (remaining <= 0) break;
+            const restored = ship.restoreShield(remaining);
+            remaining -= restored;
+        }
+        this.shieldCellRemaining = Math.max(0, this.shieldCellRemaining - (wanted - remaining));
+        if (this.shieldCellRemaining <= 1e-6) {
+            this.shieldCellRemaining = 0;
+            this.shieldCellRate = 0;
+        }
+    }
+
     update(dt: number) {
         this.tacticalClock += dt; this.ensureComposition();
         this.clampFuelToCapacity();
-        for (const ship of this.ships) ship.update(dt, this.readinessEfficiency);
+        this.netSlowTimer = Math.max(0, this.netSlowTimer - Math.max(0, dt));
+        const activeShips = this.ships.filter(ship => ship.alive);
+        const potentialEnergy = activeShips.reduce((sum, ship) => sum + Math.min(
+            Math.max(0, ship.maxEnergy - ship.energy),
+            ship.energyRecharge * this.readinessEfficiency * Math.max(0, dt)
+        ), 0);
+        const energyFuel = potentialEnergy * TACTICAL_BALANCE.energyFuelPerPoint;
+        const energyRechargeMultiplier = energyFuel > 0 ? Math.min(1, this.fuel / energyFuel) : 0;
+        let energyRestored = 0;
+        for (const ship of this.ships) {
+            energyRestored += ship.update(dt, this.readinessEfficiency, energyRechargeMultiplier);
+        }
+        this.fuel = Math.max(0, this.fuel - energyRestored * TACTICAL_BALANCE.energyFuelPerPoint);
+        this.updateShieldCell(dt);
         if (this.velocity.mag() > 5) {
             const afterburnerMultiplier = this.abilities.afterburner.active ? TACTICAL_BALANCE.afterburnerFuelMultiplier : 1;
             const fuelUse = this.velocity.mag() * dt * this.fuelBurnPerDistance * afterburnerMultiplier;
@@ -342,6 +403,8 @@ export class Fleet extends Entity {
         }
         if (this.fuel <= 0) currentMaxSpeed *= TACTICAL_BALANCE.emergencySpeedMultiplier;
         currentMaxSpeed *= this.readinessEfficiency;
+        currentMaxSpeed *= this.energyEfficiency;
+        if (this.netSlowTimer > 0) currentMaxSpeed *= TACTICAL_BALANCE.netSpeedMultiplier;
         if (this.abilities.bubble.active) {
             currentMaxSpeed *= 0.5;
         }

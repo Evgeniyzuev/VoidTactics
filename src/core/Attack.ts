@@ -4,6 +4,7 @@ import { Game } from './Game';
 import { CelestialBody } from '../entities/CelestialBody';
 import { TargetResolver } from '../tactical/TargetResolver';
 import { COMBAT_BALANCE, TACTICAL_BALANCE } from '../tactical/ShipDefinitions';
+import { AbilityService } from '../tactical/AbilityService';
 
 export class Attack {
     public attacker: Fleet;
@@ -91,10 +92,16 @@ export class Attack {
         // shields, armor and hull instead of subtracting an abstract fleet number.
         this.attacker.ensureComposition();
         this.target.ensureComposition();
+        if (!this.attacker.isPlayer &&
+            this.attacker.abilities.net.charges > 0 &&
+            this.attacker.abilities.net.cooldown <= 0) {
+            AbilityService.activate(this.attacker, 'net');
+        }
         const firingShips = this.attacker.ships
             .filter(ship => ship.alive && ship.order.type !== 'retreat' && ship.order.type !== 'repair');
         let totalDamage = 0;
         let totalHullDamage = 0;
+        const volleyEnergyEfficiency = this.attacker.energyEfficiency;
         for (const ship of firingShips) {
             const targetShip = TargetResolver.resolve(ship, this.target.ships, this.attacker.doctrine, firingShips);
             if (!targetShip) continue;
@@ -105,7 +112,7 @@ export class Attack {
                 const overcharged = ship.overchargeTimer > 0;
                 const energyPerSecond = weapon.energyCost / Math.max(0.1, weapon.cooldown) * (overcharged ? TACTICAL_BALANCE.overchargeEnergyMultiplier : 1);
                 if (!ship.spendEnergy(energyPerSecond * dt)) continue;
-                let damage = weapon.damage * ship.statScale / Math.max(0.1, weapon.cooldown) * COMBAT_BALANCE.damageScale * dt * weaponsPenalty * this.attacker.readinessEfficiency;
+                let damage = weapon.damage * ship.statScale / Math.max(0.1, weapon.cooldown) * COMBAT_BALANCE.damageScale * dt * weaponsPenalty * this.attacker.readinessEfficiency * volleyEnergyEfficiency;
                 if (overcharged) damage *= TACTICAL_BALANCE.overchargeDamageMultiplier;
                 if (usesAmmo) ship.ammunition = Math.max(0, ship.ammunition - dt / Math.max(0.1, weapon.cooldown) * 0.05);
                 totalDamage += damage;

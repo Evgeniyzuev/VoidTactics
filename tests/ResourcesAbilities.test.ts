@@ -76,10 +76,11 @@ describe('fleet fuel and readiness', () => {
 
         const expectedNormalBurn = 100 * TACTICAL_BALANCE.fuelPerDistance;
         expect(normalFuelBefore - normal.fuel).toBeCloseTo(expectedNormalBurn, 10);
-        expect(boostedFuelBefore - boosted.fuel).toBeCloseTo(
-            expectedNormalBurn * TACTICAL_BALANCE.afterburnerFuelMultiplier,
-            10
-        );
+       expect(boostedFuelBefore - boosted.fuel).toBeCloseTo(
+            expectedNormalBurn * TACTICAL_BALANCE.afterburnerFuelMultiplier +
+                boosted.ships[0].energyRecharge * TACTICAL_BALANCE.energyFuelPerPoint,
+           10
+       );
     });
 
     it('keeps an empty fleet mobile at exactly the emergency-speed fraction', () => {
@@ -289,10 +290,13 @@ describe('narrow consumable effects', () => {
         fleet.abilities.shield.charges = 1;
         const before = { hull: ship.hull, armor: ship.armor, shield: ship.shield, energy: ship.energy };
 
-        const result = AbilityService.activate(fleet, 'shield');
+       const result = AbilityService.activate(fleet, 'shield');
+        ship.shieldRechargeDelay = 100;
+        fleet.fuel = 0;
+        fleet.update(TACTICAL_BALANCE.shieldCellDuration);
 
-        expect(result.ok).toBe(true);
-        expect(ship.shield).toBeCloseTo(before.shield + ship.maxShield * 0.35, 10);
+       expect(result.ok).toBe(true);
+        expect(ship.shield).toBeCloseTo(before.shield + fleet.maxShield * TACTICAL_BALANCE.shieldCellFraction, 10);
         expect(ship.hull).toBe(before.hull);
         expect(ship.armor).toBe(before.armor);
         expect(ship.energy).toBe(before.energy);
@@ -433,13 +437,13 @@ describe('supplies and station service', () => {
         expect(result.partial).toBe(true);
         expect(result.cost).toBeCloseTo(3, 10);
         expect(fleet.money).toBeCloseTo(0, 10);
-        expect(fleet.fuel).toBeCloseTo(fleet.maxFuel - 8.5, 10);
+        expect(fleet.fuel).toBeCloseTo(fleet.maxFuel - (10 - 3 / TACTICAL_BALANCE.stationFuelPrice), 10);
     });
 
     it('partially repairs hull when a full station repair is unaffordable', () => {
         const fleet = createRepairFleet();
         const target = fleet.ships[0];
-        target.hull -= 10;
+        target.hull -= 20;
         fleet.money = 6;
 
         const result = RepairService.purchaseStationService(fleet, 'repairs');
@@ -447,7 +451,7 @@ describe('supplies and station service', () => {
         expect(result.ok).toBe(true);
         expect(result.partial).toBe(true);
         expect(result.cost).toBeCloseTo(6, 10);
-        expect(target.hull).toBeCloseTo(target.maxHull - 8, 10);
+        expect(target.hull).toBeCloseTo(target.maxHull - 10, 10);
         expect(fleet.money).toBeCloseTo(0, 10);
     });
 

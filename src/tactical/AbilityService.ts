@@ -2,7 +2,7 @@ import type { Fleet } from '../entities/Fleet';
 import type { SensorService } from './SensorService';
 import { TACTICAL_BALANCE } from './ShipDefinitions';
 
-export type FleetAbilityId = 'afterburner' | 'cloak' | 'bubble' | 'mine' | 'medkit' | 'fire' | 'shield';
+export type FleetAbilityId = 'afterburner' | 'cloak' | 'bubble' | 'mine' | 'medkit' | 'fire' | 'shield' | 'net';
 export type TacticalAbilityId = FleetAbilityId | 'scan';
 
 export const ABILITY_EQUIPMENT_MARKET = {
@@ -28,7 +28,8 @@ export const ABILITY_DEFINITIONS: Readonly<Record<TacticalAbilityId, AbilityDefi
     mine: { id: 'mine', name: 'Warp Mine', duration: 0, cooldown: 5, energyFraction: 0.1, readinessCost: 0, requiresSelectedShip: false },
     medkit: { id: 'medkit', name: 'Emergency Repair', duration: 6, cooldown: 10, energyFraction: 0, readinessCost: 0, requiresSelectedShip: true },
     fire: { id: 'fire', name: 'Weapon Overcharge', duration: 5, cooldown: 10, energyFraction: 0, readinessCost: 5, requiresSelectedShip: true },
-    shield: { id: 'shield', name: 'Shield Cell', duration: 0, cooldown: 5, energyFraction: 0, readinessCost: 0, requiresSelectedShip: true },
+    shield: { id: 'shield', name: 'Shield Cell', duration: TACTICAL_BALANCE.shieldCellDuration, cooldown: TACTICAL_BALANCE.shieldCellCooldown, energyFraction: 0, readinessCost: 0, requiresSelectedShip: false },
+    net: { id: 'net', name: 'Stasis Net', duration: TACTICAL_BALANCE.netDuration, cooldown: TACTICAL_BALANCE.netCooldown, energyFraction: 0, readinessCost: 0, requiresSelectedShip: false },
     scan: { id: 'scan', name: 'Active Scan Pulse', duration: 4, cooldown: 0, energyFraction: TACTICAL_BALANCE.scanPulseEnergyFraction, readinessCost: 0, requiresSelectedShip: false }
 };
 
@@ -44,7 +45,8 @@ export class AbilityService {
         const ability = fleet.abilities[id];
         if (!ability) return { ok: false, reason: 'Unknown system.' };
         if (ability.active || ability.cooldown > 0) return { ok: false, reason: 'System is cooling down.' };
-        if (ability.charges <= 0) return { ok: false, reason: 'No charges.' };
+        const unlimitedStationNet = id === 'net' && fleet.isStation;
+        if (!unlimitedStationNet && ability.charges <= 0) return { ok: false, reason: 'No charges.' };
         if (id === 'cloak' && fleet.currentTarget) {
             return { ok: false, reason: 'Cannot cloak while attacking.' };
         }
@@ -65,9 +67,19 @@ export class AbilityService {
             selected.emergencyRepairRemaining = Math.max(0, targetHull - selected.hull);
             selected.emergencyRepairTimer = 6;
         } else if (id === 'shield') {
-            if (!selected?.alive) return { ok: false, reason: 'Select an active ship.' };
-            if (selected.shield >= selected.maxShield) return { ok: false, reason: 'Shield is already full.' };
-            selected.restoreShield(selected.maxShield * TACTICAL_BALANCE.shieldCellFraction);
+            const missingShield = fleet.ships
+                .filter(ship => ship.alive)
+                .reduce((sum, ship) => sum + Math.max(0, ship.maxShield - ship.shield), 0);
+            if (missingShield <= 0) return { ok: false, reason: 'Fleet shield is already full.' };
+            fleet.shieldCellRemaining = Math.min(fleet.maxShield * TACTICAL_BALANCE.shieldCellFraction, missingShield);
+            fleet.shieldCellRate = fleet.shieldCellRemaining / Math.max(0.1, TACTICAL_BALANCE.shieldCellDuration);
+       } else if (id === 'net') {
+            const target = fleet.currentTarget;
+            if (!target || target.isCloaked || !target.ships.some(ship => ship.alive)) {
+                return { ok: false, reason: 'Stasis Net requires an active attack target.' };
+            }
+            target.netSlowTimer = TACTICAL_BALANCE.netDuration;
+            target.velocity = target.velocity.scale(TACTICAL_BALANCE.netSpeedMultiplier);
         } else if (id === 'fire') {
             if (!selected?.alive) return { ok: false, reason: 'Select an active ship.' };
             if (selected.energy <= 0) return { ok: false, reason: 'Not enough Energy.' };
@@ -79,7 +91,7 @@ export class AbilityService {
             }
         }
 
-        ability.charges--;
+        if (!unlimitedStationNet) ability.charges--;
         ability.active = ability.duration > 0;
         ability.timer = ability.duration;
         ability.cooldown = ability.cdMax;

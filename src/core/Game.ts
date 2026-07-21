@@ -307,7 +307,7 @@ export class Game {
         systemId?: number,
         spawnNearGate?: Vector2,
         progress?: { totalMoneyEarned: number; level: number; levelThreshold: number; nextLevelThreshold: number },
-        abilityCharges?: { afterburner: number; cloak: number; bubble: number; mine: number; medkit: number; fire: number; shield: number }
+        abilityCharges?: { afterburner: number; cloak: number; bubble: number; mine: number; medkit: number; fire: number; shield: number; net?: number }
     ) {
         // Set current system
         this.currentSystemId = systemId || 1;
@@ -516,15 +516,16 @@ export class Game {
             mine: this.playerFleet.abilities.mine.charges,
             medkit: this.playerFleet.abilities.medkit.charges,
             fire: this.playerFleet.abilities.fire.charges,
-            shield: this.playerFleet.abilities.shield.charges
+            shield: this.playerFleet.abilities.shield.charges,
+            net: this.playerFleet.abilities.net.charges
         };
     }
 
     private getDefaultAbilityCharges() {
-        return { afterburner: 0, cloak: 0, bubble: 0, mine: 0, medkit: 0, fire: 0, shield: 0 };
+        return { afterburner: 0, cloak: 0, bubble: 0, mine: 0, medkit: 0, fire: 0, shield: 0, net: 0 };
     }
 
-    private applyAbilityCharges(charges: { afterburner: number; cloak: number; bubble: number; mine: number; medkit: number; fire: number; shield: number }) {
+    private applyAbilityCharges(charges: { afterburner: number; cloak: number; bubble: number; mine: number; medkit: number; fire: number; shield: number; net?: number }) {
         this.playerFleet.abilities.afterburner.charges = Math.max(0, charges.afterburner || 0);
         this.playerFleet.abilities.cloak.charges = Math.max(0, charges.cloak || 0);
         this.playerFleet.abilities.bubble.charges = Math.max(0, charges.bubble || 0);
@@ -532,6 +533,7 @@ export class Game {
         this.playerFleet.abilities.medkit.charges = Math.max(0, charges.medkit || 0);
         this.playerFleet.abilities.fire.charges = Math.max(0, charges.fire || 0);
         this.playerFleet.abilities.shield.charges = Math.max(0, charges.shield || 0);
+        this.playerFleet.abilities.net.charges = Math.max(0, charges.net || 0);
         if (this.ui) this.ui.updateAbilities(this.playerFleet);
     }
 
@@ -653,7 +655,8 @@ export class Game {
                 mine: fleet.abilities.mine.charges,
                 medkit: fleet.abilities.medkit.charges,
                 fire: fleet.abilities.fire.charges,
-                shield: fleet.abilities.shield.charges
+                shield: fleet.abilities.shield.charges,
+                net: fleet.abilities.net.charges
             }
         };
     }
@@ -749,6 +752,7 @@ export class Game {
         fleet.fuel = fleet.maxFuel;
         fleet.commandCapacity = Math.max(12, fleet.commandUsed);
         fleet.selectedShipId = fleet.ships[0]?.id || null;
+        fleet.abilities.net.charges = Math.floor(Math.random() * 4);
         fleet.worldEventId = event.id;
         fleet.worldEventRole = role;
         if (faction === 'pirate') fleet.doctrine.targetPriority = 'damaged';
@@ -781,6 +785,7 @@ export class Game {
         fleet.abilities.medkit.charges = snapshot.abilityCharges.medkit;
         fleet.abilities.fire.charges = snapshot.abilityCharges.fire;
         fleet.abilities.shield.charges = snapshot.abilityCharges.shield;
+        fleet.abilities.net.charges = snapshot.abilityCharges.net || 0;
         if (fleet.faction === 'pirate') fleet.doctrine.targetPriority = 'damaged';
         if (fleet.faction === 'military') fleet.doctrine.targetPriority = 'artillery';
         this.entities.push(fleet);
@@ -1197,6 +1202,10 @@ export class Game {
 
     public getFleetSensorRange(fleet: Fleet) {
         return this.sensors.getFleetProfile(fleet, this.gameClock).sensorRange;
+    }
+
+    public getMilitaryStations() {
+        return this.entities.filter((entity): entity is MilitaryStation => entity instanceof MilitaryStation);
     }
 
     private updateWorldEvents(dt: number) {
@@ -1682,7 +1691,7 @@ export class Game {
                 }
                 const dropCount = Math.random() < 0.5 ? 1 : 2;
                 if (dropCount > 0) {
-                    const abilityIds = ['afterburner', 'bubble', 'cloak', 'mine', 'medkit', 'fire', 'shield'];
+                    const abilityIds = ['afterburner', 'bubble', 'cloak', 'mine', 'medkit', 'fire', 'shield', 'net'];
                     for (let i = 0; i < dropCount; i++) {
                         const abilityId = abilityIds[Math.floor(Math.random() * abilityIds.length)];
                         const angle = Math.random() * Math.PI * 2;
@@ -1873,7 +1882,7 @@ export class Game {
                 }), { shield: 0, maxShield: 0, armor: 0, maxArmor: 0, hull: 0, maxHull: 0 });
                 const damage = fleet.ships
                     .filter(ship => ship.alive && ship.order.type !== 'repair')
-                    .reduce((sum, ship) => sum + ship.weaponDps * (ship.overchargeTimer > 0 ? TACTICAL_BALANCE.overchargeDamageMultiplier : 1), 0) * fleet.readinessEfficiency * COMBAT_BALANCE.damageScale;
+                    .reduce((sum, ship) => sum + ship.weaponDps * (ship.overchargeTimer > 0 ? TACTICAL_BALANCE.overchargeDamageMultiplier : 1), 0) * fleet.readinessEfficiency * fleet.energyEfficiency * COMBAT_BALANCE.damageScale;
                 info += `<span style="color:#ffb86b">Damage: ${formatNumber(Math.round(damage))} DPS</span><br/>`;
                 info += `<span style="color:#66ccff">Shield: ${formatNumber(Math.ceil(defenses.shield))} / ${formatNumber(Math.ceil(defenses.maxShield))}</span><br/>`;
                 info += `<span style="color:#d6b26e">Armor: ${formatNumber(Math.ceil(defenses.armor))} / ${formatNumber(Math.ceil(defenses.maxArmor))}</span><br/>`;
@@ -2833,7 +2842,7 @@ export class Game {
         return true;
     }
 
-    public activateNpcAbility(owner: Fleet, id: 'afterburner' | 'cloak' | 'bubble'): boolean {
+    public activateNpcAbility(owner: Fleet, id: 'afterburner' | 'cloak' | 'bubble' | 'net'): boolean {
         const result = AbilityService.activate(owner, id);
         if (!result.ok) return false;
         if (id === 'bubble') this.bubbleZones.push(new BubbleZone(owner.position.x, owner.position.y, 200, 8, 0.2, owner));

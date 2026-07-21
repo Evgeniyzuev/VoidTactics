@@ -171,7 +171,7 @@ describe('SaveSystem v4', () => {
         });
         expect(loaded!.abilityCharges).toEqual({
             afterburner: 2, cloak: 3, bubble: 4, mine: 5,
-            medkit: 6, fire: 7, shield: 8
+            medkit: 6, fire: 7, shield: 8, net: 0
         });
         expect(loaded!.signalDirector).toEqual(expectedSignals);
 

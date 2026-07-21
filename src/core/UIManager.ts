@@ -358,7 +358,7 @@ export class UIManager {
     private updateFleetSummary(fleet: Fleet, active = fleet.ships.filter(ship => ship.state === 'active').length, disabled = fleet.ships.filter(ship => ship.state === 'disabled').length) {
         const summary = this.fleetPanel.querySelector('.fleet-summary');
         if (!summary) return;
-        const dps = fleet.ships.filter(ship => ship.alive && ship.order.type !== 'repair').reduce((sum, ship) => sum + ship.weaponDps * fleet.readinessEfficiency * COMBAT_BALANCE.damageScale * (ship.overchargeTimer > 0 ? TACTICAL_BALANCE.overchargeDamageMultiplier : 1), 0);
+        const dps = fleet.ships.filter(ship => ship.alive && ship.order.type !== 'repair').reduce((sum, ship) => sum + ship.weaponDps * fleet.readinessEfficiency * fleet.energyEfficiency * COMBAT_BALANCE.damageScale * (ship.overchargeTimer > 0 ? TACTICAL_BALANCE.overchargeDamageMultiplier : 1), 0);
         const energy = Math.ceil(fleet.totalEnergy);
         const maxEnergy = Math.ceil(fleet.maxEnergy);
         const selected = fleet.ships.find(ship => ship.id === fleet.selectedShipId);
@@ -436,6 +436,18 @@ export class UIManager {
             { id: 'shield', icon: '🛡', color: '#66CCFF', title: `Shield Cell (+${Math.round(TACTICAL_BALANCE.shieldCellFraction * 100)}% selected ship shield)` }
         ];
 
+        abilities.push({
+            id: 'net',
+            icon: '🕸',
+            color: '#D58CFF',
+            title: 'Stasis Net (halve target speed for ' + TACTICAL_BALANCE.netDuration + 's)'
+        });
+        const shieldAbility = abilities.find(ability => ability.id === 'shield');
+        if (shieldAbility) {
+            shieldAbility.title = 'Shield Cell (restore ' +
+                Math.round(TACTICAL_BALANCE.shieldCellFraction * 100) +
+                '% fleet shield over ' + TACTICAL_BALANCE.shieldCellDuration + 's)';
+        }
         abilities.forEach(ability => {
             const btn = document.createElement('button');
             btn.className = 'ability-btn';

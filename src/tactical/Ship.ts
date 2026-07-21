@@ -92,16 +92,21 @@ export class Ship {
         return Math.max(0, this.hull) * COMBAT_BALANCE.hullThreatWeight + this.weaponDps * COMBAT_BALANCE.offenseThreatWeight + this.utilityRating;
     }
 
-    update(dt: number, readinessEfficiency = 1) {
+    update(dt: number, readinessEfficiency = 1, energyRechargeMultiplier = 1) {
         this.targetLockTimer = Math.max(0, this.targetLockTimer - dt);
         this.shieldRechargeDelay = Math.max(0, this.shieldRechargeDelay - dt);
         this.shieldFlash = Math.max(0, this.shieldFlash - dt * 3);
         this.hitFlash = Math.max(0, this.hitFlash - dt * 4);
         this.weaponCooldowns = this.weaponCooldowns.map(value => Math.max(0, value - dt));
         this.overchargeTimer = Math.max(0, this.overchargeTimer - dt);
-        if (!this.alive) return;
+        if (!this.alive) return 0;
 
-        this.energy = Math.min(this.maxEnergy, this.energy + this.energyRecharge * readinessEfficiency * dt);
+        const availableRecharge = Math.max(0, Math.min(1, energyRechargeMultiplier));
+        const energyRestored = Math.min(
+            Math.max(0, this.maxEnergy - this.energy),
+            this.energyRecharge * readinessEfficiency * dt * availableRecharge
+        );
+        this.energy = Math.min(this.maxEnergy, this.energy + energyRestored);
         if (this.emergencyRepairRemaining > 0 && this.emergencyRepairTimer > 0) {
             const repair = Math.min(this.emergencyRepairRemaining, this.emergencyRepairRemaining / Math.max(dt, this.emergencyRepairTimer) * dt);
             this.restore(repair);
@@ -115,6 +120,7 @@ export class Ship {
             this.shield += restored;
             this.energy = Math.max(0, this.energy - restored * TACTICAL_BALANCE.shieldEnergyPerPoint);
         }
+        return energyRestored;
     }
 
     applyDamage(amount: number, type: DamageType): number {

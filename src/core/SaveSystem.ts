@@ -32,6 +32,8 @@ export interface AbilityChargesSave {
     medkit: number;
     fire: number;
     shield: number;
+    /** Added in v4 after older saves were already in the wild. */
+    net?: number;
 }
 
 export interface FleetResourcesSave {
@@ -146,7 +148,8 @@ export class SaveSystem {
                 mine: player.abilities.mine.charges,
                 medkit: player.abilities.medkit.charges,
                 fire: player.abilities.fire.charges,
-                shield: player.abilities.shield.charges
+                shield: player.abilities.shield.charges,
+                net: player.abilities.net.charges
             },
             currentSystemId: systemId,
             systemId,
@@ -227,6 +230,7 @@ export class SaveSystem {
             fleet.abilities.medkit.charges = data.abilityCharges.medkit;
             fleet.abilities.fire.charges = data.abilityCharges.fire;
             fleet.abilities.shield.charges = data.abilityCharges.shield;
+            fleet.abilities.net.charges = data.abilityCharges.net ?? 0;
         }
     }
 
