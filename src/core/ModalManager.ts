@@ -263,10 +263,11 @@ export class ModalManager {
         title.style.fontSize = '24px';
         title.style.fontFamily = 'monospace';
 
-        // Get saved fleet sizes
-        const savedSize = SaveSystem.loadFleetSize();
-        const autosaveSize = SaveSystem.loadAutosaveFleetSize();
-
+        // Prefer the current full snapshots when showing slot status.
+        const manualSave = SaveSystem.load();
+        const autosave = SaveSystem.loadAutosave();
+        const savedSize = manualSave?.commandCapacity || SaveSystem.loadFleetSize();
+        const autosaveSize = autosave?.commandCapacity || SaveSystem.loadAutosaveFleetSize();
         const createMenuButton = (text: string, subtext: string, color: string, callback: () => void, disabled: boolean = false) => {
             const btn = document.createElement('button');
             btn.style.padding = '15px 25px';

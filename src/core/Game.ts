@@ -8,7 +8,7 @@ import { Entity } from '../entities/Entity';
 import { MilitaryStation } from '../entities/MilitaryStation';
 import { BubbleZone } from '../entities/BubbleZone';
 import { WarpGate } from '../entities/WarpGate';
-import { SaveSystem, type EventFleetSnapshot, type WorldEventRuntimeSnapshot } from './SaveSystem';
+import { SaveSystem, type EventFleetSnapshot, type WorldEventRuntimeSnapshot, type SaveSlot } from './SaveSystem';
 import { UIManager } from './UIManager';
 import { ModalManager } from './ModalManager';
 import { Attack } from './Attack';
@@ -179,7 +179,7 @@ export class Game {
 
         // Auto-Save Interval (5 seconds)
         setInterval(() => {
-            this.saveGame();
+            this.saveGame('autosave');
         }, 5000);
 
         // Resize Listener for Camera & Background
@@ -231,26 +231,26 @@ export class Game {
                 console.log('Fleet command capacity saved:', this.playerFleet.commandCapacity);
             },
             onLoadFleet: () => {
-                // Load saved size and start new world with it
-                const savedSize = SaveSystem.loadFleetSize();
-                const savedProgress = SaveSystem.loadFleetProgress() || this.getDefaultProgress();
-                const savedCharges = SaveSystem.loadFleetAbilityCharges() || this.getDefaultAbilityCharges();
                 const tacticalSave = SaveSystem.load();
+                const savedSize = SaveSystem.loadFleetSize();
+                const savedProgress = tacticalSave?.progress || SaveSystem.loadFleetProgress() || this.getDefaultProgress();
+                const savedCharges = tacticalSave?.abilityCharges || SaveSystem.loadFleetAbilityCharges() || this.getDefaultAbilityCharges();
+                const savedCommandCapacity = tacticalSave?.commandCapacity || savedSize || 4;
                 const systemId = tacticalSave ? Number(tacticalSave.systemId || tacticalSave.currentSystemId) || 1 : undefined;
-                this.initWorld(savedSize || 10, systemId, undefined, savedProgress, savedCharges);
+                this.initWorld(savedCommandCapacity, systemId, undefined, savedProgress, savedCharges);
                 if (tacticalSave) {
                     SaveSystem.restoreFleet(this.playerFleet, tacticalSave);
                     this.restoreSignalDirector(tacticalSave.signalDirector, tacticalSave.worldEvents);
                 }
             },
             onLoadAuto: () => {
-                // Load autosave size and start new world with it
+                const tacticalSave = SaveSystem.loadAutosave();
                 const autosaveSize = SaveSystem.loadAutosaveFleetSize();
-                const autosaveProgress = SaveSystem.loadAutosaveFleetProgress() || this.getDefaultProgress();
-                const autosaveCharges = SaveSystem.loadAutosaveFleetAbilityCharges() || this.getDefaultAbilityCharges();
-                const tacticalSave = SaveSystem.load();
+                const autosaveProgress = tacticalSave?.progress || SaveSystem.loadAutosaveFleetProgress() || this.getDefaultProgress();
+                const autosaveCharges = tacticalSave?.abilityCharges || SaveSystem.loadAutosaveFleetAbilityCharges() || this.getDefaultAbilityCharges();
+                const savedCommandCapacity = tacticalSave?.commandCapacity || autosaveSize || 4;
                 const systemId = tacticalSave ? Number(tacticalSave.systemId || tacticalSave.currentSystemId) || 1 : undefined;
-                this.initWorld(autosaveSize || 10, systemId, undefined, autosaveProgress, autosaveCharges);
+                this.initWorld(savedCommandCapacity, systemId, undefined, autosaveProgress, autosaveCharges);
                 if (tacticalSave) {
                     SaveSystem.restoreFleet(this.playerFleet, tacticalSave);
                     this.restoreSignalDirector(tacticalSave.signalDirector, tacticalSave.worldEvents);
@@ -627,12 +627,12 @@ export class Game {
         this.ui.updateMoney(this.playerFleet.money);
     }
 
-    private saveGame() {
+    private saveGame(slot: SaveSlot = 'manual') {
         SaveSystem.save(this.playerFleet, this.npcFleets, {
             currentSystemId: String(this.currentSystemId),
             signalDirector: this.signalDirector?.snapshot(),
             worldEvents: this.captureWorldEventRuntime()
-        });
+        }, slot);
     }
 
     private captureEventFleet(fleet: Fleet): EventFleetSnapshot {
@@ -1559,9 +1559,46 @@ export class Game {
 
 
 
+    private spawnFleetLoot(fleet: Fleet) {
+        if (fleet.lootDropped) return;
+        fleet.lootDropped = true;
+
+        const debrisValue = Math.max(1, Math.floor(
+            fleet.ships.reduce((sum, ship) => sum + ship.definition.tacticalValue, 0) / 20
+        ));
+        this.spawnDebris(fleet.position.x, fleet.position.y, debrisValue);
+
+        const dropCount = Math.random() < 0.5 ? 1 : 2;
+        const abilityIds = ['afterburner', 'bubble', 'cloak', 'mine', 'medkit', 'fire', 'shield', 'net'];
+        for (let i = 0; i < dropCount; i++) {
+            const abilityId = abilityIds[Math.floor(Math.random() * abilityIds.length)];
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 15 + Math.random() * 25;
+            this.spawnAbilityCrate(
+                fleet.position.x + Math.cos(angle) * dist,
+                fleet.position.y + Math.sin(angle) * dist,
+                abilityId
+            );
+        }
+    }
+
+    private removeDestroyedNpc(fleet: Fleet) {
+        const npcIndex = this.npcFleets.indexOf(fleet);
+        if (npcIndex !== -1) this.npcFleets.splice(npcIndex, 1);
+        const entityIndex = this.entities.indexOf(fleet);
+        if (entityIndex !== -1) this.entities.splice(entityIndex, 1);
+    }
     private updateMilitaryStations() {
         const stations = this.entities.filter((entity): entity is MilitaryStation => entity instanceof MilitaryStation);
-        for (const station of stations) station.engage(this.npcFleets);
+        for (const station of stations) {
+            const target = station.engage(this.npcFleets);
+            if (target && !target.ships.some(ship => ship.alive)) {
+                // Station salvos use the same destruction/loot path as regular
+                // fleet combat instead of disappearing without salvage.
+                this.spawnFleetLoot(target);
+                this.removeDestroyedNpc(target);
+            }
+        }
     }
 
     private processCombat(dt: number) {
@@ -1675,35 +1712,15 @@ export class Game {
             winner.activeBattle = null;
         }
 
-        // Spawn debris for dead fleets
+        // Spawn the same salvage for every destroyed fleet, regardless of
+        // whether the final hit came from a moving fleet or a station.
         const dead: Fleet[] = [];
         if (!attack.attacker.ships.some(ship => ship.alive)) dead.push(attack.attacker);
         if (!attack.target.ships.some(ship => ship.alive)) dead.push(attack.target);
-        for (const d of dead) {
-                if (d.lootDropped) {
-                    toRemove.push(d);
-                    continue;
-                }
-                d.lootDropped = true;
-                const debrisValue = Math.max(1, Math.floor(d.ships.reduce((sum, ship) => sum + ship.definition.tacticalValue, 0) / 20));
-                if (debrisValue > 0) {
-                    this.spawnDebris(d.position.x, d.position.y, debrisValue);
-                }
-                const dropCount = Math.random() < 0.5 ? 1 : 2;
-                if (dropCount > 0) {
-                    const abilityIds = ['afterburner', 'bubble', 'cloak', 'mine', 'medkit', 'fire', 'shield', 'net'];
-                    for (let i = 0; i < dropCount; i++) {
-                        const abilityId = abilityIds[Math.floor(Math.random() * abilityIds.length)];
-                        const angle = Math.random() * Math.PI * 2;
-                        const dist = 15 + Math.random() * 25;
-                        const x = d.position.x + Math.cos(angle) * dist;
-                        const y = d.position.y + Math.sin(angle) * dist;
-                        this.spawnAbilityCrate(x, y, abilityId);
-                    }
-                }
-            toRemove.push(d);
+        for (const fleet of dead) {
+            this.spawnFleetLoot(fleet);
+            toRemove.push(fleet);
         }
-
         // Money is now awarded per damage in real-time
         if (winners.includes(this.playerFleet)) {
             console.log(`Attack resolved. Player won.`);

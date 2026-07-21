@@ -105,12 +105,18 @@ export interface GameSaveDataV4 {
 
 /** Backwards-compatible name used by the current Game integration. */
 export type GameSaveData = GameSaveDataV4;
+export type SaveSlot = 'manual' | 'autosave';
 
 export class SaveSystem {
+    private static readonly SAVE_KEYS: Record<SaveSlot, string> = {
+        manual: 'vt_save_v4',
+        autosave: 'vt_autosave_v4'
+    };
     static save(
         player: Fleet,
         npcs: Fleet[],
-        world: SaveWorldState = {}
+        world: SaveWorldState = {},
+        slot: SaveSlot = 'manual'
     ) {
         const serializeFleet = (fleet: Fleet): SavedFleetState => ({
             x: fleet.position.x, y: fleet.position.y, vx: fleet.velocity.x, vy: fleet.velocity.y,
@@ -160,14 +166,15 @@ export class SaveSystem {
             worldEvents: world.worldEvents,
             lastSaveTime: Date.now()
         };
-        localStorage.setItem('vt_save_v4', JSON.stringify(data));
+        localStorage.setItem(this.SAVE_KEYS[slot], JSON.stringify(data));
     }
 
-    static load(): GameSaveData | null {
+    static load(slot: SaveSlot = 'manual'): GameSaveData | null {
         try {
-            const v4Raw = localStorage.getItem('vt_save_v4');
+            const v4Raw = localStorage.getItem(this.SAVE_KEYS[slot]);
             if (v4Raw) {
-                const data = JSON.parse(v4Raw) as GameSaveData;
+                const raw = JSON.parse(v4Raw) as Partial<GameSaveData>;
+                const data = this.normalizeV4(raw);
                 if (data.version === 4) {
                     data.systemId ||= data.currentSystemId || 'sol';
                     data.currentSystemId ||= data.systemId;
@@ -177,6 +184,8 @@ export class SaveSystem {
                     return data;
                 }
             }
+            // Never let an empty autosave fall back to an old manual/legacy save.
+            if (slot === 'autosave') return null;
             const v3Raw = localStorage.getItem('vt_save_v3');
             if (v3Raw) return this.migrateV3(JSON.parse(v3Raw) as LegacyV3Save);
             const v2Raw = localStorage.getItem('vt_save_v2');
@@ -192,6 +201,14 @@ export class SaveSystem {
                 lastSaveTime: old.lastSaveTime
             });
         } catch { return null; }
+    }
+
+    static saveAutosave(player: Fleet, npcs: Fleet[], world: SaveWorldState = {}) {
+        this.save(player, npcs, world, 'autosave');
+    }
+
+    static loadAutosave(): GameSaveData | null {
+        return this.load('autosave');
     }
 
     static restoreShips(fleet: Fleet, snapshots: ShipSnapshot[]) {
@@ -301,9 +318,36 @@ export class SaveSystem {
     }
 
     static clearAutosave() {
+        localStorage.removeItem('vt_autosave_v4');
         localStorage.removeItem('vt_autosave_fleet_size');
         localStorage.removeItem('vt_autosave_fleet_progress');
         localStorage.removeItem('vt_autosave_fleet_ability_charges');
+    }
+
+    private static normalizeV4(raw: Partial<GameSaveData>): GameSaveData {
+        if (!Array.isArray(raw.playerShips) || raw.playerShips.length === 0 || !raw.resources) {
+            return this.migrateV3({
+                version: 3,
+                player: raw.player || this.defaultSavedFleet(),
+                npcs: raw.npcs || [],
+                playerShips: raw.playerShips || [],
+                commandCapacity: raw.commandCapacity || 4,
+                supplies: raw.resources?.supplies ?? 30,
+                maxSupplies: raw.resources?.maxSupplies ?? 30,
+                money: raw.money || 0,
+                doctrine: raw.doctrine || { targetPriority: 'nearest', preferredRange: 'balanced', aggression: 'balanced' },
+                skillPoints: raw.skillPoints || 0,
+                skills: raw.skills || this.defaultSkills(),
+                progress: raw.progress,
+                abilityCharges: raw.abilityCharges,
+                lastSaveTime: raw.lastSaveTime || Date.now()
+            });
+        }
+        return raw as GameSaveData;
+    }
+
+    private static defaultSavedFleet(): SavedFleetState {
+        return { x: 500, y: 500, vx: 0, vy: 0, color: '#00AAFF', strength: 10, faction: 'player' };
     }
 
     private static migrateV3(old: LegacyV3Save): GameSaveData {

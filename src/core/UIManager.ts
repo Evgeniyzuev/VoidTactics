@@ -36,6 +36,8 @@ export class UIManager {
     private abilityCooldowns: Record<string, HTMLElement> = {};
     private abilityTimers: Record<string, HTMLElement> = {};
     private levelDisplay!: HTMLElement;
+    private levelText!: HTMLElement;
+    private levelFill!: HTMLElement;
 
     constructor(
         containerId: string,
@@ -423,7 +425,24 @@ export class UIManager {
         moneyDisplay.textContent = '$0';
         panel.appendChild(moneyDisplay);
 
-        // Level display removed from bottom panel by request
+        const levelDisplay = document.createElement('div');
+        levelDisplay.id = 'level-display';
+        levelDisplay.className = 'experience-display';
+        levelDisplay.title = 'Player experience';
+        this.levelDisplay = levelDisplay;
+
+        this.levelText = document.createElement('span');
+        this.levelText.className = 'experience-text';
+        this.levelText.textContent = 'Lv 1 · XP 0/1000';
+
+        const levelTrack = document.createElement('div');
+        levelTrack.className = 'experience-track';
+        this.levelFill = document.createElement('div');
+        this.levelFill.className = 'experience-fill';
+        levelTrack.appendChild(this.levelFill);
+        levelDisplay.appendChild(this.levelText);
+        levelDisplay.appendChild(levelTrack);
+        panel.appendChild(levelDisplay);
 
         const abilities = [
             { id: 'scan', icon: '◎', color: '#68FF9A', title: 'Active Scan Pulse (2x radar, costs 15% Energy)' },
@@ -629,9 +648,11 @@ export class UIManager {
     }
 
     public updateLevel(level: number, progress: number, needed: number) {
-        if (!this.levelDisplay) return;
-        const prog = Math.floor(progress);
-        this.levelDisplay.textContent = `Lv ${level} · $${formatNumber(prog)}/${formatNumber(needed)}`;
-        this.levelDisplay.title = `Level ${level}: ${formatNumber(prog)} / ${formatNumber(needed)}`;
+        if (!this.levelDisplay || !this.levelText || !this.levelFill) return;
+        const prog = Math.max(0, Math.floor(progress));
+        const required = Math.max(1, Math.floor(needed));
+        this.levelText.textContent = `Lv ${level} · XP ${formatNumber(prog)}/${formatNumber(required)}`;
+        this.levelFill.style.width = `${Math.min(100, (prog / required) * 100)}%`;
+        this.levelDisplay.title = `Level ${level}: ${formatNumber(prog)} / ${formatNumber(required)} XP`;
     }
 }
