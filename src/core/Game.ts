@@ -240,6 +240,7 @@ export class Game {
                 this.initWorld(savedCommandCapacity, systemId, undefined, savedProgress, savedCharges);
                 if (tacticalSave) {
                     SaveSystem.restoreFleet(this.playerFleet, tacticalSave);
+                    this.applyProgress(this.captureProgress());
                     this.playerFleet.clampAbilityChargesToCapacity();
                     this.ui.updateAbilities(this.playerFleet);
                     this.restoreSignalDirector(tacticalSave.signalDirector, tacticalSave.worldEvents);
@@ -255,6 +256,7 @@ export class Game {
                 this.initWorld(savedCommandCapacity, systemId, undefined, autosaveProgress, autosaveCharges);
                 if (tacticalSave) {
                     SaveSystem.restoreFleet(this.playerFleet, tacticalSave);
+                    this.applyProgress(this.captureProgress());
                     this.playerFleet.clampAbilityChargesToCapacity();
                     this.ui.updateAbilities(this.playerFleet);
                     this.restoreSignalDirector(tacticalSave.signalDirector, tacticalSave.worldEvents);
@@ -494,6 +496,20 @@ export class Game {
         };
     }
 
+    private getLevelThresholds(level: number) {
+        const safeLevel = Math.max(1, Math.floor(level));
+        let levelThreshold = 0;
+        let levelCost = Game.START_LEVEL_REQUIREMENT;
+        for (let completedLevel = 1; completedLevel < safeLevel; completedLevel++) {
+            levelThreshold += levelCost;
+            levelCost = Math.max(1, Math.round(levelCost * 1.5));
+        }
+        return {
+            levelThreshold,
+            nextLevelThreshold: levelThreshold + levelCost
+        };
+    }
+
     private captureProgress() {
         return {
             totalMoneyEarned: this.playerFleet.totalMoneyEarned,
@@ -504,10 +520,11 @@ export class Game {
     }
 
     private applyProgress(progress: { totalMoneyEarned: number; level: number; levelThreshold: number; nextLevelThreshold: number }) {
-        this.playerFleet.totalMoneyEarned = progress.totalMoneyEarned;
-        this.playerFleet.level = progress.level;
-        this.playerFleet.levelThreshold = progress.levelThreshold;
-        this.playerFleet.nextLevelThreshold = progress.nextLevelThreshold;
+        this.playerFleet.totalMoneyEarned = Math.max(0, progress.totalMoneyEarned);
+        this.playerFleet.level = Math.max(1, Math.floor(progress.level));
+        const thresholds = this.getLevelThresholds(this.playerFleet.level);
+        this.playerFleet.levelThreshold = thresholds.levelThreshold;
+        this.playerFleet.nextLevelThreshold = thresholds.nextLevelThreshold;
         this.refreshDifficultyMultiplier();
         if (this.ui) this.updateLevelDisplay();
     }
@@ -562,9 +579,11 @@ export class Game {
         if (!this.playerFleet) return;
 
         while (this.playerFleet.totalMoneyEarned >= this.playerFleet.nextLevelThreshold) {
+            const previousLevelCost = Math.max(1, this.playerFleet.nextLevelThreshold - this.playerFleet.levelThreshold);
             this.playerFleet.level++;
             this.playerFleet.levelThreshold = this.playerFleet.nextLevelThreshold;
-            this.playerFleet.nextLevelThreshold = Math.round(this.playerFleet.nextLevelThreshold * 1.5);
+            const nextLevelCost = Math.max(1, Math.round(previousLevelCost * 1.5));
+            this.playerFleet.nextLevelThreshold = this.playerFleet.levelThreshold + nextLevelCost;
             this.playerFleet.skillPoints += 3;
             console.log(`Level ${this.playerFleet.level} reached (earned ${formatNumber(this.playerFleet.totalMoneyEarned)})`);
         }
