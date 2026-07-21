@@ -101,6 +101,7 @@ export class Attack {
             .filter(ship => ship.alive && ship.order.type !== 'retreat' && ship.order.type !== 'repair');
         let totalDamage = 0;
         let totalHullDamage = 0;
+        let totalAppliedDamage = 0;
         const volleyEnergyEfficiency = this.attacker.energyEfficiency;
         for (const ship of firingShips) {
             const targetShip = TargetResolver.resolve(ship, this.target.ships, this.attacker.doctrine, firingShips);
@@ -118,7 +119,8 @@ export class Attack {
                 totalDamage += damage;
                 const hullDamage = this.target.receiveTacticalDamage(damage, weapon.damageType, targetShip.id);
                 totalHullDamage += hullDamage;
-                this.game.addCombatShot(this.attacker, this.target, weapon.damageType, hullDamage > 0);
+                totalAppliedDamage += this.target.lastTacticalDamage;
+                this.game.addCombatShot(this.attacker, this.target, weapon.damageType, this.target.lastTacticalDamage > 0);
             }
         }
         this.target.accumulatedDamage += totalHullDamage;
@@ -130,7 +132,7 @@ export class Attack {
                 if (totalHullDamage > 0) {
                     this.game.awardPlayerMoney(totalHullDamage * COMBAT_BALANCE.hullRewardMultiplier, 0);
                 }
-                this.game.awardPlayerExperience(this.game.getCombatDamageExperience(this.target, totalDamage));
+                this.game.awardPlayerExperience(this.game.getCombatDamageExperience(this.target, totalAppliedDamage));
             }
 
             // Spawn debris for each damage point

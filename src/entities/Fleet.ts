@@ -29,7 +29,7 @@ export class Fleet extends Entity {
     private legacyBudget = 10;
     public commandCapacity = 4;
     /** Shared consumables pool. Capacity is derived from the fleet cargo. */
-    public supplies = 1;
+    public supplies = 5;
     private supplyCapacityBonus = 0;
     public fuel = 0;
     public operationalReadiness = 100;
@@ -54,6 +54,8 @@ export class Fleet extends Entity {
     public color: string;
     public isPlayer: boolean = false;
     public accumulatedDamage: number = 0;
+    /** Actual shield + armor + hull damage from the most recent salvo. */
+    public lastTacticalDamage = 0;
     public faction: Faction = 'civilian';
     public state: 'normal' | 'combat' | 'flee' | 'mining' = 'normal';
     public combatTimer: number = 0;
@@ -175,9 +177,9 @@ export class Fleet extends Entity {
         const cargo = this.ships
             .filter(ship => ship.state !== 'destroyed')
             .reduce((sum, ship) => sum + ship.definition.cargo * ship.statScale, 0);
-        // Ten units of ship cargo form one shared supply unit. This keeps a
-        // starter fleet at 1 supply and scales with the full composition.
-        return Math.max(1, Math.ceil(cargo / 10) + this.skills.logistics * 10);
+        // Ten units of ship cargo form one shared supply unit. A new fleet
+        // always starts with at least five supplies and scales with cargo.
+        return Math.max(5, Math.ceil(cargo / 10) + this.skills.logistics * 10);
     }
     /** One shared supplies pool, growing with every surviving ship's cargo. */
     public get maxSupplies() {
@@ -305,6 +307,7 @@ export class Fleet extends Entity {
     public receiveTacticalDamage(amount: number, type: DamageType = 'energy', targetShipId?: string): number {
         this.ensureComposition();
         const alive = this.ships.filter(ship => ship.alive);
+        this.lastTacticalDamage = 0;
         if (!alive.length) return 0;
         let target = alive.find(ship => ship.id === targetShipId) || alive[0];
         const defender = alive.find(ship => ship.role === 'defender' && ship.order.type === 'protect');
@@ -312,7 +315,11 @@ export class Fleet extends Entity {
             target = defender;
             this.interceptCharges -= 1;
         }
-        return target.applyDamage(amount, type);
+        const before = target.shield + target.armor + target.hull;
+        const hullDamage = target.applyDamage(amount, type);
+        const after = target.shield + target.armor + target.hull;
+        this.lastTacticalDamage = Math.max(0, before - after);
+        return hullDamage;
     }
 
     public get flagship() { return this.ships.find(ship => ship.role === 'flagship' && ship.alive) || this.ships.find(ship => ship.alive); }

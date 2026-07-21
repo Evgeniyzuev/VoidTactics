@@ -11,6 +11,8 @@ export class WarpMine extends Entity {
     public isArmed: boolean = false;
     public timer: number = 30; // 30 seconds lifetime
     public isExploded: boolean = false;
+    /** Actual structural damage dealt by the latest explosion. */
+    public damageDealt = 0;
     private flashTimer: number = 0;
 
     constructor(x: number, y: number, owner: Fleet) {
@@ -58,12 +60,14 @@ export class WarpMine extends Entity {
         bubble.duration = 2.0;
         addBubble(bubble);
 
-        // Deal damage: 3 units + 5% of fleet size (strength)
+        // Deal damage to every fleet in the blast radius.
+        this.damageDealt = 0;
         for (const fleet of fleets) {
             const dist = Vector2.distance(this.position, fleet.position);
             if (dist < 200) { // Same as bubble radius
                 const damage = 10 + fleet.signature * 2;
                 fleet.receiveTacticalDamage(damage, 'explosive');
+                if (fleet !== this.owner) this.damageDealt += fleet.lastTacticalDamage;
 
                 // If owner is player, they should get credit/money? 
                 // User didn't specify, but usually mines don't grant money for "damage" in this engine 

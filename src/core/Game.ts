@@ -635,12 +635,9 @@ export class Game {
         this.ui.updateMoney(this.playerFleet.money);
     }
 
-    /** XP is proportional to the target's original threat and damage share. */
-    public getCombatDamageExperience(target: Fleet, damage: number) {
-        const maxHealth = target.ships.reduce((sum, ship) => sum + ship.maxEffectiveHealth, 0);
-        if (maxHealth <= 0) return 0;
-        const damageShare = Math.max(0, Math.min(1, damage / maxHealth));
-        return target.maximumThreatRating * damageShare * TACTICAL_BALANCE.damageExperienceThreatMultiplier;
+    /** One XP is awarded for every actual point removed from shield, armor or hull. */
+    public getCombatDamageExperience(_target: Fleet, damage: number) {
+        return Math.max(0, damage);
     }
 
     public getFleetKillExperience(target: Fleet) {
@@ -1515,6 +1512,9 @@ export class Game {
         for (let i = this.mines.length - 1; i >= 0; i--) {
             const mine = this.mines[i];
             mine.tick(dt, fleets, (b) => this.bubbleZones.push(b));
+            if (mine.owner === this.playerFleet && mine.damageDealt > 0) {
+                this.awardPlayerExperience(mine.damageDealt);
+            }
             if (mine.isExploded) {
                 this.mines.splice(i, 1);
             }
