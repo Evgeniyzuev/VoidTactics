@@ -38,6 +38,7 @@ export class UIManager {
     private levelDisplay!: HTMLElement;
     private levelText!: HTMLElement;
     private levelFill!: HTMLElement;
+    private abilityPoolDisplay!: HTMLElement;
 
     constructor(
         containerId: string,
@@ -444,6 +445,16 @@ export class UIManager {
         levelDisplay.appendChild(levelTrack);
         panel.appendChild(levelDisplay);
 
+        this.abilityPoolDisplay = document.createElement('div');
+        this.abilityPoolDisplay.className = 'ability-pool-display';
+        this.abilityPoolDisplay.style.color = '#9edfff';
+        this.abilityPoolDisplay.style.fontSize = isCompact ? '9px' : '11px';
+        this.abilityPoolDisplay.style.fontFamily = 'monospace';
+        this.abilityPoolDisplay.style.fontWeight = 'bold';
+        this.abilityPoolDisplay.style.whiteSpace = 'nowrap';
+        this.abilityPoolDisplay.textContent = 'SYSTEM CHARGES 0/5';
+        panel.appendChild(this.abilityPoolDisplay);
+
         const abilities = [
             { id: 'scan', icon: '◎', color: '#68FF9A', title: 'Active Scan Pulse (2x radar, costs 15% Energy)' },
             { id: 'afterburner', icon: '🚀', color: '#FF4400', title: 'Afterburner (Boost Speed)' },
@@ -536,6 +547,9 @@ export class UIManager {
 
     public updateAbilities(fleet: any) {
         const isCompact = window.innerWidth <= 600;
+        if (this.abilityPoolDisplay) {
+            this.abilityPoolDisplay.textContent = `SYSTEM CHARGES ${fleet.abilityChargesUsed ?? 0}/${fleet.abilityChargeCapacity ?? 5}`;
+        }
         for (const key in fleet.abilities) {
             const a = fleet.abilities[key];
             const btn = this.abilityButtons[key];

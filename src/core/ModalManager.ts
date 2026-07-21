@@ -30,6 +30,8 @@ export interface TerraDialogState {
     mercenaryMax: number;
     mercenaryCost: number;
     abilityCharges: Record<FleetAbilityId, number>;
+    abilityChargeTotal: number;
+    abilityChargeCapacity: number;
     serviceQuote?: TerraServiceQuoteView;
 }
 
@@ -674,7 +676,7 @@ export class ModalManager {
         section2.style.marginBottom = '20px';
 
         const shopLabel = document.createElement('div');
-        shopLabel.textContent = `EQUIPMENT MARKET · BUY $${ABILITY_EQUIPMENT_MARKET.buyPrice} · SELL $${ABILITY_EQUIPMENT_MARKET.sellPrice} · MAX ${ABILITY_EQUIPMENT_MARKET.maxCharges}`;
+        shopLabel.textContent = `EQUIPMENT MARKET · SHARED CHARGES ${state.abilityChargeTotal}/${state.abilityChargeCapacity} · BUY $${ABILITY_EQUIPMENT_MARKET.buyPrice} · SELL $${ABILITY_EQUIPMENT_MARKET.sellPrice}`;
         shopLabel.style.fontSize = '12px';
         shopLabel.style.marginBottom = '10px';
         shopLabel.style.opacity = '0.7';
@@ -870,6 +872,7 @@ export class ModalManager {
             const next = getState();
             info.textContent = `Threat: ${formatNumber(next.currentStrength)} | Command: ${next.commandUsed}/${next.commandCapacity} | Money: $${formatNumber(next.currentMoney)}`;
             levelText.textContent = next.levelInfo;
+            shopLabel.textContent = `EQUIPMENT MARKET · SHARED CHARGES ${next.abilityChargeTotal}/${next.abilityChargeCapacity} · BUY $${ABILITY_EQUIPMENT_MARKET.buyPrice} · SELL $${ABILITY_EQUIPMENT_MARKET.sellPrice}`;
 
             upgradeButton.textContent = '⚓ SHIPYARD';
             upgradeButton.style.background = '#00AA00';
@@ -877,8 +880,8 @@ export class ModalManager {
 
             for (const row of abilityRows) {
                 const charges = next.abilityCharges[row.id] || 0;
-                row.count.textContent = `${charges}/${ABILITY_EQUIPMENT_MARKET.maxCharges}`;
-                row.buy.disabled = charges >= ABILITY_EQUIPMENT_MARKET.maxCharges || next.currentMoney < ABILITY_EQUIPMENT_MARKET.buyPrice;
+                row.count.textContent = `${charges}`;
+                row.buy.disabled = next.abilityChargeTotal >= next.abilityChargeCapacity || next.currentMoney < ABILITY_EQUIPMENT_MARKET.buyPrice;
                 row.sell.disabled = charges <= 0;
                 row.buy.style.background = row.buy.disabled ? '#333' : 'rgba(0, 200, 255, 0.2)';
                 row.sell.style.background = row.sell.disabled ? '#333' : 'rgba(255, 185, 80, 0.2)';

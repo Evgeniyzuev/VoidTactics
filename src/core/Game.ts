@@ -240,6 +240,8 @@ export class Game {
                 this.initWorld(savedCommandCapacity, systemId, undefined, savedProgress, savedCharges);
                 if (tacticalSave) {
                     SaveSystem.restoreFleet(this.playerFleet, tacticalSave);
+                    this.playerFleet.clampAbilityChargesToCapacity();
+                    this.ui.updateAbilities(this.playerFleet);
                     this.restoreSignalDirector(tacticalSave.signalDirector, tacticalSave.worldEvents);
                 }
             },
@@ -253,6 +255,8 @@ export class Game {
                 this.initWorld(savedCommandCapacity, systemId, undefined, autosaveProgress, autosaveCharges);
                 if (tacticalSave) {
                     SaveSystem.restoreFleet(this.playerFleet, tacticalSave);
+                    this.playerFleet.clampAbilityChargesToCapacity();
+                    this.ui.updateAbilities(this.playerFleet);
                     this.restoreSignalDirector(tacticalSave.signalDirector, tacticalSave.worldEvents);
                 }
             }
@@ -534,6 +538,7 @@ export class Game {
         this.playerFleet.abilities.fire.charges = Math.max(0, charges.fire || 0);
         this.playerFleet.abilities.shield.charges = Math.max(0, charges.shield || 0);
         this.playerFleet.abilities.net.charges = Math.max(0, charges.net || 0);
+        this.playerFleet.clampAbilityChargesToCapacity();
         if (this.ui) this.ui.updateAbilities(this.playerFleet);
     }
 
@@ -588,9 +593,8 @@ export class Game {
                 continue;
             }
 
-            const ability = player.abilities[crate.abilityId as FleetAbilityId];
-            if (ability && ability.charges < 10) {
-                ability.charges++;
+            const added = player.addAbilityCharge(crate.abilityId as FleetAbilityId);
+            if (added > 0) {
                 this.ui.updateAbilities(player);
                 this.crates.splice(i, 1);
                 const eidx = this.entities.indexOf(crate);
@@ -609,8 +613,7 @@ export class Game {
                     npc.addFuel(crate.fuel);
                     npc.supplies = Math.min(npc.maxSupplies, npc.supplies + crate.supplies);
                 } else {
-                    const ability = npc.abilities[crate.abilityId as FleetAbilityId];
-                    if (ability) ability.charges = Math.min(10, ability.charges + 1);
+                    if (npc.addAbilityCharge(crate.abilityId as FleetAbilityId) <= 0) continue;
                 }
                 this.crates.splice(i, 1);
                 const eidx = this.entities.indexOf(crate);
@@ -770,6 +773,7 @@ export class Game {
         fleet.commandCapacity = Math.max(12, fleet.commandUsed);
         fleet.selectedShipId = fleet.ships[0]?.id || null;
         fleet.abilities.net.charges = Math.floor(Math.random() * 4);
+        fleet.clampAbilityChargesToCapacity();
         fleet.worldEventId = event.id;
         fleet.worldEventRole = role;
         if (faction === 'pirate') fleet.doctrine.targetPriority = 'damaged';
@@ -803,6 +807,7 @@ export class Game {
         fleet.abilities.fire.charges = snapshot.abilityCharges.fire;
         fleet.abilities.shield.charges = snapshot.abilityCharges.shield;
         fleet.abilities.net.charges = snapshot.abilityCharges.net || 0;
+        fleet.clampAbilityChargesToCapacity();
         if (fleet.faction === 'pirate') fleet.doctrine.targetPriority = 'damaged';
         if (fleet.faction === 'military') fleet.doctrine.targetPriority = 'artillery';
         this.entities.push(fleet);
@@ -1105,8 +1110,8 @@ export class Game {
                 finish('analyzed', `Anomaly mapped: +${SIGNAL_EVENT_BALANCE.anomaly.analysisCredits} credits and one experimental system charge.`, () => {
                     this.awardPlayerMoney(SIGNAL_EVENT_BALANCE.anomaly.analysisCredits);
                     const abilityIds: FleetAbilityId[] = ['medkit', 'shield', 'fire'];
-                    const ability = this.playerFleet.abilities[abilityIds[Math.floor(this.eventRoll(event, 12) * abilityIds.length)]!];
-                    ability.charges = Math.min(10, ability.charges + 1);
+                    const abilityId = abilityIds[Math.floor(this.eventRoll(event, 12) * abilityIds.length)]!;
+                    this.playerFleet.addAbilityCharge(abilityId);
                 });
                 return;
             }
@@ -2290,6 +2295,8 @@ export class Game {
                     mercenaryMax: this.playerFleet.level + 5,
                     mercenaryCost: Math.max(100, this.playerFleet.threatRating * 10),
                     abilityCharges: this.captureAbilityCharges(),
+                    abilityChargeTotal: this.playerFleet.abilityChargesUsed,
+                    abilityChargeCapacity: this.playerFleet.abilityChargeCapacity,
                     serviceQuote: RepairService.quoteStationService(this.playerFleet)
                 };
             },
@@ -2306,10 +2313,12 @@ export class Game {
             },
             // Ability Purchase Logic
             (abilityId: string) => {
-                const a = (this.playerFleet.abilities as any)[abilityId];
-                if (a && this.playerFleet.money >= ABILITY_EQUIPMENT_MARKET.buyPrice && a.charges < ABILITY_EQUIPMENT_MARKET.maxCharges) {
+                const id = abilityId as FleetAbilityId;
+                if (this.playerFleet.abilities[id]
+                    && this.playerFleet.money >= ABILITY_EQUIPMENT_MARKET.buyPrice
+                    && this.playerFleet.abilityChargesUsed < this.playerFleet.abilityChargeCapacity
+                    && this.playerFleet.addAbilityCharge(id) > 0) {
                     this.playerFleet.money -= ABILITY_EQUIPMENT_MARKET.buyPrice;
-                    a.charges++;
                     this.ui.updateMoney(this.playerFleet.money);
                     this.ui.updateAbilities(this.playerFleet);
                     SaveSystem.saveAutosaveFleetAbilityCharges(this.captureAbilityCharges());
@@ -2319,9 +2328,8 @@ export class Game {
                 return false;
             },
             (abilityId: string) => {
-                const a = (this.playerFleet.abilities as any)[abilityId];
-                if (a && a.charges > 0) {
-                    a.charges--;
+                const id = abilityId as FleetAbilityId;
+                if (this.playerFleet.removeAbilityCharge(id) > 0) {
                     this.playerFleet.money += ABILITY_EQUIPMENT_MARKET.sellPrice;
                     this.ui.updateMoney(this.playerFleet.money);
                     this.ui.updateAbilities(this.playerFleet);

@@ -5,9 +5,19 @@ import { TACTICAL_BALANCE } from './ShipDefinitions';
 export type FleetAbilityId = 'afterburner' | 'cloak' | 'bubble' | 'mine' | 'medkit' | 'fire' | 'shield' | 'net';
 export type TacticalAbilityId = FleetAbilityId | 'scan';
 
+/**
+ * All fleet abilities share one consumable pool. The pool starts at five
+ * charges and grows with the number of command units in the fleet.
+ */
+export const ABILITY_CHARGE_BALANCE = {
+    baseCapacity: 5,
+    perCommandUnit: 1
+} as const;
+
 export const ABILITY_EQUIPMENT_MARKET = {
     buyPrice: 200,
     sellPrice: 100,
+    /** Legacy API field; the real limit is Fleet.abilityChargeCapacity. */
     maxCharges: 10
 } as const;
 

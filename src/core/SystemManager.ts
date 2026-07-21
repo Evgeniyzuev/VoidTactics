@@ -391,6 +391,7 @@ export class SystemManager {
         npc.commandCapacity = Math.max(12, npc.commandUsed);
         npc.selectedShipId = npc.ships[0]?.id || null;
         npc.abilities.net.charges = Math.floor(Math.random() * 4);
+        npc.clampAbilityChargesToCapacity();
         if (selectedFaction === 'military' || selectedFaction === 'mercenary') npc.doctrine.targetPriority = 'artillery';
         if (selectedFaction === 'pirate') npc.doctrine.targetPriority = 'damaged';
         if (selectedFaction === 'raider') npc.doctrine.targetPriority = 'support';

@@ -5,7 +5,7 @@ import { Ship, createStarterShips } from '../tactical/Ship';
 import { DEFAULT_FORMATION, TACTICAL_BALANCE, type DamageType, type FleetDoctrine, type FleetOrderType } from '../tactical/ShipDefinitions';
 import { FleetGenerator } from '../tactical/FleetGenerator';
 import { RepairService } from '../tactical/RepairService';
-import { ABILITY_DEFINITIONS } from '../tactical/AbilityService';
+import { ABILITY_CHARGE_BALANCE, ABILITY_DEFINITIONS, type FleetAbilityId } from '../tactical/AbilityService';
 
 export type Faction = 'civilian' | 'pirate' | 'orc' | 'military' | 'player' | 'raider' | 'trader' | 'mercenary';
 export interface FleetResources { fuel: number; maxFuel: number; supplies: number; maxSupplies: number; readiness: number }
@@ -122,6 +122,39 @@ export class Fleet extends Entity {
     public get maximumThreatRating() { return this.ships.reduce((sum, ship) => sum + ship.maxCombatRating, 0); }
     public get threatRating() { return this.baseThreatRating * this.readinessEfficiency; }
     public get commandUsed() { return this.ships.filter(ship => ship.state !== 'destroyed').reduce((sum, ship) => sum + ship.commandCost, 0); }
+    /** One shared pool for afterburner, bubble, cloak, mine and all other systems. */
+    public get abilityChargeCapacity() {
+        return ABILITY_CHARGE_BALANCE.baseCapacity
+            + Math.max(0, this.commandUsed - 1) * ABILITY_CHARGE_BALANCE.perCommandUnit;
+    }
+    public get abilityChargesUsed() {
+        return Object.values(this.abilities).reduce((sum, ability) => sum + Math.max(0, Math.floor(ability.charges || 0)), 0);
+    }
+    public addAbilityCharge(id: FleetAbilityId, amount = 1) {
+        const ability = this.abilities[id];
+        if (!ability) return 0;
+        const requested = Math.max(0, Math.floor(amount));
+        const added = Math.min(requested, Math.max(0, this.abilityChargeCapacity - this.abilityChargesUsed));
+        ability.charges = Math.max(0, Math.floor(ability.charges || 0)) + added;
+        return added;
+    }
+    public removeAbilityCharge(id: FleetAbilityId, amount = 1) {
+        const ability = this.abilities[id];
+        if (!ability) return 0;
+        const removed = Math.min(Math.max(0, Math.floor(amount)), Math.max(0, Math.floor(ability.charges || 0)));
+        ability.charges -= removed;
+        return removed;
+    }
+    /** Drops excess charges from legacy or externally restored per-ability data. */
+    public clampAbilityChargesToCapacity() {
+        let remaining = this.abilityChargeCapacity;
+        for (const ability of Object.values(this.abilities)) {
+            const charges = Math.max(0, Math.floor(ability.charges || 0));
+            ability.charges = Math.min(charges, remaining);
+            remaining -= ability.charges;
+        }
+        return this.abilityChargesUsed;
+    }
     public get readiness() {
         if (!this.ships.some(ship => ship.state !== 'destroyed')) return 0;
         return Math.max(0, Math.min(1, this.operationalReadiness / 100));
@@ -206,6 +239,7 @@ export class Fleet extends Entity {
            if (this.faction === 'military' || this.faction === 'mercenary') this.abilities.bubble.charges = 1;
             if (this.faction === 'raider') this.abilities.cloak.charges = 1;
         }
+        this.clampAbilityChargesToCapacity();
     }
 
     public consumeFleetEnergyFraction(fraction: number) {
@@ -333,6 +367,7 @@ export class Fleet extends Entity {
 
     update(dt: number) {
         this.tacticalClock += dt; this.ensureComposition();
+        this.clampAbilityChargesToCapacity();
         this.clampSuppliesToCapacity();
         this.clampFuelToCapacity();
         this.netSlowTimer = Math.max(0, this.netSlowTimer - Math.max(0, dt));
