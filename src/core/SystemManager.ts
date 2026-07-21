@@ -386,6 +386,7 @@ export class SystemManager {
         const variance = 0.7 + Math.random() * 0.6;
         const fleetBudget = Math.max(0, playerStrength * coefficient * variance);
         npc.ships = FleetGenerator.generate(fleetBudget, selectedFaction);
+        npc.supplies = npc.maxSupplies;
         npc.fuel = npc.maxFuel;
         npc.commandCapacity = Math.max(12, npc.commandUsed);
         npc.selectedShipId = npc.ships[0]?.id || null;

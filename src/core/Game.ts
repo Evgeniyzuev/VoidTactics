@@ -619,14 +619,30 @@ export class Game {
         }
     }
 
-    public awardPlayerMoney(amount: number) {
+    public awardPlayerExperience(amount: number) {
         if (!this.playerFleet || amount <= 0) return;
-        this.playerFleet.money += amount;
         this.playerFleet.totalMoneyEarned += amount;
         this.checkLevelUp();
+    }
+
+    public awardPlayerMoney(amount: number, experience = amount) {
+        if (!this.playerFleet || amount <= 0) return;
+        this.playerFleet.money += amount;
+        this.awardPlayerExperience(experience);
         this.ui.updateMoney(this.playerFleet.money);
     }
 
+    /** XP is proportional to the target's original threat and damage share. */
+    public getCombatDamageExperience(target: Fleet, damage: number) {
+        const maxHealth = target.ships.reduce((sum, ship) => sum + ship.maxEffectiveHealth, 0);
+        if (maxHealth <= 0) return 0;
+        const damageShare = Math.max(0, Math.min(1, damage / maxHealth));
+        return target.maximumThreatRating * damageShare * TACTICAL_BALANCE.damageExperienceThreatMultiplier;
+    }
+
+    public getFleetKillExperience(target: Fleet) {
+        return target.maximumThreatRating * TACTICAL_BALANCE.killExperienceThreatMultiplier;
+    }
     private saveGame(slot: SaveSlot = 'manual') {
         SaveSystem.save(this.playerFleet, this.npcFleets, {
             currentSystemId: String(this.currentSystemId),
@@ -749,6 +765,7 @@ export class Game {
         const fleet = new Fleet(event.position.x + offset.x, event.position.y + offset.y, colors[faction], false);
         fleet.faction = faction;
         fleet.ships = FleetGenerator.generate(Math.max(SIGNAL_EVENT_BALANCE.minimumThreatBudget, targetThreat), faction);
+        fleet.supplies = fleet.maxSupplies;
         fleet.fuel = fleet.maxFuel;
         fleet.commandCapacity = Math.max(12, fleet.commandUsed);
         fleet.selectedShipId = fleet.ships[0]?.id || null;
@@ -1419,7 +1436,11 @@ export class Game {
                 playerCollectedAny = true;
 
                 // Award money to player
-                this.awardPlayerMoney(pickupAmount * 5);
+                // Salvage remains profitable, but is only a small source of XP.
+                this.awardPlayerMoney(
+                    pickupAmount * 5,
+                    pickupAmount * TACTICAL_BALANCE.salvageExperienceMultiplier
+                );
 
                 // Remove empty debris
                 if (debris.value <= 0) {
@@ -1560,7 +1581,7 @@ export class Game {
 
 
     private spawnFleetLoot(fleet: Fleet) {
-        if (fleet.lootDropped) return;
+        if (fleet.lootDropped) return false;
         fleet.lootDropped = true;
 
         const debrisValue = Math.max(1, Math.floor(
@@ -1580,6 +1601,7 @@ export class Game {
                 abilityId
             );
         }
+        return true;
     }
 
     private removeDestroyedNpc(fleet: Fleet) {
@@ -1718,7 +1740,10 @@ export class Game {
         if (!attack.attacker.ships.some(ship => ship.alive)) dead.push(attack.attacker);
         if (!attack.target.ships.some(ship => ship.alive)) dead.push(attack.target);
         for (const fleet of dead) {
-            this.spawnFleetLoot(fleet);
+            const firstLootResolution = this.spawnFleetLoot(fleet);
+            if (firstLootResolution && attack.attacker === this.playerFleet && fleet === attack.target) {
+                this.awardPlayerExperience(this.getFleetKillExperience(fleet));
+            }
             toRemove.push(fleet);
         }
         // Money is now awarded per damage in real-time

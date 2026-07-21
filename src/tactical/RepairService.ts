@@ -23,10 +23,10 @@ export interface StationServiceResult {
 export class RepairService {
     static update(fleet: Fleet, dt: number, inCombat: boolean) {
         const support = fleet.ships.find(ship => ship.alive && ship.role === 'support');
-        if (!support || fleet.supplies <= 0) return;
+        if (fleet.supplies <= 0) return;
 
         const disabled = fleet.ships.find(ship => ship.state === 'disabled');
-        if (disabled && support.order.type === 'repair' &&
+        if (disabled && support?.order.type === 'repair' &&
             fleet.supplies >= TACTICAL_BALANCE.disabledStabilizeSupplyCost &&
             fleet.totalEnergy >= TACTICAL_BALANCE.disabledStabilizeEnergyCost) {
             fleet.stabilizationProgress += dt;
@@ -41,7 +41,10 @@ export class RepairService {
         fleet.stabilizationProgress = 0;
 
         const damaged = fleet.ships.filter(ship => ship.alive && ship.hull < ship.maxHull).sort((a, b) => a.integrity - b.integrity)[0];
-        if (inCombat && support.order.type !== 'repair') return;
+        // A fleet can perform slow emergency field repairs by itself. A support
+        // ship keeps the documented rate, making support the efficient option.
+        if (inCombat && (!support || support.order.type !== 'repair')) return;
+        const repairSpeedMultiplier = support?.order.type === 'repair' ? 1 : 0.25;
 
         const engineeringBonus = 1 + fleet.getSkillLevel('engineering') * 0.2;
         const repairWithResources = (desired: number, energyPerUnit: number, unitsPerSupply: number) => {
@@ -57,7 +60,7 @@ export class RepairService {
         };
 
         if (damaged) {
-            const rate = (inCombat ? TACTICAL_BALANCE.combatHullRepairPerSecond : TACTICAL_BALANCE.fieldHullRepairPerSecond) * engineeringBonus;
+            const rate = (inCombat ? TACTICAL_BALANCE.combatHullRepairPerSecond : TACTICAL_BALANCE.fieldHullRepairPerSecond) * engineeringBonus * repairSpeedMultiplier;
             const repair = repairWithResources(
                 Math.min(rate * dt, damaged.maxHull - damaged.hull),
                 TACTICAL_BALANCE.fieldRepairEnergyPerHull,
@@ -70,7 +73,7 @@ export class RepairService {
         const armorTarget = fleet.ships.filter(ship => ship.alive && ship.armor < ship.maxArmor)
             .sort((a, b) => a.armor / Math.max(1, a.maxArmor) - b.armor / Math.max(1, b.maxArmor))[0];
         if (armorTarget) {
-            const armorRate = (inCombat ? TACTICAL_BALANCE.fieldArmorRepairPerSecond * 0.35 : TACTICAL_BALANCE.fieldArmorRepairPerSecond) * engineeringBonus;
+            const armorRate = (inCombat ? TACTICAL_BALANCE.fieldArmorRepairPerSecond * 0.35 : TACTICAL_BALANCE.fieldArmorRepairPerSecond) * engineeringBonus * repairSpeedMultiplier;
             const repair = repairWithResources(
                 Math.min(armorRate * dt, armorTarget.maxArmor - armorTarget.armor),
                 TACTICAL_BALANCE.fieldRepairEnergyPerArmor,
@@ -83,7 +86,7 @@ export class RepairService {
         const ammoTarget = fleet.ships.filter(ship => ship.alive && ship.ammunition < ship.definition.ammunition * ship.statScale)[0];
         if (ammoTarget) {
             const maximum = ammoTarget.definition.ammunition * ammoTarget.statScale;
-            const restored = Math.min(TACTICAL_BALANCE.fieldAmmoRestorePerSecond * engineeringBonus * dt, maximum - ammoTarget.ammunition, fleet.supplies * TACTICAL_BALANCE.ammunitionPerSupply);
+            const restored = Math.min(TACTICAL_BALANCE.fieldAmmoRestorePerSecond * engineeringBonus * repairSpeedMultiplier * dt, maximum - ammoTarget.ammunition, fleet.supplies * TACTICAL_BALANCE.ammunitionPerSupply);
             ammoTarget.ammunition += restored;
             fleet.supplies = Math.max(0, fleet.supplies - restored / TACTICAL_BALANCE.ammunitionPerSupply);
         }

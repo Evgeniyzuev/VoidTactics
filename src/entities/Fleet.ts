@@ -28,8 +28,9 @@ export class Fleet extends Entity {
     private tacticalClock = 0;
     private legacyBudget = 10;
     public commandCapacity = 4;
-    public supplies = 30;
-    public maxSupplies = 30;
+    /** Shared consumables pool. Capacity is derived from the fleet cargo. */
+    public supplies = 1;
+    private supplyCapacityBonus = 0;
     public fuel = 0;
     public operationalReadiness = 100;
     public skillPoints = 3;
@@ -112,10 +113,13 @@ export class Fleet extends Entity {
         }
         this.selectedShipId = this.ships[0]?.id || null;
         this.fuel = this.maxFuel;
+        this.supplies = this.maxSupplies;
         if (isPlayer) this.refreshFleetState();
     }
 
     public get baseThreatRating() { return this.ships.reduce((sum, ship) => sum + ship.combatRating, 0); }
+    /** Threat at full hull and full readiness; used for combat XP rewards. */
+    public get maximumThreatRating() { return this.ships.reduce((sum, ship) => sum + ship.maxCombatRating, 0); }
     public get threatRating() { return this.baseThreatRating * this.readinessEfficiency; }
     public get commandUsed() { return this.ships.filter(ship => ship.state !== 'destroyed').reduce((sum, ship) => sum + ship.commandCost, 0); }
     public get readiness() {
@@ -133,6 +137,22 @@ export class Fleet extends Entity {
         const ratio = Math.max(0, Math.min(1, this.totalEnergy / maximum));
         return TACTICAL_BALANCE.minimumEnergyEfficiency
             + (1 - TACTICAL_BALANCE.minimumEnergyEfficiency) * ratio;
+    }
+    private get baseSupplyCapacity() {
+        const cargo = this.ships
+            .filter(ship => ship.state !== 'destroyed')
+            .reduce((sum, ship) => sum + ship.definition.cargo * ship.statScale, 0);
+        // Ten units of ship cargo form one shared supply unit. This keeps a
+        // starter fleet at 1 supply and scales with the full composition.
+        return Math.max(1, Math.ceil(cargo / 10) + this.skills.logistics * 10);
+    }
+    /** One shared supplies pool, growing with every surviving ship's cargo. */
+    public get maxSupplies() {
+        return this.baseSupplyCapacity + this.supplyCapacityBonus;
+    }
+    /** Legacy saves may assign a capacity; preserve the excess as a bonus. */
+    public set maxSupplies(value: number) {
+        this.supplyCapacityBonus = Math.max(0, Math.floor(value) - this.baseSupplyCapacity);
     }
     public get maxFuel() {
         return this.ships.filter(ship => ship.state !== 'destroyed').reduce((sum, ship) => sum + ship.maxFuelCapacity, 0);
@@ -164,7 +184,7 @@ export class Fleet extends Entity {
         this.skillPoints--;
         this.skills[skill]++;
         if (skill === 'leadership') this.commandCapacity += 3;
-        if (skill === 'logistics') { this.maxSupplies += 10; this.supplies += 10; }
+        if (skill === 'logistics') { this.supplies += 10; }
         return true;
     }
     /** Compatibility adapter while old economy and AI callers are migrated. */
@@ -178,6 +198,7 @@ export class Fleet extends Entity {
         this.ships = FleetGenerator.generate(this.legacyBudget, this.faction);
         this.selectedShipId = this.ships[0]?.id || null;
         this.fuel = this.maxFuel;
+        this.supplies = this.maxSupplies;
         if (!this.isPlayer) {
             this.abilities.afterburner.charges = 1;
            this.abilities.mine.charges = 1;
@@ -218,6 +239,11 @@ export class Fleet extends Entity {
         if (totalAvailable + 1e-6 < cost) return false;
         if (cost <= 0) return true;
         return this.consumePooledEnergy(cost) + 1e-6 >= cost;
+    }
+
+    public clampSuppliesToCapacity() {
+        this.supplies = Math.max(0, Math.min(this.maxSupplies, this.supplies));
+        return this.supplies;
     }
 
     public clampFuelToCapacity() {
@@ -307,6 +333,7 @@ export class Fleet extends Entity {
 
     update(dt: number) {
         this.tacticalClock += dt; this.ensureComposition();
+        this.clampSuppliesToCapacity();
         this.clampFuelToCapacity();
         this.netSlowTimer = Math.max(0, this.netSlowTimer - Math.max(0, dt));
         const activeShips = this.ships.filter(ship => ship.alive);

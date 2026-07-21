@@ -126,8 +126,11 @@ export class Attack {
         if (totalDamage > 0) {
             // Bounties are paid only for actual hull damage. Shield and armor
             // pressure matters tactically but does not reduce the target threat.
-            if (this.attacker.isPlayer && totalHullDamage > 0) {
-                this.game.awardPlayerMoney(totalHullDamage * COMBAT_BALANCE.hullRewardMultiplier);
+            if (this.attacker.isPlayer) {
+                if (totalHullDamage > 0) {
+                    this.game.awardPlayerMoney(totalHullDamage * COMBAT_BALANCE.hullRewardMultiplier, 0);
+                }
+                this.game.awardPlayerExperience(this.game.getCombatDamageExperience(this.target, totalDamage));
             }
 
             // Spawn debris for each damage point

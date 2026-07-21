@@ -63,11 +63,14 @@ export const TACTICAL_BALANCE = {
     fieldHullRepairPerSecond: 4,
     fieldArmorRepairPerSecond: 2,
     fieldAmmoRestorePerSecond: 10,
-    stationFuelPrice: 0.4,
-    stationSupplyPrice: 5,
-    stationAmmoPrice: 0.2,
-    stationHullPrice: 0.6,
-    stationArmorPrice: 0.4
+    stationFuelPrice: 0.2,
+    stationSupplyPrice: 2.5,
+    stationAmmoPrice: 0.1,
+    stationHullPrice: 0.3,
+    stationArmorPrice: 0.2,
+    damageExperienceThreatMultiplier: 1.25,
+    killExperienceThreatMultiplier: 1.5,
+    salvageExperienceMultiplier: 0.05
 } as const;
 
 export interface FleetDoctrine {

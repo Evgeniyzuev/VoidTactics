@@ -48,6 +48,7 @@ export class MilitaryStation extends Fleet {
         // These are real ships for inspection and threat calculation, not a
         // giant visual marker. A platform is powerful but still readable.
         this.ships = FleetGenerator.generate(options.threatBudget ?? 1800, 'military');
+        this.supplies = this.maxSupplies;
         this.selectedShipId = this.ships[0]?.id || null;
         const stationDps = this.ships.reduce((sum, ship) => sum + ship.weaponDps, 0) * COMBAT_BALANCE.damageScale;
         this.damagePerShot = options.damagePerShot ?? Math.max(55, stationDps * 0.35);
