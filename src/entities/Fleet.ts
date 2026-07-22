@@ -510,6 +510,16 @@ export class Fleet extends Entity {
         }
         this.isBubbled = false; // Reset for next frame
 
+        // Stationary fleets still use the normal Fleet update path. Avoid
+        // intercept calculations such as distance / maxSpeed when their
+        // configured speed is zero, and keep them fully immobile.
+        if (currentMaxSpeed <= 0) {
+            this.velocity = new Vector2(0, 0);
+            this.target = null;
+            this.lastAcceleration = new Vector2(0, 0);
+            return;
+        }
+
         // If following another entity, update target to an intercept point
         if (this.followTarget) {
             const targetPos = this.followTarget.position;

@@ -5,7 +5,6 @@ import { Vector2 } from '../utils/Vector2';
 import { CelestialBody } from '../entities/CelestialBody';
 import { Fleet, type Faction, type FleetSkillId } from '../entities/Fleet';
 import { Entity } from '../entities/Entity';
-import { MilitaryStation } from '../entities/MilitaryStation';
 import { BubbleZone } from '../entities/BubbleZone';
 import { WarpGate } from '../entities/WarpGate';
 import { SaveSystem, type EventFleetSnapshot, type WorldEventRuntimeSnapshot, type SaveSlot } from './SaveSystem';
@@ -345,6 +344,10 @@ export class Game {
 
         // Load system entities from SystemManager
         this.entities = this.systemManager.getSystemEntities(this.currentSystemId);
+        // Permanent defense units are regular military fleets as well. Keep
+        // them in the normal NPC fleet collection so sensors, AI and combat
+        // treat them exactly like every other fleet.
+        this.npcFleets.push(...this.entities.filter((entity): entity is Fleet => entity instanceof Fleet));
 
         // Player Fleet Initialization
         // Priority: forcedStrength (from menu buttons) > savedSize (from persistence) > default (10)
@@ -1229,10 +1232,8 @@ export class Game {
         const playerTargets = [...this.npcFleets, ...this.worldEvents.filter(event => event.active)];
         this.sensors.update(this.playerFleet, playerTargets, elapsed, this.gameClock);
         const allFleets = [this.playerFleet, ...this.npcFleets];
-        const stations = this.getMilitaryStations();
         for (const npc of this.npcFleets) {
-            const targets = npc.faction === 'orc' ? [...allFleets, ...stations] : allFleets;
-            this.sensors.update(npc, targets, elapsed, this.gameClock);
+            this.sensors.update(npc, allFleets, elapsed, this.gameClock);
         }
         for (const event of this.worldEvents) {
             const contact = this.sensors.getContact(this.playerFleet, event);
@@ -1242,7 +1243,7 @@ export class Game {
                 this.ui.addEvent(`Signal classified · ${Math.ceil(event.timeLeft)}s remaining. Continue scanning for exact data.`);
             }
         }
-        if ((this.inspectedEntity instanceof Fleet && this.inspectedEntity !== this.playerFleet && !(this.inspectedEntity instanceof MilitaryStation)) ||
+        if ((this.inspectedEntity instanceof Fleet && this.inspectedEntity !== this.playerFleet) ||
             this.inspectedEntity instanceof WorldEvent) {
             const contact = this.sensors.getContact(this.playerFleet, this.inspectedEntity);
             if (!contact || contact.stale) this.closeTooltip();
@@ -1267,10 +1268,6 @@ export class Game {
 
     public getFleetSensorRange(fleet: Fleet) {
         return this.sensors.getFleetProfile(fleet, this.gameClock).sensorRange;
-    }
-
-    public getMilitaryStations() {
-        return this.entities.filter((entity): entity is MilitaryStation => entity instanceof MilitaryStation);
     }
 
     private updateWorldEvents(dt: number) {
@@ -1551,7 +1548,6 @@ export class Game {
 
         // 4. Update Entities
         for (const e of this.entities) e.update(dt);
-        this.updateMilitaryStations();
 
         // Update Mines
         const fleets = [this.playerFleet, ...this.npcFleets];
@@ -1655,28 +1651,10 @@ export class Game {
         return true;
     }
 
-    private removeDestroyedNpc(fleet: Fleet) {
-        const npcIndex = this.npcFleets.indexOf(fleet);
-        if (npcIndex !== -1) this.npcFleets.splice(npcIndex, 1);
-        const entityIndex = this.entities.indexOf(fleet);
-        if (entityIndex !== -1) this.entities.splice(entityIndex, 1);
-    }
-    private updateMilitaryStations() {
-        const stations = this.entities.filter((entity): entity is MilitaryStation => entity instanceof MilitaryStation);
-        for (const station of stations) {
-            const target = station.engage(this.npcFleets);
-            if (target && !target.ships.some(ship => ship.alive)) {
-                // Station salvos use the same destruction/loot path as regular
-                // fleet combat instead of disappearing without salvage.
-                this.spawnFleetLoot(target);
-                this.removeDestroyedNpc(target);
-            }
-        }
-    }
 
     private processCombat(dt: number) {
         const allFleets = [this.playerFleet, ...this.npcFleets];
-        const combatTargets = [...allFleets, ...this.getMilitaryStations()];
+        const combatTargets = allFleets;
 
         // 1. Tick and Check for Resolution
         const toRemove: Fleet[] = [];
@@ -1834,7 +1812,7 @@ export class Game {
                         minDist = dist;
                     }
                 } else if (e instanceof Fleet) {
-                    if (e !== this.playerFleet && !(e instanceof MilitaryStation) && !this.sensors.canRender(this.playerFleet, e)) continue;
+                    if (e !== this.playerFleet && !this.sensors.canRender(this.playerFleet, e)) continue;
                     // Interaction radius: at least 40 pixels on screen or 20 world units
                     const interactionRadius = Math.max(20, 40 / this.camera.zoom);
                     if (dist <= interactionRadius) {
@@ -1929,7 +1907,6 @@ export class Game {
         } else if (entity instanceof Fleet) {
             const fleet = entity as Fleet;
             const isPlayer = fleet === this.playerFleet;
-            const isStation = fleet instanceof MilitaryStation;
             const factionNames: any = {
                 'player': 'Player Fleet',
                 'civilian': 'Civilian',
@@ -1941,8 +1918,8 @@ export class Game {
                 'mercenary': 'Mercenary'
             };
 
-            const contact = isPlayer || isStation ? null : this.sensors.getContact(this.playerFleet, fleet);
-            if (!isPlayer && !isStation && (!contact || contact.stale || contact.level === 'blip')) {
+            const contact = isPlayer ? null : this.sensors.getContact(this.playerFleet, fleet);
+            if (!isPlayer && (!contact || contact.stale || contact.level === 'blip')) {
                 info = `<strong>${contact?.stale ? 'LAST KNOWN CONTACT' : 'UNKNOWN CONTACT'}</strong><br/>`;
                 info += 'Hold inside the green radar ring to classify.<br/>';
                 info += contact ? `Scan: ${Math.round(contact.scanProgress * 100)}%` : 'No sensor solution';
@@ -1956,7 +1933,6 @@ export class Game {
                 info += `Scan: ${Math.round(contact.scanProgress * 100)}%`;
             } else {
                 info = `<strong>${factionNames[fleet.faction] || 'Unknown'}</strong><br/>`;
-                if (isStation) info += 'Station: ' + (fleet as MilitaryStation).name + ' · fixed defense · attack radius ×2 (' + Math.round((fleet as MilitaryStation).attackRadius) + ')<br/>';
                 const isHostile = this.aiController.isHostile(fleet, this.playerFleet);
                 const status = isHostile ? '<span style="color: red;">Hostile</span>' : '<span style="color: green;">Friendly</span>';
                 info += `${status}<br/>`;
@@ -1987,7 +1963,7 @@ export class Game {
                 info += `Pos: (${fleet.position.x.toFixed(0)}, ${fleet.position.y.toFixed(0)})`;
             }
 
-            if (!isPlayer && !isStation) {
+            if (!isPlayer) {
                 showApproach = true;
                 showContact = !!contact && this.sensors.canAttack(this.playerFleet, contact);
             }
@@ -2493,7 +2469,7 @@ export class Game {
         const ctx = this.renderer.getContext();
         this.drawRadarOverlay(ctx);
         for (const e of this.entities) {
-            if (e instanceof Fleet && e !== this.playerFleet && !(e instanceof MilitaryStation)) {
+            if (e instanceof Fleet && e !== this.playerFleet) {
                 const contact = this.sensors.getContact(this.playerFleet, e);
                 if (!contact) continue;
                 if (contact.stale && !this.sensors.canRender(this.playerFleet, contact)) continue;
@@ -2527,9 +2503,6 @@ export class Game {
                 if (!contact || contact.stale || contact.level !== 'identified') continue;
             }
             fleet.drawThreatIndicator(ctx, this.camera, threatReference);
-        }
-        for (const station of this.entities.filter((entity): entity is MilitaryStation => entity instanceof MilitaryStation)) {
-            station.drawThreatIndicator(ctx, this.camera, threatReference);
         }
 
         // Draw debris collection animation

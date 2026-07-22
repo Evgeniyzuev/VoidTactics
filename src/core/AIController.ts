@@ -18,29 +18,12 @@ export class AIController {
         const player = this.game.getPlayerFleet();
         const npcs = this.game.getNpcFleets();
         const allFleets = [player, ...npcs];
-        const stations = this.game.getMilitaryStations?.() || [];
 
         for (const npc of npcs) {
             const isMilitaryLike = npc.faction === 'military' || npc.faction === 'mercenary';
             const orcAttackWhenOutmatched = npc.faction === 'orc' && Math.random() < 0.5;
             let followedFleet = npc.followTarget instanceof Fleet ? npc.followTarget : null;
 
-            // Terra's fixed platforms are military territory. Hostile NPCs
-            // turn away before entering the doubled interception radius,
-            // while cloaked raiders can still slip past the warning.
-           if (['pirate', 'orc', 'raider'].includes(npc.faction) && !npc.isCloaked) {
-                const station = (this.game.getMilitaryStations?.() || [])
-                   .filter(candidate => Vector2.distance(npc.position, candidate.position) < candidate.attackRadius * 2)
-                    .sort((a, b) => Vector2.distance(npc.position, a.position) - Vector2.distance(npc.position, b.position))[0];
-                if (station && !orcAttackWhenOutmatched) {
-                    const escape = npc.position.sub(station.position).normalize();
-                    npc.stopFollowing();
-                    npc.setTarget(npc.position.add(escape.scale(900)));
-                    npc.state = 'flee';
-                    npc.decisionTimer = 1;
-                    continue;
-                }
-            }
 
             // Never retain the live Entity position or threat after the sensor
             // solution is lost. The next decision pass may reacquire the contact.
@@ -59,7 +42,7 @@ export class AIController {
             const isChasing = !!followedFleet && this.isHostile(npc, followedFleet);
 
             const detectionRadius = Math.max(600, this.game.getFleetSensorRange(npc) * 2);
-            const knownFleets = [...allFleets, ...(npc.faction === 'orc' ? stations : [])].filter(fleet =>
+            const knownFleets = allFleets.filter(fleet =>
                 fleet === npc || this.game.canFleetTarget(npc, fleet)
             );
             const hasNearbyAlly = knownFleets.some(f =>

@@ -3,7 +3,6 @@ import { Fleet, type Faction } from '../entities/Fleet';
 import { WarpGate } from '../entities/WarpGate';
 import { Vector2 } from '../utils/Vector2';
 import { Entity } from '../entities/Entity';
-import { MilitaryStation } from '../entities/MilitaryStation';
 import { FleetGenerator } from '../tactical/FleetGenerator';
 
 export interface SpawnRules {
@@ -91,12 +90,22 @@ export class SystemManager {
         const defenseRingRadius = 180;
         for (let i = 0; i < 6; i++) {
             const angle = i * Math.PI / 3;
-            entities.push(new MilitaryStation(
+            const defenseFleet = new Fleet(
                 terra.position.x + Math.cos(angle) * defenseRingRadius,
                 terra.position.y + Math.sin(angle) * defenseRingRadius,
-                'Terra Defense ' + (i + 1),
-                { threatBudget: 10000 }
-            ));
+                '#FFFF00',
+                false
+            );
+            defenseFleet.faction = 'military';
+            defenseFleet.maxSpeed = 0;
+            defenseFleet.velocity = new Vector2(0, 0);
+            defenseFleet.ships = FleetGenerator.generate(10000, 'military');
+            defenseFleet.selectedShipId = defenseFleet.ships[0]?.id || null;
+            defenseFleet.commandCapacity = Math.max(12, defenseFleet.commandUsed);
+            defenseFleet.fuel = defenseFleet.maxFuel;
+            defenseFleet.supplies = defenseFleet.maxSupplies;
+            defenseFleet.doctrine.targetPriority = 'artillery';
+            entities.push(defenseFleet);
         }
 
         const luna = new CelestialBody(860, 0, 10, '#AAAAAA', 'Luna');

@@ -507,17 +507,15 @@ describe('ship tactical persistence', () => {
 });
 
 describe('Terra defense ring', () => {
-    it('creates six fixed military stations around Terra', () => {
+    it('creates six ordinary stationary military fleets around Terra', () => {
         const entities = new SystemManager().getSystemEntities(1);
-        const stations = entities.filter(entity => entity instanceof MilitaryStation);
+        const fleets = entities.filter(entity => entity instanceof Fleet && entity.faction === 'military' && entity.maxSpeed === 0);
 
-        expect(stations).toHaveLength(6);
-        expect(new Set(stations.map(station => station.name)).size).toBe(6);
-        expect(stations.every(station => station.radius > 0 && station.defenseRadius > station.radius)).toBe(true);
-        expect(stations.every(station => station.attackRadius === 200)).toBe(true);
-        expect(stations.every(station => station.faction === 'military')).toBe(true);
-        expect(stations.every(station => station.threatRating === 10000)).toBe(true);
-        expect(stations.every(station => station.maxSpeed === 0 && station.velocity.mag() === 0)).toBe(true);
+        expect(fleets).toHaveLength(6);
+        expect(fleets.every(fleet => !(fleet instanceof MilitaryStation))).toBe(true);
+        expect(fleets.every(fleet => fleet.threatRating === 10000)).toBe(true);
+        expect(fleets.every(fleet => fleet.velocity.mag() === 0)).toBe(true);
+        expect(fleets.every(fleet => fleet.attackRadius === 100)).toBe(true);
     });
 
     it('fires at hostile raiders but ignores civilian traffic', () => {
