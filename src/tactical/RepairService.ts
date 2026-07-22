@@ -44,7 +44,11 @@ export class RepairService {
         // A fleet can perform slow emergency field repairs by itself. A support
         // ship keeps the documented rate, making support the efficient option.
         if (inCombat && (!support || support.order.type !== 'repair')) return;
-        const repairSpeedMultiplier = support?.order.type === 'repair' ? 1 : 0.25;
+        // Stations have permanent repair infrastructure and work at twice
+        // the normal support-ship rate.
+        const repairSpeedMultiplier = fleet.isStation
+            ? 2
+            : support?.order.type === 'repair' ? 1 : 0.25;
 
         const engineeringBonus = 1 + fleet.getSkillLevel('engineering') * 0.2;
         const repairWithResources = (desired: number, energyPerUnit: number, unitsPerSupply: number) => {

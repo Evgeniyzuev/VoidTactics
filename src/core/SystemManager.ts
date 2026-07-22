@@ -43,8 +43,8 @@ export class SystemManager {
                     { type: 'trader', weight: 0.017 },
                     { type: 'mercenary', weight: 0.0 },
                     { type: 'pirate', weight: 0.25 },
-                    { type: 'orc', weight: 0.20 },
-                    { type: 'military', weight: 0.10 },
+                    { type: 'orc', weight: 0.17 },
+                    { type: 'military', weight: 0.13 },
                     { type: 'raider', weight: 0.05 }
                 ],
                 strengthMin: 5,
@@ -64,8 +64,8 @@ export class SystemManager {
                     { type: 'mercenary', weight: 0.0 },
                     { type: 'civilian', weight: 0.137 },
                     { type: 'pirate', weight: 0.085 },
-                    { type: 'orc', weight: 0.054 },
-                    { type: 'military', weight: 0.074 }
+                    { type: 'orc', weight: 0.024 },
+                    { type: 'military', weight: 0.104 }
                 ],
                 strengthMin: 100,
                 strengthMax: 300,

@@ -3,6 +3,7 @@ import { Vector2 } from '../utils/Vector2';
 import { Fleet } from './Fleet';
 import { FleetGenerator } from '../tactical/FleetGenerator';
 import { COMBAT_BALANCE } from '../tactical/ShipDefinitions';
+import { RepairService } from '../tactical/RepairService';
 import { AbilityService } from '../tactical/AbilityService';
 
 /**
@@ -60,6 +61,13 @@ export class MilitaryStation extends Fleet {
     }
 
     override update(dt: number) {
+        // Stations continuously replenish their logistics reserves and repair
+        // structural damage at the accelerated station rate.
+        this.fuel = this.maxFuel;
+        this.supplies = this.maxSupplies;
+        RepairService.update(this, dt, false);
+        this.fuel = this.maxFuel;
+        this.supplies = this.maxSupplies;
         this.cooldown = Math.max(0, this.cooldown - Math.max(0, dt));
         this.beamTimer = Math.max(0, this.beamTimer - Math.max(0, dt));
         const net = this.abilities.net;

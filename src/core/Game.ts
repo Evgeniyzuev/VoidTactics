@@ -1204,8 +1204,10 @@ export class Game {
         const playerTargets = [...this.npcFleets, ...this.worldEvents.filter(event => event.active)];
         this.sensors.update(this.playerFleet, playerTargets, elapsed, this.gameClock);
         const allFleets = [this.playerFleet, ...this.npcFleets];
+        const stations = this.getMilitaryStations();
         for (const npc of this.npcFleets) {
-            this.sensors.update(npc, allFleets, elapsed, this.gameClock);
+            const targets = npc.faction === 'orc' ? [...allFleets, ...stations] : allFleets;
+            this.sensors.update(npc, targets, elapsed, this.gameClock);
         }
         for (const event of this.worldEvents) {
             const contact = this.sensors.getContact(this.playerFleet, event);
@@ -1649,6 +1651,7 @@ export class Game {
 
     private processCombat(dt: number) {
         const allFleets = [this.playerFleet, ...this.npcFleets];
+        const combatTargets = [...allFleets, ...this.getMilitaryStations()];
 
         // 1. Tick and Check for Resolution
         const toRemove: Fleet[] = [];
@@ -1671,8 +1674,8 @@ export class Game {
             const attacker = allFleets[i];
             if (toRemove.includes(attacker)) continue;
 
-            for (let j = 0; j < allFleets.length; j++) {
-                const target = allFleets[j];
+            for (let j = 0; j < combatTargets.length; j++) {
+                const target = combatTargets[j];
                 if (toRemove.includes(target) || attacker === target) continue;
 
                 // Skip if attacker is already attacking someone

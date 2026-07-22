@@ -18,9 +18,11 @@ export class AIController {
         const player = this.game.getPlayerFleet();
         const npcs = this.game.getNpcFleets();
         const allFleets = [player, ...npcs];
+        const stations = this.game.getMilitaryStations?.() || [];
 
         for (const npc of npcs) {
             const isMilitaryLike = npc.faction === 'military' || npc.faction === 'mercenary';
+            const orcAttackWhenOutmatched = npc.faction === 'orc' && Math.random() < 0.5;
             let followedFleet = npc.followTarget instanceof Fleet ? npc.followTarget : null;
 
             // Terra's fixed platforms are military territory. Hostile NPCs
@@ -30,7 +32,7 @@ export class AIController {
                 const station = (this.game.getMilitaryStations?.() || [])
                    .filter(candidate => Vector2.distance(npc.position, candidate.position) < candidate.attackRadius * 2)
                     .sort((a, b) => Vector2.distance(npc.position, a.position) - Vector2.distance(npc.position, b.position))[0];
-                if (station) {
+                if (station && !orcAttackWhenOutmatched) {
                     const escape = npc.position.sub(station.position).normalize();
                     npc.stopFollowing();
                     npc.setTarget(npc.position.add(escape.scale(900)));
@@ -57,7 +59,7 @@ export class AIController {
             const isChasing = !!followedFleet && this.isHostile(npc, followedFleet);
 
             const detectionRadius = Math.max(600, this.game.getFleetSensorRange(npc) * 2);
-            const knownFleets = allFleets.filter(fleet =>
+            const knownFleets = [...allFleets, ...(npc.faction === 'orc' ? stations : [])].filter(fleet =>
                 fleet === npc || this.game.canFleetTarget(npc, fleet)
             );
             const hasNearbyAlly = knownFleets.some(f =>
@@ -168,7 +170,9 @@ export class AIController {
                         if (isMilitaryLike) {
                             canTarget = true;
                         } else {
-                            canTarget = localPower >= other.threatRating * requiredAttackAdvantage(npc.faction);
+                            const isOutmatched = other.threatRating > localPower * requiredAttackAdvantage(npc.faction);
+                            canTarget = localPower >= other.threatRating * requiredAttackAdvantage(npc.faction)
+                                || (npc.faction === 'orc' && orcAttackWhenOutmatched && isOutmatched);
                         }
 
                         if (canTarget) {
@@ -215,7 +219,7 @@ export class AIController {
             // Decide action
             const isMilitaryWithAllies = isMilitaryLike && knownFleets.some(f => f !== npc && this.isAlly(npc, f) && Vector2.distance(npc.position, f.position) < 1000);
 
-            if (closestThreat && !isMilitaryLike && !isMilitaryWithAllies) {
+            if (closestThreat && !isMilitaryLike && !isMilitaryWithAllies && !orcAttackWhenOutmatched) {
                 // Aggressive factions still disengage when they are outmatched and alone.
                 const runDir = npc.position.sub(closestThreat.position).normalize();
                 npc.setTarget(npc.position.add(runDir.scale(800)));
