@@ -486,6 +486,31 @@ export class Game {
     }
 
     private SYSTEM_RADIUS: number = 8000;
+    private ASTEROID_BELT_WIDTH: number = 700;
+
+    public getAsteroidBeltInnerRadius() {
+        return this.SYSTEM_RADIUS - this.ASTEROID_BELT_WIDTH;
+    }
+
+    private updateAsteroidBeltState() {
+        const fleets = [this.playerFleet, ...this.npcFleets];
+        for (const fleet of fleets) {
+            fleet.inAsteroidBelt = fleet.position.mag() >= this.getAsteroidBeltInnerRadius();
+        }
+    }
+
+    private keepFleetInsideSystem(fleet: Fleet) {
+        const distance = fleet.position.mag();
+        if (distance <= this.SYSTEM_RADIUS) return;
+
+        const outward = fleet.position.normalize();
+        const inwardTarget = outward.scale(Math.max(0, this.getAsteroidBeltInnerRadius() - 150));
+        fleet.position = outward.scale(this.SYSTEM_RADIUS - 5);
+        fleet.stopFollowing();
+        if (fleet.isPlayer) fleet.manualSteerTarget = null;
+        fleet.setTarget(inwardTarget);
+        fleet.velocity = outward.scale(-Math.max(50, Math.min(fleet.velocity.mag(), fleet.maxSpeed * 0.5)));
+    }
 
     private getDefaultProgress() {
         return {
@@ -1350,13 +1375,14 @@ export class Game {
         // loop() already applies timeScale before calling update().
         this.gameClock += dt;
         this.updateWorldEvents(dt);
-        this.updateSensors(dt);
 
         // 1. Maintain Population & Bounds Check
         const toRemoveBounds: Fleet[] = [];
         for (const f of this.npcFleets) {
-            if (f.position.mag() > this.SYSTEM_RADIUS || !f.ships.some(ship => ship.alive)) {
+            if (!f.ships.some(ship => ship.alive)) {
                 toRemoveBounds.push(f);
+            } else {
+                this.keepFleetInsideSystem(f);
             }
         }
         for (const f of toRemoveBounds) {
@@ -1379,6 +1405,10 @@ export class Game {
             }
             console.log(`Spawned ${newFleets.length} new fleets in System ${this.currentSystemId}`);
         }
+
+        this.keepFleetInsideSystem(this.playerFleet);
+        this.updateAsteroidBeltState();
+        this.updateSensors(dt);
 
         // Check for system liberation (Alpha Centauri)
         if (this.currentSystemId === 2) {
@@ -1403,12 +1433,7 @@ export class Game {
             // Very simple warning for now (no UI yet)
             // console.warn("Approaching system boundary!");
         }
-        if (this.playerFleet.position.mag() > this.SYSTEM_RADIUS) {
-            // Push player back
-            const dir = this.playerFleet.position.normalize();
-            this.playerFleet.position = dir.scale(this.SYSTEM_RADIUS);
-            this.playerFleet.velocity = this.playerFleet.velocity.scale(-0.5);
-        }
+        // Fleets may enter the belt, but cannot leave the system entirely.
 
         // 4. AI & Combat & Abilities
         const allFleets = [this.playerFleet, ...this.npcFleets];
@@ -2793,6 +2818,39 @@ export class Game {
         const distFromCenter = Math.sqrt(Math.pow(center.x - w / 2, 2) + Math.pow(center.y - h / 2, 2));
         if (distFromCenter < radius + Math.sqrt(w * w + h * h)) {
             ctx.save();
+
+            const beltInnerRadius = this.getAsteroidBeltInnerRadius() * this.camera.zoom;
+            const beltWidth = Math.max(1, radius - beltInnerRadius);
+
+            // The outer belt is a visible, navigable boundary rather than a
+            // hard despawn ring. Its particles are deterministic so the map
+            // does not shimmer between frames.
+            ctx.beginPath();
+            ctx.arc(center.x, center.y, radius - beltWidth * 0.5, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(191, 145, 82, 0.16)';
+            ctx.lineWidth = Math.max(8, beltWidth);
+            ctx.stroke();
+
+            ctx.setLineDash([10 * this.camera.zoom, 18 * this.camera.zoom]);
+            ctx.beginPath();
+            ctx.arc(center.x, center.y, beltInnerRadius, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(220, 180, 110, 0.32)';
+            ctx.lineWidth = Math.max(1, 1.5 * this.camera.zoom);
+            ctx.stroke();
+
+            for (let i = 0; i < 96; i++) {
+                const seed = i * 12.9898;
+                const angle = (i / 96) * Math.PI * 2 + (Math.sin(seed) * 0.08);
+                const radial = beltInnerRadius + beltWidth * (0.12 + (Math.sin(seed * 1.73) * 0.5 + 0.5) * 0.76);
+                const asteroidX = center.x + Math.cos(angle) * radial;
+                const asteroidY = center.y + Math.sin(angle) * radial;
+                const asteroidSize = Math.max(0.8, (1.5 + (Math.sin(seed * 2.41) * 0.5 + 0.5) * 4) * this.camera.zoom);
+                ctx.beginPath();
+                ctx.arc(asteroidX, asteroidY, asteroidSize, 0, Math.PI * 2);
+                ctx.fillStyle = i % 3 === 0 ? 'rgba(230, 190, 125, 0.42)' : 'rgba(145, 115, 80, 0.28)';
+                ctx.fill();
+            }
+            ctx.setLineDash([]);
 
             // Outer glow / "Danger Zone"
             ctx.beginPath();

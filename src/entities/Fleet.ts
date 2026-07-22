@@ -48,6 +48,8 @@ export class Fleet extends Entity {
     /** Distance at which a fleet can initiate a tactical interception. */
     public attackRadius: number = 100;
     public isStation = false;
+    /** True while the fleet is inside the outer asteroid belt. */
+    public inAsteroidBelt = false;
     private stopThreshold: number = 5;
 
     private rotation: number = 0;
@@ -465,6 +467,9 @@ export class Fleet extends Entity {
         }
 
         let currentMaxSpeed = this.maxSpeed * (this.isPlayer ? 1 + this.skills.navigation * 0.04 : 1);
+
+        // Dense debris makes navigation slower inside the outer belt.
+        if (this.inAsteroidBelt) currentMaxSpeed *= 0.5;
 
         // Ability modifiers
         if (this.abilities.afterburner.active) {

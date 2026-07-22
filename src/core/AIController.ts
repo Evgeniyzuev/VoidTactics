@@ -73,6 +73,11 @@ export class AIController {
 
             // Give up chase/flee if too far or futile.
             if (followedFleet && isChasing) {
+                if (followedFleet.inAsteroidBelt && !npc.inAsteroidBelt) {
+                    npc.stopFollowing();
+                    npc.decisionTimer = 2.0;
+                    continue;
+                }
                 const dist = Vector2.distance(npc.position, followedFleet.position);
                 if (!isMilitaryLike && followedFleet.threatRating > localPower * 1.15) {
                     const runDir = npc.position.sub(followedFleet.position).normalize();
@@ -84,7 +89,7 @@ export class AIController {
                 }
 
                 const targetPosMag = followedFleet.position.mag();
-                if (targetPosMag > this.game.getSystemRadius() * 0.8) {
+                if (targetPosMag > this.game.getAsteroidBeltInnerRadius()) {
                     const dirToTarget = followedFleet.position.normalize();
                     const targetVelDir = followedFleet.velocity.normalize();
                     if (dirToTarget.dot(targetVelDir) > 0.5) {

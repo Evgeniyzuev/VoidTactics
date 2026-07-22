@@ -255,7 +255,8 @@ export class SensorService {
         ), 0) * signatureSkillMultiplier * signatureMultiplier;
 
         return {
-            sensorRange: sensorRange * this.config.baseSensorRangeMultiplier * skillRangeMultiplier * rangeMultiplier,
+            sensorRange: sensorRange * this.config.baseSensorRangeMultiplier * skillRangeMultiplier * rangeMultiplier
+                * (fleet.inAsteroidBelt ? 0.2 : 1),
             scanResolution: Math.max(this.config.minimumScanResolution, scanResolution),
             signature: Math.max(0.01, signature),
             rangeMultiplier,
@@ -363,9 +364,12 @@ export class SensorService {
         );
         const signatureDetectionRange = observerProfile.sensorRange * signatureRangeMultiplier;
         const isFleetTarget = !isWorldEvent(target);
+        // The belt masks ships entering it from observers outside. An observer
+        // already in the belt is already covered by its reduced profile above.
+        const beltTargetMultiplier = isFleetTarget && (target as Fleet).inAsteroidBelt && !observer.inAsteroidBelt ? 0.2 : 1;
         const detectionRange = isFleetTarget && this.config.fleetRangeUsesNominalBoundary
-            ? observerProfile.sensorRange
-            : signatureDetectionRange;
+            ? observerProfile.sensorRange * beltTargetMultiplier
+            : signatureDetectionRange * beltTargetMultiplier;
         const targetIsActive = !isWorldEvent(target) || target.active;
         const detected = targetIsActive && distance <= detectionRange && observerProfile.sensorRange > 0;
         let contact = state.contacts.get(id);
@@ -397,7 +401,7 @@ export class SensorService {
         contact.lastKnownPosition = { x: target.position.x, y: target.position.y };
         contact.lastKnownVelocity = { x: target.velocity.x, y: target.velocity.y };
 
-        if (distance <= observerProfile.sensorRange) {
+        if (distance <= observerProfile.sensorRange * beltTargetMultiplier) {
             const scanSeconds = this.scanSeconds(distance, observerProfile, targetSignature);
             contact.scanProgress = clamp(contact.scanProgress + dt / scanSeconds, 0, 1);
         }
