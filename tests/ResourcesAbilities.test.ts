@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { Attack } from '../src/core/Attack';
 import type { Game } from '../src/core/Game';
 import { Fleet } from '../src/entities/Fleet';
-import { MilitaryStation } from '../src/entities/MilitaryStation';
 import { ABILITY_DEFINITIONS, ABILITY_EQUIPMENT_MARKET, AbilityService } from '../src/tactical/AbilityService';
 import { SystemManager } from '../src/core/SystemManager';
 import { SensorService } from '../src/tactical/SensorService';
@@ -507,31 +506,10 @@ describe('ship tactical persistence', () => {
 });
 
 describe('Terra defense ring', () => {
-    it('creates six ordinary stationary military fleets around Terra', () => {
+    it('does not create permanent defense fleets around Terra', () => {
         const entities = new SystemManager().getSystemEntities(1);
-        const fleets = entities.filter(entity => entity instanceof Fleet && entity.faction === 'military' && entity.maxSpeed === 0);
+        const defenseFleets = entities.filter(entity => entity instanceof Fleet && entity.faction === 'military' && entity.maxSpeed === 0);
 
-        expect(fleets).toHaveLength(6);
-        expect(fleets.every(fleet => !(fleet instanceof MilitaryStation))).toBe(true);
-        expect(fleets.every(fleet => fleet.threatRating === 10000)).toBe(true);
-        expect(fleets.every(fleet => fleet.velocity.mag() === 0)).toBe(true);
-        expect(fleets.every(fleet => fleet.attackRadius === 100)).toBe(true);
-    });
-
-    it('fires at hostile raiders but ignores civilian traffic', () => {
-        const station = new MilitaryStation(0, 0, 'Test Defense');
-        const raider = createFleet(100);
-        raider.faction = 'raider';
-        raider.ships[0].shield = 0;
-        raider.ships[0].armor = 0;
-        const hullBefore = raider.ships[0].hull;
-
-        expect(station.engage([raider])).toBe(raider);
-        expect(raider.ships[0].hull).toBeLessThan(hullBefore);
-
-        station.update(1);
-        const civilian = createFleet(100);
-        civilian.faction = 'civilian';
-        expect(station.engage([civilian])).toBeNull();
+        expect(defenseFleets).toHaveLength(0);
     });
 });

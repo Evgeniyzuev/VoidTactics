@@ -344,10 +344,6 @@ export class Game {
 
         // Load system entities from SystemManager
         this.entities = this.systemManager.getSystemEntities(this.currentSystemId);
-        // Permanent defense units are regular military fleets as well. Keep
-        // them in the normal NPC fleet collection so sensors, AI and combat
-        // treat them exactly like every other fleet.
-        this.npcFleets.push(...this.entities.filter((entity): entity is Fleet => entity instanceof Fleet));
 
         // Player Fleet Initialization
         // Priority: forcedStrength (from menu buttons) > savedSize (from persistence) > default (10)
