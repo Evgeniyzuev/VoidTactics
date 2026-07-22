@@ -515,6 +515,9 @@ describe('Terra defense ring', () => {
         expect(new Set(stations.map(station => station.name)).size).toBe(6);
         expect(stations.every(station => station.radius > 0 && station.defenseRadius > station.radius)).toBe(true);
         expect(stations.every(station => station.attackRadius === 200)).toBe(true);
+        expect(stations.every(station => station.faction === 'military')).toBe(true);
+        expect(stations.every(station => station.threatRating === 10000)).toBe(true);
+        expect(stations.every(station => station.maxSpeed === 0 && station.velocity.mag() === 0)).toBe(true);
     });
 
     it('fires at hostile raiders but ignores civilian traffic', () => {

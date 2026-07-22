@@ -7,7 +7,7 @@ import { RepairService } from '../tactical/RepairService';
 import { AbilityService } from '../tactical/AbilityService';
 
 /**
- * A stationary fleet-shaped defense platform.
+ * A stationary military fleet assigned to Terra's defense ring.
  *
  * The station deliberately reuses Fleet so threat, DPS, defensive layers and
  * the normal inspection window stay consistent with moving fleets. Only the
@@ -47,8 +47,8 @@ export class MilitaryStation extends Fleet {
         this.fireInterval = options.fireInterval ?? 1;
 
         // These are real ships for inspection and threat calculation, not a
-        // giant visual marker. A platform is powerful but still readable.
-        this.ships = FleetGenerator.generate(options.threatBudget ?? 1800, 'military');
+        // giant visual marker. Each Terra fleet has threat 10,000 by default.
+        this.ships = FleetGenerator.generate(options.threatBudget ?? 10000, 'military');
         this.supplies = this.maxSupplies;
         this.selectedShipId = this.ships[0]?.id || null;
         const stationDps = this.ships.reduce((sum, ship) => sum + ship.weaponDps, 0) * COMBAT_BALANCE.damageScale;

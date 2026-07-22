@@ -86,16 +86,16 @@ export class SystemManager {
         const terra = new CelestialBody(800, 0, 40, '#00CED1', 'Terra');
         entities.push(terra);
 
-        // Terra is ringed by six permanent defense platforms. Their fixed
-        // positions make the home base readable at a glance and give hostile
-        // fleets a clear reason to stay away from the inner system.
+        // Terra is ringed by six permanent military fleets. They use the
+        // normal fleet composition and threat model, but remain stationary.
         const defenseRingRadius = 180;
         for (let i = 0; i < 6; i++) {
             const angle = i * Math.PI / 3;
             entities.push(new MilitaryStation(
                 terra.position.x + Math.cos(angle) * defenseRingRadius,
                 terra.position.y + Math.sin(angle) * defenseRingRadius,
-                'Terra Defense ' + (i + 1)
+                'Terra Defense ' + (i + 1),
+                { threatBudget: 10000 }
             ));
         }
 
