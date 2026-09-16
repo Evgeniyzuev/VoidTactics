@@ -11,6 +11,7 @@ import {
     deriveFlightProfile,
     engagementIntent,
     fallbackFlightProfile,
+    shouldRequestWarp,
     stepFlight,
     type FlightIntent,
     type FlightProfile,
@@ -72,6 +73,8 @@ export class Fleet extends Entity {
     public orbitDirection: number = 0;
     /** Most recent autopilot/engagement intent, reused by the renderer. */
     public lastIntent: FlightIntent | null = null;
+    /** Latched warp request: the drive charges, then translates at hull speed. */
+    public warpRequested: boolean = false;
     /** Distance at which a fleet can initiate a tactical interception. */
     public attackRadius: number = 100;
     public isStation = false;
@@ -359,6 +362,65 @@ export class Fleet extends Entity {
     /** Nose direction in radians, driven by the flight model. */
     public get heading() { return this.rotation; }
 
+    /** True while the fleet is translating at warp speed. */
+    public get isWarping() { return this.flight.warp === 'active'; }
+
+    /** True while the warp drive is spooling up. */
+    public get isChargingWarp() { return this.flight.warp === 'charging'; }
+
+    /** Latch the warp drive on or off. The charge itself happens in the flight model. */
+    public requestWarp(on: boolean) {
+        this.warpRequested = on;
+    }
+
+    /** Drops out of warp without touching the course (interdiction, damage, orders). */
+    public dropWarp() {
+        if (this.flight.warp === 'off' && this.flight.warpCharge === 0) return;
+        this.flight = { ...this.flight, warp: 'off', warpCharge: 0 };
+        this.warpRequested = false;
+    }
+
+    /**
+     * Emergency warp drop-out: the fleet stops dead in place and cancels its
+     * orders. This is the deliberate "brake now" tool, so it has a short cooldown.
+     */
+    public emergencyStop(): boolean {
+        if (this.flight.warpCooldown > 0) return false;
+        this.velocity = new Vector2(0, 0);
+        this.flight = {
+            ...this.flight,
+            warp: 'off',
+            warpCharge: 0,
+            throttle: 0,
+            angularVelocity: 0,
+            warpCooldown: FLIGHT_BALANCE.warpDropCooldown
+        };
+        this.warpRequested = false;
+        this.target = null;
+        this.stopFollowing();
+        this.manualSteerTarget = null;
+        this.lastAcceleration = new Vector2(0, 0);
+        return true;
+    }
+
+    /** True when the fleet can pay for and is allowed to charge the warp drive. */
+    public canChargeWarp(interdicted = false): boolean {
+        if (interdicted || this.isBubbled) return false;
+        if (this.fuel <= 0) return false;
+        const capacity = this.maxEnergy;
+        if (capacity <= 0) return false;
+        return this.totalEnergy / capacity >= FLIGHT_BALANCE.warpMinimumEnergyFraction;
+    }
+
+    /** Warp is a travel mode: entering it drops the engagement and the lock. */
+    private onWarpIgnited() {
+        if (this.currentTarget) {
+            this.currentTarget = null;
+            this.flight = { ...this.flight };
+        }
+        if (this.state === 'combat') this.state = 'normal';
+    }
+
     private refreshFleetState(dt = 0) {
         const defenders = this.ships.filter(ship => ship.alive && ship.role === 'defender' && ship.order.type === 'protect').length;
         const cap = defenders * (3 + this.skills.tactics);
@@ -504,8 +566,13 @@ export class Fleet extends Entity {
         if (this.netSlowTimer > 0) performance *= TACTICAL_BALANCE.netSpeedMultiplier;
         if (this.abilities.bubble.active) performance *= 0.5;
 
-        // External bubble effect
-        if (this.isBubbled) performance *= 0.1;
+        // External bubble effect: an interdiction field yanks the fleet out of
+        // warp and pins it to the sublight drive.
+        const interdicted = this.isBubbled;
+        if (interdicted) {
+            this.dropWarp();
+        }
+        this.isBubbled = false; // Reset for next frame
 
         // Trader speed penalty (Heavy Cargo)
         if (this.faction === 'trader') performance *= 0.3;
@@ -635,16 +702,25 @@ export class Fleet extends Entity {
         // while braking so a long deceleration is never cut short by a cap change.
         this.flight.mode = intent.brake
             ? this.flight.mode
-            : chooseFlightMode(waypoint ? Vector2.distance(this.position, waypoint) : 0, manual, this.flight.mode);
+            : chooseFlightMode(waypoint ? Vector2.distance(this.position, waypoint) : Number.POSITIVE_INFINITY, manual, this.flight.mode);
         this.flight.manual = manual;
+
+        // Warp request: the player latch wins, otherwise the autopilot charges
+        // for long journeys. Combat and interdiction pin the fleet to sublight.
+        const interdictionBlock = interdicted || this.state === 'combat' || !!combatTarget;
+        const autopilotWarp = !interdictionBlock
+            && shouldRequestWarp(waypoint ? Vector2.distance(this.position, waypoint) : Number.POSITIVE_INFINITY, false, this.flight.warp);
+        const intentWarp = (this.warpRequested || autopilotWarp) && !interdictionBlock;
+        const allowWarp = intentWarp && this.canChargeWarp(interdicted);
 
         const step = stepFlight({
             state: this.flight,
             profile,
             performance,
-            intent,
+            intent: intentWarp ? { ...intent, warp: true, throttle: 1 } : intent,
             velocity: this.velocity,
-            dt
+            dt,
+            allowWarp
         });
 
         this.flight = step.state;
@@ -652,6 +728,18 @@ export class Fleet extends Entity {
         this.lastAcceleration = step.acceleration;
         this.lastIntent = intent;
         this.speedCap = step.speedCap;
+
+        if (step.warpIgnited) {
+            // The charge is paid on ignition: 20% of the pooled Energy capacity.
+            const cost = this.maxEnergy * FLIGHT_BALANCE.warpEnergyFraction;
+            if (this.consumePooledEnergy(cost) <= cost * 0.5) {
+                // Could not pay after all (Energy was drained mid-charge).
+                this.dropWarp();
+            } else {
+                this.onWarpIgnited();
+            }
+        }
+
 
         // Apply Velocity
         this.position = this.position.add(this.velocity.scale(dt));

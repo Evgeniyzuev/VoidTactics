@@ -9,7 +9,11 @@ export const COMBAT_BALANCE = {
     hullRewardMultiplier: 3,
     hullThreatWeight: 0.24,
     offenseThreatWeight: 0.35,
-    disabledThreatFactor: 0
+    disabledThreatFactor: 0,
+    /** Damage delivered at (or beyond) a weapon's maximum range. */
+    minimumDamageFraction: 0.25,
+    /** Default fraction of the weapon range that still deals full damage. */
+    defaultRolloffStart: 0.45
 } as const;
 
 export const TACTICAL_BALANCE = {
@@ -75,52 +79,65 @@ export const TACTICAL_BALANCE = {
 
 /**
  * Flight model tunables. The strategic map uses one shared inertial flight
- * model for the player, NPCs and autopilot: a fleet has to build up speed,
- * coasts when idle and needs time (and distance) to change course or stop.
+ * model for the player, NPCs and autopilot.
  *
- * Two cruise modes exist:
- * - `impulse` keeps 45% of the hull speed but turns and spools quickly;
- * - `warp` uses the full hull speed but accelerates slowly and turns heavily.
+ * There are two cruise modes:
+ * - `sublight` is the manoeuvring drive: 5% of the hull speed, very agile.
+ *   All combat, docking and station keeping happens here.
+ * - `warp` is the translation drive: full hull speed, but it has to be charged
+ *   for a few seconds and paid for with Energy, and weapons stay offline.
  */
 export const FLIGHT_BALANCE = {
     /** Multiplier applied to the slowest hull speed of the fleet. */
     speedScale: 1,
     /** Converts `HullDefinition.acceleration` into world units per second squared. */
-    accelerationScale: 120,
+    accelerationScale: 420,
     minimumMaxSpeed: 120,
     minimumAcceleration: 40,
     minimumTurnRate: 0.35,
     minimumAngularAcceleration: 1.2,
     /** Scales `HullDefinition.turnRate` into radians per second. */
-    turnRateScale: 0.55,
+    turnRateScale: 1.1,
     /** Angular acceleration as a multiple of the maximum turn rate. */
-    angularAccelerationScale: 2.5,
+    angularAccelerationScale: 6,
     /** How aggressively the nose chases the desired course. */
-    turnPursuitGain: 2.2,
+    turnPursuitGain: 3,
 
-    impulseSpeedFactor: 0.45,
-    impulseAccelerationFactor: 1,
-    impulseSpoolSeconds: 0.3,
+    /** The manoeuvring drive: a fleet without warp crawls at 5% of its hull speed. */
+    sublightSpeedFactor: 0.05,
+    sublightAccelerationFactor: 1,
+    sublightSpoolSeconds: 0.3,
     warpSpeedFactor: 1,
-    warpAccelerationFactor: 0.35,
-    warpSpoolSeconds: 1.4,
-    /** Warp turns are deliberately heavy compared to impulse manoeuvres. */
-    warpTurnFactor: 0.5,
+    warpAccelerationFactor: 0.6,
+    warpSpoolSeconds: 0.5,
+    /** Warp turns stay heavier than sublight manoeuvres. */
+    warpTurnFactor: 0.75,
     /** Thrusters cut off faster than they spool up. */
     spoolDownFraction: 0.35,
-    /** Manual warp trim spools slower than an ordered impulse burn. */
+    /** Manual warp trim spools slower than an ordered burn. */
     manualSpoolSeconds: 0.55,
-    /** Ordered autopilot manoeuvres do not need the full warp spool-up. */
+    /** Ordered autopilot manoeuvres do not need the full drive spool-up. */
     orderedSpoolFraction: 0.3,
 
-    /** Autopilot uses warp only for journeys beyond this distance. */
-    warpEngageDistance: 1200,
+    /** Seconds of warp charge-up before the fleet can translate. */
+    warpChargeSeconds: 3,
+    /** Fraction of the pooled Energy capacity spent to ignite the warp drive. */
+    warpEnergyFraction: 0.2,
+    /** Minimum pooled Energy fraction required before the charge may start. */
+    warpMinimumEnergyFraction: 0.2,
+    /** Cooldown between emergency warp drop-outs. */
+    warpDropCooldown: 2,
+    /** Warp is a travel mode: weapons are offline while translating. */
+    warpWeaponPenalty: true,
+
+    /** Autopilot charges the warp drive itself for journeys beyond this distance. */
+    warpEngageDistance: 1500,
     /** Residual ether drag. Frame-rate independent (per second). */
-    spaceDragPerSecond: 0.02,
+    spaceDragPerSecond: 0.05,
     /** Retro thrusters are stronger than the main drive. */
-    brakeBoost: 1.35,
+    brakeBoost: 1.8,
     /** Distance from the waypoint at which the waypoint is considered reached. */
-    stopRadius: 60,
+    stopRadius: 14,
     /** Braking starts once the current speed exceeds the allowed speed by this margin. */
     brakeTriggerMargin: 1.12,
     /** Thrust is scaled down to this floor while the fleet is still turning. */
@@ -133,18 +150,32 @@ export const FLIGHT_BALANCE = {
     /** Multiplier of the stand-off distance at which a fleet stops orbiting and closes in. */
     combatReengageFraction: 1.6,
     /** Fallback engagement range when a fleet has no weapons at all. */
-    engagementRangeDefault: 620,
+    engagementRangeDefault: 120,
     /** Fraction of the longest weapon range used as the engagement trigger. */
     engagementRangeFraction: 0.85,
-    minimumEngagementRange: 260,
-    maximumEngagementRange: 900,
+    minimumEngagementRange: 24,
+    maximumEngagementRange: 260,
     /** A battle ends once the distance exceeds this multiple of the engagement range. */
     engagementBreakMultiplier: 2.4,
     /** Speed below which a fleet without orders is brought to a full stop. */
-    arrivalHoldSpeed: 240,
+    arrivalHoldSpeed: 20,
     /** Stasis/stun bleed-off per second (frame-rate independent). */
     stunDampingPerSecond: 0.02
 } as const;
+
+/**
+ * Power routing: the player (and doctrine-driven AI) can bias the reactor
+ * output towards the drive or the guns at the cost of the other system.
+ */
+export const POWER_ROUTING = {
+    engines: { speedMultiplier: 1.5, damageMultiplier: 0.6, shieldMultiplier: 0.5, energyDrainFractionPerSecond: 0.05 },
+    weapons: { speedMultiplier: 0.6, damageMultiplier: 1.6, shieldMultiplier: 0.5, energyDrainFractionPerSecond: 0.06 },
+    balanced: { speedMultiplier: 1, damageMultiplier: 1, shieldMultiplier: 1, energyDrainFractionPerSecond: 0 },
+    /** Below this Energy fraction the routing automatically falls back to balanced. */
+    minimumEnergyFraction: 0.1
+} as const;
+
+export type PowerMode = 'balanced' | 'engines' | 'weapons';
 
 export interface FleetDoctrine {
     targetPriority: TargetPriority;
@@ -187,6 +218,8 @@ export interface WeaponDefinition {
     cooldown: number;
     energyCost: number;
     projectileSpeed: number;
+    /** Fraction of `range` that still deals full damage before the falloff starts. */
+    rolloffStart: number;
 }
 
 export interface ModuleDefinition {
@@ -229,11 +262,13 @@ export const HULLS: Record<string, HullDefinition> = {
 };
 
 export const WEAPONS: Record<string, WeaponDefinition> = {
-    pulse: { id: 'pulse', name: 'Pulse Cannon', damageType: 'energy', damage: 12, range: 520, cooldown: 0.8, energyCost: 8, projectileSpeed: 900 },
-    autocannon: { id: 'autocannon', name: 'Autocannon', damageType: 'kinetic', damage: 9, range: 430, cooldown: 0.45, energyCost: 2, projectileSpeed: 760 },
-    railgun: { id: 'railgun', name: 'Rail Artillery', damageType: 'kinetic', damage: 28, range: 1150, cooldown: 2.6, energyCost: 12, projectileSpeed: 1500 },
-    missile: { id: 'missile', name: 'Strike Missile', damageType: 'explosive', damage: 34, range: 800, cooldown: 3.5, energyCost: 4, projectileSpeed: 520 },
-    jammer: { id: 'jammer', name: 'Disruptor', damageType: 'energy', damage: 5, range: 720, cooldown: 1.2, energyCost: 10, projectileSpeed: 1100 }
+    // Ranges are deliberately short: fleets fight at knife range on the
+    // sublight drive, while warp is reserved for travelling between planets.
+    pulse: { id: 'pulse', name: 'Pulse Cannon', damageType: 'energy', damage: 12, range: 105, cooldown: 0.8, energyCost: 8, projectileSpeed: 900, rolloffStart: 0.45 },
+    autocannon: { id: 'autocannon', name: 'Autocannon', damageType: 'kinetic', damage: 9, range: 86, cooldown: 0.45, energyCost: 2, projectileSpeed: 760, rolloffStart: 0.5 },
+    railgun: { id: 'railgun', name: 'Rail Artillery', damageType: 'kinetic', damage: 28, range: 230, cooldown: 2.6, energyCost: 12, projectileSpeed: 1500, rolloffStart: 0.75 },
+    missile: { id: 'missile', name: 'Strike Missile', damageType: 'explosive', damage: 34, range: 160, cooldown: 3.5, energyCost: 4, projectileSpeed: 520, rolloffStart: 0.65 },
+    jammer: { id: 'jammer', name: 'Disruptor', damageType: 'energy', damage: 5, range: 144, cooldown: 1.2, energyCost: 10, projectileSpeed: 1100, rolloffStart: 0.5 }
 };
 
 export const MODULES: Record<string, ModuleDefinition> = {

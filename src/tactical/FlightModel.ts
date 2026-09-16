@@ -2,7 +2,8 @@ import { Vector2 } from '../utils/Vector2';
 import { FLIGHT_BALANCE, HULLS } from './ShipDefinitions';
 import type { Ship } from './Ship';
 
-export type FlightMode = 'impulse' | 'warp';
+export type FlightMode = 'sublight' | 'warp';
+export type WarpState = 'off' | 'charging' | 'active';
 
 /**
  * Performance envelope derived from the hulls of every living ship. A fleet
@@ -22,8 +23,14 @@ export interface FlightState {
     angularVelocity: number;
     throttle: number;
     mode: FlightMode;
-    /** True while the player holds manual warp trim. */
+    /** True while the player holds manual trim. */
     manual: boolean;
+    /** Warp drive: it has to be charged before it translates. */
+    warp: WarpState;
+    /** Charge progress, 0..1. */
+    warpCharge: number;
+    /** Seconds left before another emergency drop-out is allowed. */
+    warpCooldown: number;
 }
 
 /** What the fleet currently wants to do, independent of how heavy it is. */
@@ -34,6 +41,12 @@ export interface FlightIntent {
     throttle: number;
     /** Retro thrusters only: bleed speed off without turning the fleet around. */
     brake: boolean;
+    /**
+     * True while the fleet wants to keep the warp drive running. Optional:
+     * the intent builders describe manoeuvres, and `Fleet` adds the warp
+     * request on top of them.
+     */
+    warp?: boolean;
 }
 
 export interface FlightStepInput {
@@ -44,6 +57,8 @@ export interface FlightStepInput {
     intent: FlightIntent;
     velocity: Vector2;
     dt: number;
+    /** False when the fleet cannot pay for the warp charge (Energy, fuel, interdiction). */
+    allowWarp?: boolean;
 }
 
 export interface FlightStepResult {
@@ -52,6 +67,10 @@ export interface FlightStepResult {
     /** Acceleration actually applied this step, in world units per second squared. */
     acceleration: Vector2;
     speedCap: number;
+    /** True on the single step where the warp drive finishes charging. */
+    warpIgnited: boolean;
+    /** True when the warp drive was requested but cannot be charged (no Energy). */
+    warpBlocked: boolean;
 }
 
 const TWO_PI = Math.PI * 2;
@@ -85,8 +104,8 @@ export function moveTowards(current: number, target: number, maxDelta: number): 
     return current + Math.sign(delta) * maxDelta;
 }
 
-export function createFlightState(heading: number = 0, mode: FlightMode = 'impulse'): FlightState {
-    return { heading: wrapAngle(heading), angularVelocity: 0, throttle: 0, mode, manual: false };
+export function createFlightState(heading: number = 0, mode: FlightMode = 'sublight'): FlightState {
+    return { heading: wrapAngle(heading), angularVelocity: 0, throttle: 0, mode, manual: false, warp: 'off', warpCharge: 0, warpCooldown: 0 };
 }
 
 export function fallbackFlightProfile(maxSpeed: number): FlightProfile {
@@ -144,31 +163,49 @@ export function deriveEngagementRange(ships: Ship[]): number {
     );
 }
 
-/** Warp is reserved for long journeys; short manoeuvres stay in impulse. */
-export function chooseFlightMode(distance: number, manual: boolean, currentMode: FlightMode): FlightMode {
-    if (manual) return 'warp';
-    if (!Number.isFinite(distance)) return currentMode;
-    if (distance > FLIGHT_BALANCE.warpEngageDistance) return 'warp';
+/**
+ * Decides whether the fleet should keep the warp drive running. Warp is a
+ * travel mode: the autopilot charges it for long journeys, the player can also
+ * latch it by hand, and it stays on until the fleet drops out or is interdicted.
+ */
+export function shouldRequestWarp(distance: number, manualRequest: boolean, currentWarp: WarpState): boolean {
+    if (manualRequest || currentWarp === 'charging') return true;
+    if (!Number.isFinite(distance)) return currentWarp === 'active';
+    if (distance > FLIGHT_BALANCE.warpEngageDistance) return true;
     // Hysteresis keeps a fleet from flipping modes around the threshold.
-    if (currentMode === 'warp' && distance > FLIGHT_BALANCE.warpEngageDistance * 0.5) return 'warp';
-    return 'impulse';
+    return currentWarp === 'active' && distance > FLIGHT_BALANCE.warpEngageDistance * 0.5;
+}
+
+/**
+ * Cruise-mode selector for the autopilot: warp for long journeys, sublight for
+ * manoeuvres. Braking fleets keep their current mode so a warp deceleration is
+ * never cut short by a cap change, and manual trim keeps whatever it had.
+ */
+export function chooseFlightMode(distance: number, manual: boolean, current: FlightMode): FlightMode {
+    if (manual) return current;
+    const engage = FLIGHT_BALANCE.warpEngageDistance;
+    if (distance > engage) return 'warp';
+    // Hysteresis: keep warp until the waypoint is within half the engage distance.
+    if (current === 'warp' && distance > engage * 0.5) return 'warp';
+    return 'sublight';
 }
 
 /** Distance a fleet needs to shed `speed` with its retro thrusters. */
 export function brakeDistance(speed: number, profile: FlightProfile, performance: number): number {
+
     const thrust = Math.max(1e-3, profile.acceleration * FLIGHT_BALANCE.brakeBoost * performance);
     return (Math.max(0, speed) * Math.max(0, speed)) / (2 * thrust);
 }
 
 /** Highest speed the fleet may reach right now, including mode and performance. */
 export function speedCap(profile: FlightProfile, mode: FlightMode, performance: number): number {
-    const modeFactor = mode === 'warp' ? FLIGHT_BALANCE.warpSpeedFactor : FLIGHT_BALANCE.impulseSpeedFactor;
+    const modeFactor = mode === 'warp' ? FLIGHT_BALANCE.warpSpeedFactor : FLIGHT_BALANCE.sublightSpeedFactor;
     return profile.maxSpeed * modeFactor * Math.max(0, performance);
 }
 
 function spoolSeconds(state: FlightState): number {
     if (state.manual) return FLIGHT_BALANCE.manualSpoolSeconds;
-    const base = state.mode === 'warp' ? FLIGHT_BALANCE.warpSpoolSeconds : FLIGHT_BALANCE.impulseSpoolSeconds;
+    const base = state.mode === 'warp' ? FLIGHT_BALANCE.warpSpoolSeconds : FLIGHT_BALANCE.sublightSpoolSeconds;
     return base * FLIGHT_BALANCE.orderedSpoolFraction;
 }
 
@@ -180,12 +217,53 @@ function spoolSeconds(state: FlightState): number {
 export function stepFlight(input: FlightStepInput): FlightStepResult {
     const { profile, intent, performance } = input;
     const dt = input.dt;
-    const cap = speedCap(profile, input.state.mode, performance);
     const state: FlightState = { ...input.state };
 
     if (!(dt > 0)) {
-        return { state, velocity: input.velocity, acceleration: new Vector2(0, 0), speedCap: cap };
+        return {
+            state,
+            velocity: input.velocity,
+            acceleration: new Vector2(0, 0),
+            speedCap: speedCap(profile, state.mode, performance),
+            warpIgnited: false,
+            warpBlocked: false
+        };
     }
+
+    // 0. Warp drive: charging a few seconds, then translating at full hull speed.
+    let warpIgnited = false;
+    let warpBlocked = false;
+    state.warpCooldown = Math.max(0, state.warpCooldown - dt);
+
+    if (intent.warp && input.allowWarp === false) {
+        // The fleet cannot pay for the warp drive: abort and report it so the
+        // caller can log the reason instead of silently doing nothing.
+        warpBlocked = true;
+        if (state.warp === 'charging') {
+            state.warp = 'off';
+            state.warpCharge = 0;
+        }
+    } else if (intent.warp) {
+        if (state.warp === 'off') {
+            state.warp = 'charging';
+            state.warpCharge = 0;
+        }
+        if (state.warp === 'charging') {
+            state.warpCharge += dt / Math.max(0.1, FLIGHT_BALANCE.warpChargeSeconds);
+            if (state.warpCharge >= 1) {
+                state.warpCharge = 1;
+                state.warp = 'active';
+                warpIgnited = true;
+            }
+        }
+    } else if (state.warp !== 'off') {
+        // Releasing the request drops out of warp immediately; the charge is lost.
+        state.warp = 'off';
+        state.warpCharge = 0;
+    }
+
+    state.mode = state.warp === 'active' ? 'warp' : 'sublight';
+    const cap = speedCap(profile, state.mode, performance);
 
     // 1. Drive spool-up / cut-off. The average throttle over the step is
     //    integrated exactly, so the same manoeuvre does not depend on the
@@ -246,7 +324,7 @@ export function stepFlight(input: FlightStepInput): FlightStepResult {
             acceleration = new Vector2(0, 0);
         }
     } else {
-        const modeFactor = state.mode === 'warp' ? FLIGHT_BALANCE.warpAccelerationFactor : FLIGHT_BALANCE.impulseAccelerationFactor;
+        const modeFactor = state.mode === 'warp' ? FLIGHT_BALANCE.warpAccelerationFactor : FLIGHT_BALANCE.sublightAccelerationFactor;
         const alignment = Math.max(FLIGHT_BALANCE.courseAlignmentFloor, Math.cos(error) ** 2);
         const magnitude = profile.acceleration * modeFactor * averageThrottle * Math.max(0, performance) * alignment;
         acceleration = course.scale(magnitude);
@@ -261,7 +339,7 @@ export function stepFlight(input: FlightStepInput): FlightStepResult {
     const resultingSpeed = velocity.mag();
     if (resultingSpeed > cap) velocity = velocity.scale(cap / resultingSpeed);
 
-    return { state, velocity, acceleration, speedCap: cap };
+    return { state, velocity, acceleration, speedCap: cap, warpIgnited, warpBlocked };
 }
 
 /**
@@ -349,9 +427,15 @@ export function previewFlightPath(input: FlightPreviewInput): Vector2[] {
     const points: Vector2[] = [];
 
     for (let index = 0; index < steps; index++) {
-        const intent = input.waypoint
+        const distance = input.waypoint ? Vector2.distance(position, input.waypoint) : 0;
+        const base = input.waypoint
             ? autopilotIntent(position, velocity, input.waypoint, input.profile, input.performance)
             : { course: velocity.normalize(), throttle: 0, brake: true };
+        const intent = {
+            ...base,
+            // The preview charges the warp drive exactly like the real autopilot.
+            warp: input.waypoint ? shouldRequestWarp(distance, false, state.warp) : false
+        };
         const result = stepFlight({ state, profile: input.profile, performance: input.performance, intent, velocity, dt: step });
         state = result.state;
         velocity = result.velocity;
