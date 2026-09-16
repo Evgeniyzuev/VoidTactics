@@ -16,9 +16,6 @@ export class UIManager {
     private onDoctrine: (priority: TargetPriority) => void;
     private onFaq: () => void;
     private onSignalAction: (action: 'track' | 'inspect', event: WorldEvent) => void;
-    private onManualTrimToggle: () => void;
-    private trimBtn!: HTMLButtonElement;
-    private manualTrimActive: boolean = false;
     private fleetPanel!: HTMLElement;
     private eventLog!: HTMLElement;
     private signalTracker!: HTMLElement;
@@ -54,8 +51,7 @@ export class UIManager {
             onOrder: (order: FleetOrderType) => void,
             onDoctrine: (priority: TargetPriority) => void,
             onFaq: () => void,
-            onSignalAction: (action: 'track' | 'inspect', event: WorldEvent) => void,
-            onManualTrimToggle: () => void
+            onSignalAction: (action: 'track' | 'inspect', event: WorldEvent) => void
         }
     ) {
         const el = document.getElementById(containerId);
@@ -70,7 +66,6 @@ export class UIManager {
         this.onDoctrine = callbacks.onDoctrine;
         this.onFaq = callbacks.onFaq;
         this.onSignalAction = callbacks.onSignalAction;
-        this.onManualTrimToggle = callbacks.onManualTrimToggle;
 
         this.render();
     }
@@ -192,18 +187,9 @@ export class UIManager {
         faqBtn.title = 'FAQ / Help';
         bindButtonAction(faqBtn, () => this.onFaq());
 
-        // Manual warp trim: while active the pointer sets the course and the
-        // left button burns. It is the touch-friendly twin of the Shift key.
-        this.trimBtn = document.createElement('button');
-        this.trimBtn.className = 'control-btn';
-        this.trimBtn.innerText = 'WARP TRIM';
-        this.trimBtn.title = 'Manual warp trim (hold Shift on desktop)';
-        bindButtonAction(this.trimBtn, () => this.onManualTrimToggle());
-
         hud.appendChild(this.playBtn);
         hud.appendChild(speedContainer);
         hud.appendChild(this.cameraFollowBtn);
-        hud.appendChild(this.trimBtn);
         hud.appendChild(faqBtn);
         hud.appendChild(menuBtn);
         this.container.appendChild(hud);
@@ -645,20 +631,6 @@ export class UIManager {
 
     public updatePlayIcon(isPaused: boolean) {
         this.playBtn.innerText = isPaused ? '▶' : '⏸';
-    }
-
-    /** Reflects the manual warp trim state on the HUD button. */
-    public setManualTrimState(active: boolean) {
-        this.manualTrimActive = active;
-        if (active) {
-            this.trimBtn.classList.add('active');
-        } else {
-            this.trimBtn.classList.remove('active');
-        }
-    }
-
-    public get isManualTrimActive() {
-        return this.manualTrimActive;
     }
 
     public setCameraFollowState(follow: boolean) {

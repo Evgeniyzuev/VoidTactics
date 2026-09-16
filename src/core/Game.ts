@@ -24,7 +24,6 @@ import { WorldEvent } from '../entities/WorldEvent';
 import { FleetGenerator, getShopMultiplier, getShopRequirements, SHOP_SHIPS } from '../tactical/FleetGenerator';
 import { CombatEffects } from '../renderer/CombatEffects';
 import { COMBAT_BALANCE, TACTICAL_BALANCE, type DamageType } from '../tactical/ShipDefinitions';
-import { brakeDistance, previewFlightPath } from '../tactical/FlightModel';
 import { bindButtonAction } from '../utils/TouchButton';
 import { assessRelativeThreat } from '../tactical/Ecosystem';
 import { SensorService, type SensorContact } from '../tactical/SensorService';
@@ -118,10 +117,6 @@ export class Game {
     private timeScale: number = 1 * 0.7;
     private infoTooltip: HTMLDivElement | null = null;
     private cameraFollow: boolean = true;
-    /** Manual warp trim requested from the HUD button (Shift does the same). */
-    private manualTrimEnabled: boolean = false;
-    /** Last trim state pushed to the HUD so the button only updates on change. */
-    private manualTrimApplied: boolean = false;
     private isDragging: boolean = false;
     private lastMousePos: Vector2 = new Vector2(0, 0);
     private isGameOver: boolean = false;
@@ -169,11 +164,7 @@ export class Game {
             onOrder: (order) => this.playerFleet.issueOrder(order, this.playerFleet.selectedShipId || undefined),
             onDoctrine: (priority) => { this.playerFleet.doctrine.targetPriority = priority; },
             onFaq: () => this.showFAQ(),
-            onSignalAction: (action, event) => this.handleSignalTrackerAction(action, event),
-            onManualTrimToggle: () => {
-                this.manualTrimEnabled = !this.manualTrimEnabled;
-                if (this.manualTrimEnabled) this.cameraFollow = true;
-            }
+            onSignalAction: (action, event) => this.handleSignalTrackerAction(action, event)
         });
 
         this.refreshDifficultyMultiplier();
@@ -423,25 +414,7 @@ export class Game {
         if (wheelDelta !== 0) this.camera.adjustZoom(wheelDelta);
         if (pinchDelta !== 0) this.camera.adjustZoom(pinchDelta);
 
-        // Manual warp trim (HUD button or Shift): the pointer sets the course,
-        // the left button burns and Space/right button runs the retro thrusters.
-        const trimActive = this.manualTrimEnabled || this.input.isManualTrimHeld();
-        if (trimActive !== this.manualTrimApplied) {
-            this.manualTrimApplied = trimActive;
-            this.ui.setManualTrimState(trimActive);
-        }
-        if (!trimActive) {
-            this.playerFleet.manualThrust = true;
-            this.playerFleet.manualBrake = false;
-        }
-
-        if (trimActive) {
-            this.playerFleet.manualSteerTarget = this.camera.screenToWorld(this.input.mousePos);
-            this.playerFleet.manualThrust = this.input.isMouseDown;
-            this.playerFleet.manualBrake = this.input.isBraked();
-            // Steering takes priority over camera panning while trimming.
-            this.isDragging = false;
-        } else if (this.input.isMouseDown) {
+        if (this.input.isMouseDown) {
             const clickPos = new Vector2(this.input.mousePos.x, this.input.mousePos.y);
 
             if (!this.isDragging) {
@@ -2642,102 +2615,7 @@ export class Game {
         }
         this.drawEntityIndicator(this.playerFleet.position, this.playerFleet.color, 6); // Player indicator (smaller)
 
-        // Flight assist overlay: momentum, braking point and planned path.
-        this.drawFlightAssist(ctx);
-
         if (this.inspectedEntity) this.positionTooltip(this.inspectedEntity);
-    }
-
-    /**
-     * Flight assist: the predicted autopilot path, the braking point and the
-     * current velocity vector. Fleets now carry real momentum, so the player
-     * has to see where a delayed course change will actually lead.
-     */
-    private drawFlightAssist(ctx: CanvasRenderingContext2D) {
-        const fleet = this.playerFleet;
-        const profile = fleet.flightProfile;
-        if (!profile) return;
-
-        const speed = fleet.velocity.mag();
-        const origin = this.camera.worldToScreen(fleet.position);
-        const stopDistance = brakeDistance(speed, profile, fleet.performance);
-
-        ctx.save();
-
-        // Velocity vector and the point at which the fleet could come to rest.
-        if (speed > 1) {
-            const direction = fleet.velocity.normalize();
-            const tip = this.camera.worldToScreen(fleet.position.add(direction.scale(Math.min(520, speed * 0.85))));
-            ctx.strokeStyle = 'rgba(120,225,255,.55)';
-            ctx.lineWidth = 1.3;
-            ctx.setLineDash([5, 6]);
-            ctx.beginPath(); ctx.moveTo(origin.x, origin.y); ctx.lineTo(tip.x, tip.y); ctx.stroke();
-            ctx.setLineDash([]);
-
-            if (stopDistance > 40) {
-                const stop = this.camera.worldToScreen(fleet.position.add(direction.scale(stopDistance)));
-                ctx.strokeStyle = 'rgba(255,186,110,.85)';
-                ctx.lineWidth = 1.6;
-                ctx.beginPath();
-                ctx.moveTo(stop.x - 7, stop.y); ctx.lineTo(stop.x + 7, stop.y);
-                ctx.moveTo(stop.x, stop.y - 7); ctx.lineTo(stop.x, stop.y + 7);
-                ctx.stroke();
-                ctx.fillStyle = 'rgba(255,200,140,.85)';
-                ctx.font = '9px ui-monospace, monospace';
-                ctx.textAlign = 'center';
-                ctx.fillText('BRAKE', stop.x, stop.y - 11);
-            }
-        }
-
-        // Autopilot path preview, rolled forward through the same flight model.
-        if (fleet.target) {
-            const path = previewFlightPath({
-                state: fleet.flight,
-                position: fleet.position,
-                velocity: fleet.velocity,
-                profile,
-                performance: fleet.performance,
-                waypoint: fleet.target,
-                seconds: 20,
-                step: 0.25
-            });
-            if (path.length) {
-                ctx.strokeStyle = 'rgba(120,225,255,.35)';
-                ctx.lineWidth = 1.2;
-                ctx.beginPath();
-                const first = this.camera.worldToScreen(path[0]);
-                ctx.moveTo(origin.x, origin.y);
-                ctx.lineTo(first.x, first.y);
-                for (let index = 1; index < path.length; index++) {
-                    const point = this.camera.worldToScreen(path[index]);
-                    ctx.lineTo(point.x, point.y);
-                }
-                ctx.stroke();
-                const end = this.camera.worldToScreen(path[path.length - 1]);
-                ctx.fillStyle = 'rgba(120,225,255,.5)';
-                ctx.beginPath(); ctx.arc(end.x, end.y, 3, 0, Math.PI * 2); ctx.fill();
-            }
-        }
-
-        // Compact flight strip: mode, speed, throttle, braking distance and ETA.
-        const mode = fleet.flight.mode === 'warp' ? 'WARP' : 'IMPULSE';
-        const lines = [
-            `${mode}${fleet.flight.manual ? ' \u00b7 MANUAL TRIM' : ' \u00b7 AUTOPILOT'}`,
-            `SPEED ${Math.round(speed)} / ${Math.round(fleet.speedCap)} u/s`,
-            `THR ${Math.round(fleet.flight.throttle * 100)}%   BRAKE ${Math.round(stopDistance)} u`
-        ];
-        if (fleet.target) {
-            const distance = Vector2.distance(fleet.position, fleet.target);
-            const eta = distance / Math.max(1, Math.min(fleet.speedCap, Math.max(speed, 1)));
-            lines.push(`ETA ${eta.toFixed(1)} s   DIST ${Math.round(distance)} u`);
-        }
-        ctx.fillStyle = 'rgba(4,12,20,.55)';
-        ctx.fillRect(14, 62, 206, 14 * lines.length + 10);
-        ctx.fillStyle = 'rgba(150,225,255,.85)';
-        ctx.font = '10px ui-monospace, monospace';
-        ctx.textAlign = 'left';
-        lines.forEach((line, index) => ctx.fillText(line, 22, 78 + index * 14));
-        ctx.restore();
     }
 
     private drawRadarOverlay(ctx: CanvasRenderingContext2D) {
