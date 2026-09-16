@@ -2,7 +2,20 @@ import { Entity } from './Entity';
 import { Camera } from '../renderer/Camera';
 import { Vector2 } from '../utils/Vector2';
 import { Ship, createStarterShips } from '../tactical/Ship';
-import { DEFAULT_FORMATION, TACTICAL_BALANCE, type DamageType, type FleetDoctrine, type FleetOrderType } from '../tactical/ShipDefinitions';
+import { DEFAULT_FORMATION, FLIGHT_BALANCE, TACTICAL_BALANCE, type DamageType, type FleetDoctrine, type FleetOrderType } from '../tactical/ShipDefinitions';
+import {
+    autopilotIntent,
+    chooseFlightMode,
+    createFlightState,
+    deriveEngagementRange,
+    deriveFlightProfile,
+    engagementIntent,
+    fallbackFlightProfile,
+    stepFlight,
+    type FlightIntent,
+    type FlightProfile,
+    type FlightState
+} from '../tactical/FlightModel';
 import { FleetGenerator } from '../tactical/FleetGenerator';
 import { RepairService } from '../tactical/RepairService';
 import { ABILITY_CHARGE_BALANCE, ABILITY_DEFINITIONS, type FleetAbilityId } from '../tactical/AbilityService';
@@ -43,14 +56,31 @@ export class Fleet extends Entity {
     public followDistance: number = 100; // Distance to maintain when following
     public followMode: 'approach' | 'contact' | null = null;
     public manualSteerTarget: Vector2 | null = null; // Manual override for interception
+    /** Manual warp trim: burn towards `manualSteerTarget` while this is true. */
+    public manualThrust: boolean = true;
+    /** Manual warp trim: retro burn instead of a forward burn. */
+    public manualBrake: boolean = false;
 
     public maxSpeed: number = 500;
+    /** Inertial flight state shared by the player, NPCs and the autopilot. */
+    public flight: FlightState = createFlightState();
+    /** Cached hull-derived envelope; refreshed every update from the living ships. */
+    public flightProfile: FlightProfile | null = null;
+    /** Distance at which the fleet opens fire, derived from its longest weapon. */
+    public engagementRange: number = FLIGHT_BALANCE.engagementRangeDefault;
+    /** Stable orbit direction for the combat autopilot; 0 means "not derived yet". */
+    public orbitDirection: number = 0;
+    /** Most recent autopilot/engagement intent, reused by the renderer. */
+    public lastIntent: FlightIntent | null = null;
     /** Distance at which a fleet can initiate a tactical interception. */
     public attackRadius: number = 100;
     public isStation = false;
     /** True while the fleet is inside the outer asteroid belt. */
     public inAsteroidBelt = false;
-    private stopThreshold: number = 5;
+    /** Current speed limit after mode, readiness, Energy, fuel and abilities. */
+    public speedCap: number = 0;
+    /** Aggregated engine multiplier from readiness, Energy, fuel, abilities and terrain. */
+    public performance: number = 1;
 
     private rotation: number = 0;
     public color: string;
@@ -326,6 +356,9 @@ export class Fleet extends Entity {
 
     public get flagship() { return this.ships.find(ship => ship.role === 'flagship' && ship.alive) || this.ships.find(ship => ship.alive); }
 
+    /** Nose direction in radians, driven by the flight model. */
+    public get heading() { return this.rotation; }
+
     private refreshFleetState(dt = 0) {
         const defenders = this.ships.filter(ship => ship.alive && ship.role === 'defender' && ship.order.type === 'protect').length;
         const cap = defenders * (3 + this.skills.tactics);
@@ -418,7 +451,8 @@ export class Fleet extends Entity {
 
         if (this.stunTimer > 0) {
             this.stunTimer -= dt;
-            this.velocity = this.velocity.scale(0.5); // Rapidly bleed velocity
+            // Stasis drag is frame-rate independent, like the rest of the flight model.
+            this.velocity = this.velocity.scale(Math.pow(FLIGHT_BALANCE.stunDampingPerSecond, dt));
             if (this.velocity.mag() < 1) this.velocity = new Vector2(0, 0);
             this.position = this.position.add(this.velocity.scale(dt));
             return;
@@ -449,76 +483,54 @@ export class Fleet extends Entity {
         }
 
         if (this.state === 'combat') {
-            // Safety fallback: if battle is missing or finished, reset state
-            if (!this.activeBattle) {
-                this.state = 'normal';
-                return;
-            }
+            // A finished battle must not freeze the fleet in place: drop the
+            // stale state and let the flight model keep flying the course.
+            if (!this.activeBattle) this.state = 'normal';
             this.combatTimer -= dt;
-            // NPCs keep their tactical engagement orbit, while the player may
-            // still steer the flagship/flotilla in real time during combat.
-            // The normal movement code below applies the combat speed cap and
-            // still honours direct targets and manual steering.
-            if (!this.isPlayer) {
-                this.velocity = this.velocity.scale(0.9);
-                this.position = this.position.add(this.velocity.scale(dt));
-                return;
-            }
         }
 
-        let currentMaxSpeed = this.maxSpeed * (this.isPlayer ? 1 + this.skills.navigation * 0.04 : 1);
+        // --- Performance envelope -------------------------------------------------
+        // One scalar drives both the acceleration and the speed cap, so a
+        // damaged, starved or trapped fleet slows down in every sense at once.
+        let performance = this.readinessEfficiency * this.energyEfficiency;
+        if (this.isPlayer) performance *= 1 + this.skills.navigation * 0.04;
 
         // Dense debris makes navigation slower inside the outer belt.
-        if (this.inAsteroidBelt) currentMaxSpeed *= 0.5;
+        if (this.inAsteroidBelt) performance *= 0.5;
 
         // Ability modifiers
-        if (this.abilities.afterburner.active) {
-            currentMaxSpeed *= TACTICAL_BALANCE.afterburnerSpeedMultiplier;
-        }
-        if (this.fuel <= 0) currentMaxSpeed *= TACTICAL_BALANCE.emergencySpeedMultiplier;
-        currentMaxSpeed *= this.readinessEfficiency;
-        currentMaxSpeed *= this.energyEfficiency;
-        if (this.netSlowTimer > 0) currentMaxSpeed *= TACTICAL_BALANCE.netSpeedMultiplier;
-        if (this.abilities.bubble.active) {
-            currentMaxSpeed *= 0.5;
-        }
+        if (this.abilities.afterburner.active) performance *= TACTICAL_BALANCE.afterburnerSpeedMultiplier;
+        if (this.fuel <= 0) performance *= TACTICAL_BALANCE.emergencySpeedMultiplier;
+        if (this.netSlowTimer > 0) performance *= TACTICAL_BALANCE.netSpeedMultiplier;
+        if (this.abilities.bubble.active) performance *= 0.5;
 
         // External bubble effect
-        if (this.isBubbled) {
-            currentMaxSpeed *= 0.1;
-            // Instantly slow down velocity if it's faster than new max speed
-            const maxVel = currentMaxSpeed;
-            if (this.velocity.mag() > maxVel) {
-                this.velocity = this.velocity.normalize().scale(maxVel);
-            }
-        }
+        if (this.isBubbled) performance *= 0.1;
 
         // Trader speed penalty (Heavy Cargo)
-        if (this.faction === 'trader') {
-            currentMaxSpeed *= 0.3;
-        }
-
-        // Combat speed limit: if under attack, speed cannot exceed 90% of base max
-        if (this.currentTarget) {
-            const baseMaxSpeed = this.maxSpeed;
-            const combatSpeedCap = baseMaxSpeed * 0.9;
-            currentMaxSpeed = Math.min(currentMaxSpeed, combatSpeedCap);
-            // Instantly slow down velocity if it's faster than combat speed cap
-            if (this.velocity.mag() > combatSpeedCap) {
-                this.velocity = this.velocity.normalize().scale(combatSpeedCap);
-            }
-        }
+        if (this.faction === 'trader') performance *= 0.3;
         this.isBubbled = false; // Reset for next frame
+        this.performance = Math.max(0, performance);
 
-        // Stationary fleets still use the normal Fleet update path. Avoid
-        // intercept calculations such as distance / maxSpeed when their
-        // configured speed is zero, and keep them fully immobile.
-        if (currentMaxSpeed <= 0) {
+        // Stationary fleets keep the normal update path but never move.
+        if (this.isStation || this.maxSpeed <= 0) {
             this.velocity = new Vector2(0, 0);
             this.target = null;
             this.lastAcceleration = new Vector2(0, 0);
             return;
         }
+
+        // --- Hull-derived flight envelope ----------------------------------------
+        const profile = deriveFlightProfile(this.ships) || fallbackFlightProfile(this.maxSpeed);
+        this.flightProfile = profile;
+        this.maxSpeed = profile.maxSpeed;
+        this.engagementRange = deriveEngagementRange(this.ships);
+        if (!this.isStation) this.attackRadius = this.engagementRange;
+        this.ensureOrbitDirection();
+
+        // The intercept solver plans for the speed the fleet can really reach,
+        // so a slow formation does not chase an unattainable lead.
+        const cruiseSpeed = Math.max(1, profile.maxSpeed * Math.max(0.1, performance));
 
         // If following another entity, update target to an intercept point
         if (this.followTarget) {
@@ -526,7 +538,7 @@ export class Fleet extends Entity {
             const targetVel = this.followTarget.velocity;
             const targetAcc = (this.followTarget instanceof Fleet) ? this.followTarget.lastAcceleration : new Vector2(0, 0);
             const myPos = this.position;
-            const maxSpeed = currentMaxSpeed;
+            const maxSpeed = cruiseSpeed;
 
             // Iterative Intercept (Accounts for Acceleration)
             // We do a few passes to find a stable time 't'
@@ -586,41 +598,60 @@ export class Fleet extends Entity {
             }
         }
 
-        if (this.target) {
-            const toTarget = this.target.sub(this.position);
-            const dist = toTarget.mag();
-
-            if (dist < this.stopThreshold) {
-                this.target = null;
-                this.velocity = new Vector2(0, 0); // Snap stop
-            } else {
-                const dir = toTarget.normalize();
-
-                const desired = dir.scale(currentMaxSpeed);
-                // Arrive logic (skip if manually steering for "thrust" feeling)
-                const slowRadius = 200;
-                if (dist < slowRadius && !this.manualSteerTarget) {
-                    desired.x *= (dist / slowRadius);
-                    desired.y *= (dist / slowRadius);
-                }
-
-                const steering = desired.sub(this.velocity);
-
-                // Acceleration depends on size (larger is slower to accelerate)
-                // Snappier responsiveness: 1.2 base
-                let responsiveness = 1.2;
-                if (this.abilities.afterburner.active) responsiveness *= 1.5;
-
-                let steerForce = steering.scale(responsiveness * dt);
-                if (!isFinite(steerForce.x) || !isFinite(steerForce.y)) steerForce = new Vector2(0, 0);
-                this.velocity = this.velocity.add(steerForce);
-                this.lastAcceleration = steerForce.scale(1 / dt);
-            }
-        } else {
-            // Friction/Drag when no target
-            this.velocity = this.velocity.scale(0.95); // simple drag
-            this.lastAcceleration = new Vector2(0, 0);
+        if (this.target && !this.manualSteerTarget &&
+            Vector2.distance(this.target, this.position) < FLIGHT_BALANCE.stopRadius) {
+            // Waypoint reached. The autopilot now simply brings the fleet to rest.
+            this.target = null;
         }
+
+        // --- Flight intent ---------------------------------------------------------
+        const manual = !!this.manualSteerTarget;
+        const waypoint = manual ? this.manualSteerTarget : this.target;
+        const combatTarget = (!waypoint && this.state === 'combat' && this.currentTarget) ? this.currentTarget : null;
+
+        let intent: FlightIntent;
+        if (manual && waypoint) {
+            intent = {
+                course: waypoint.sub(this.position),
+                throttle: this.manualThrust ? 1 : 0,
+                brake: this.manualBrake
+            };
+        } else if (waypoint) {
+            intent = autopilotIntent(this.position, this.velocity, waypoint, profile, performance);
+        } else if (combatTarget) {
+            intent = engagementIntent(this.position, this.velocity, combatTarget.position, this.engagementRange, this.orbitDirection);
+        } else if (this.velocity.mag() > 1) {
+            // No orders: station keeping. Coasting is speed, braking takes time.
+            intent = { course: this.velocity.normalize(), throttle: 0, brake: true };
+        } else {
+            intent = {
+                course: new Vector2(Math.cos(this.flight.heading), Math.sin(this.flight.heading)),
+                throttle: 0,
+                brake: true
+            };
+        }
+
+        // Warp is for journeys, impulse is for manoeuvres. The mode is frozen
+        // while braking so a long deceleration is never cut short by a cap change.
+        this.flight.mode = intent.brake
+            ? this.flight.mode
+            : chooseFlightMode(waypoint ? Vector2.distance(this.position, waypoint) : 0, manual, this.flight.mode);
+        this.flight.manual = manual;
+
+        const step = stepFlight({
+            state: this.flight,
+            profile,
+            performance,
+            intent,
+            velocity: this.velocity,
+            dt
+        });
+
+        this.flight = step.state;
+        this.velocity = step.velocity;
+        this.lastAcceleration = step.acceleration;
+        this.lastIntent = intent;
+        this.speedCap = step.speedCap;
 
         // Apply Velocity
         this.position = this.position.add(this.velocity.scale(dt));
@@ -629,13 +660,19 @@ export class Fleet extends Entity {
         if (!isFinite(this.position.x) || !isFinite(this.position.y)) this.position = new Vector2(0, 0);
         if (!isFinite(this.velocity.x) || !isFinite(this.velocity.y)) this.velocity = new Vector2(0, 0);
 
-        // Update Rotation (Smooth turn towards velocity)
-        if (this.velocity.mag() > 1) {
-            const desiredAngle = Math.atan2(this.velocity.y, this.velocity.x);
-            // Simple approach: Set rotation directly for now.
-            // Better: Lerp rotation. But instant is fine for this style.
-            this.rotation = desiredAngle;
+        // The nose follows the flight model heading, which lags the course.
+        this.rotation = this.flight.heading;
+    }
+
+    /** Stable, deterministic orbit direction so a fleet does not jitter in combat. */
+    private ensureOrbitDirection() {
+        if (this.orbitDirection !== 0) return;
+        const seed = this.ships[0]?.id || `fleet-${Math.round(this.position.x)}-${Math.round(this.position.y)}`;
+        let hash = 0;
+        for (let index = 0; index < seed.length; index++) {
+            hash = (hash + seed.charCodeAt(index) * (index + 1)) % 97;
         }
+        this.orbitDirection = hash % 2 === 0 ? 1 : -1;
     }
 
     draw(ctx: CanvasRenderingContext2D, camera: Camera) {
@@ -784,10 +821,27 @@ export class Fleet extends Entity {
                 ctx.strokeStyle = `rgba(80, 210, 255, ${iconShip.shieldFlash * 0.85})`; ctx.lineWidth = 2;
                 ctx.beginPath(); ctx.ellipse(0, 0, 13, 18, 0, 0, Math.PI * 2); ctx.stroke();
         }
-        if (this.velocity.mag() > 20) {
-                const flicker = 4 + 2 * Math.sin(this.tacticalClock * 17);
-                ctx.strokeStyle = this.color; ctx.lineWidth = 2; ctx.beginPath();
-                ctx.moveTo(-4, 10); ctx.lineTo(-3, 10 + flicker); ctx.moveTo(4, 10); ctx.lineTo(3, 10 + flicker); ctx.stroke();
+        // Engine plume follows the drive, not the residual speed: a coasting
+        // fleet shows nothing while a burning one trails a long flame.
+        const throttle = this.flight.throttle;
+        if (throttle > 0.02) {
+            const plume = 6 + throttle * 16 + Math.sin(this.tacticalClock * 17) * (1.5 + throttle * 2);
+            ctx.strokeStyle = this.color; ctx.lineWidth = 2 + throttle * 1.5;
+            ctx.shadowColor = this.color; ctx.shadowBlur = 8 * throttle;
+            ctx.beginPath();
+            ctx.moveTo(-4, 10); ctx.lineTo(-2.5, 10 + plume);
+            ctx.moveTo(4, 10); ctx.lineTo(2.5, 10 + plume);
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+        }
+        // Retro thrusters fire while the autopilot bleeds speed off.
+        if (this.lastIntent?.brake && this.velocity.mag() > 20) {
+            const flare = 3 + 2 * Math.abs(Math.sin(this.tacticalClock * 21));
+            ctx.strokeStyle = 'rgba(255,190,120,.85)'; ctx.lineWidth = 1.6;
+            ctx.beginPath();
+            ctx.moveTo(-5, -8); ctx.lineTo(-6.5, -8 - flare);
+            ctx.moveTo(5, -8); ctx.lineTo(6.5, -8 - flare);
+            ctx.stroke();
         }
         ctx.restore();
         if (this.currentTarget && !this.currentTarget.isCloaked) {

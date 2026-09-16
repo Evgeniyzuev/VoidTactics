@@ -3,6 +3,8 @@ import { Vector2 } from '../utils/Vector2';
 export class InputManager {
     public mousePos: Vector2 = new Vector2(0, 0);
     public isMouseDown: boolean = false;
+    /** Right mouse button or Space: used as the retro/brake input. */
+    public isBrakeDown: boolean = false;
 
     private canvas: HTMLCanvasElement;
     private wheelDelta: number = 0;
@@ -12,6 +14,7 @@ export class InputManager {
     private doubleClickThreshold: number = 300; // milliseconds
     private doubleClickDistThreshold: number = 30; // pixels
     private isDoubleClickFlag: boolean = false;
+    private keysDown = new Set<string>();
 
     // Multi-touch tracking
     private activePointers: Map<number, Vector2> = new Map();
@@ -87,6 +90,34 @@ export class InputManager {
             e.preventDefault();
             this.wheelDelta = -Math.sign(e.deltaY); // Positive = zoom in
         }, { passive: false });
+
+        // Keyboard: warp trim keeps working while the pointer defines the course.
+        window.addEventListener('keydown', (e) => {
+            if (e.repeat) return;
+            this.keysDown.add(e.code);
+            if (e.code === 'Space') e.preventDefault();
+        });
+        window.addEventListener('keyup', (e) => this.keysDown.delete(e.code));
+        window.addEventListener('blur', () => this.keysDown.clear());
+
+        // Right button is a dedicated retro burn and must not open a context menu.
+        this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+        this.canvas.addEventListener('pointerdown', (e) => {
+            if (e.button === 2) this.isBrakeDown = true;
+        });
+        window.addEventListener('pointerup', (e) => {
+            if (e.button === 2) this.isBrakeDown = false;
+        });
+    }
+
+    /** True while the manual warp trim modifier is held. */
+    public isManualTrimHeld(): boolean {
+        return this.keysDown.has('ShiftLeft') || this.keysDown.has('ShiftRight');
+    }
+
+    /** True while a retro burn is requested from keyboard or right mouse button. */
+    public isBraked(): boolean {
+        return this.isBrakeDown || this.keysDown.has('Space') || this.keysDown.has('KeyS');
     }
 
     private getPointersDistance(): number {

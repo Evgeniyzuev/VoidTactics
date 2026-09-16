@@ -3,7 +3,7 @@ import { Vector2 } from '../utils/Vector2';
 import { Game } from './Game';
 import { CelestialBody } from '../entities/CelestialBody';
 import { TargetResolver } from '../tactical/TargetResolver';
-import { COMBAT_BALANCE, TACTICAL_BALANCE } from '../tactical/ShipDefinitions';
+import { COMBAT_BALANCE, FLIGHT_BALANCE, TACTICAL_BALANCE } from '../tactical/ShipDefinitions';
 import { AbilityService } from '../tactical/AbilityService';
 
 export class Attack {
@@ -42,9 +42,12 @@ export class Attack {
             return;
         }
 
-        // Check if attack should be interrupted (distance > 2 * interception radius)
+        // A battle breaks off once the fleets drift far beyond weapon range.
+        // The threshold scales with the fleets involved instead of the old
+        // hardcoded 200 units, because engagements now open at weapon range.
         const dist = Vector2.distance(this.attacker.position, this.target.position);
-        const maxDist = 200; // 2 * 100 (interception radius)
+        const targetReach = Number.isFinite(this.target.attackRadius) ? this.target.attackRadius : this.attacker.attackRadius;
+        const maxDist = Math.max(this.attacker.attackRadius, targetReach) * FLIGHT_BALANCE.engagementBreakMultiplier;
         if (dist > maxDist) {
             this.finished = true;
             // Reset states

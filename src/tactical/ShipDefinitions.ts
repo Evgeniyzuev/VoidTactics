@@ -73,6 +73,79 @@ export const TACTICAL_BALANCE = {
     salvageExperienceMultiplier: 0.05
 } as const;
 
+/**
+ * Flight model tunables. The strategic map uses one shared inertial flight
+ * model for the player, NPCs and autopilot: a fleet has to build up speed,
+ * coasts when idle and needs time (and distance) to change course or stop.
+ *
+ * Two cruise modes exist:
+ * - `impulse` keeps 45% of the hull speed but turns and spools quickly;
+ * - `warp` uses the full hull speed but accelerates slowly and turns heavily.
+ */
+export const FLIGHT_BALANCE = {
+    /** Multiplier applied to the slowest hull speed of the fleet. */
+    speedScale: 1,
+    /** Converts `HullDefinition.acceleration` into world units per second squared. */
+    accelerationScale: 120,
+    minimumMaxSpeed: 120,
+    minimumAcceleration: 40,
+    minimumTurnRate: 0.35,
+    minimumAngularAcceleration: 1.2,
+    /** Scales `HullDefinition.turnRate` into radians per second. */
+    turnRateScale: 0.55,
+    /** Angular acceleration as a multiple of the maximum turn rate. */
+    angularAccelerationScale: 2.5,
+    /** How aggressively the nose chases the desired course. */
+    turnPursuitGain: 2.2,
+
+    impulseSpeedFactor: 0.45,
+    impulseAccelerationFactor: 1,
+    impulseSpoolSeconds: 0.3,
+    warpSpeedFactor: 1,
+    warpAccelerationFactor: 0.35,
+    warpSpoolSeconds: 1.4,
+    /** Warp turns are deliberately heavy compared to impulse manoeuvres. */
+    warpTurnFactor: 0.5,
+    /** Thrusters cut off faster than they spool up. */
+    spoolDownFraction: 0.35,
+    /** Manual warp trim spools slower than an ordered impulse burn. */
+    manualSpoolSeconds: 0.55,
+    /** Ordered autopilot manoeuvres do not need the full warp spool-up. */
+    orderedSpoolFraction: 0.3,
+
+    /** Autopilot uses warp only for journeys beyond this distance. */
+    warpEngageDistance: 1200,
+    /** Residual ether drag. Frame-rate independent (per second). */
+    spaceDragPerSecond: 0.02,
+    /** Retro thrusters are stronger than the main drive. */
+    brakeBoost: 1.35,
+    /** Distance from the waypoint at which the waypoint is considered reached. */
+    stopRadius: 60,
+    /** Braking starts once the current speed exceeds the allowed speed by this margin. */
+    brakeTriggerMargin: 1.12,
+    /** Thrust is scaled down to this floor while the fleet is still turning. */
+    courseAlignmentFloor: 0.25,
+
+    /** NPC combat stands off at this fraction of its engagement range. */
+    combatStandoffFraction: 0.72,
+    /** How much of the engagement course is tangential (orbit) versus radial. */
+    combatOrbitBlend: 0.65,
+    /** Multiplier of the stand-off distance at which a fleet stops orbiting and closes in. */
+    combatReengageFraction: 1.6,
+    /** Fallback engagement range when a fleet has no weapons at all. */
+    engagementRangeDefault: 620,
+    /** Fraction of the longest weapon range used as the engagement trigger. */
+    engagementRangeFraction: 0.85,
+    minimumEngagementRange: 260,
+    maximumEngagementRange: 900,
+    /** A battle ends once the distance exceeds this multiple of the engagement range. */
+    engagementBreakMultiplier: 2.4,
+    /** Speed below which a fleet without orders is brought to a full stop. */
+    arrivalHoldSpeed: 240,
+    /** Stasis/stun bleed-off per second (frame-rate independent). */
+    stunDampingPerSecond: 0.02
+} as const;
+
 export interface FleetDoctrine {
     targetPriority: TargetPriority;
     preferredRange: 'close' | 'balanced' | 'long';
