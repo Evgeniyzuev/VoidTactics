@@ -333,9 +333,28 @@ export class AIController {
         }
     }
 
+    /**
+     * Records the first aggressor of a newly started fight. Only nearby,
+     * law-abiding NPCs that have a proper sensor solution receive a one-use
+     * response permission. Fleets that discover the fight later do not.
+     */
+    public recordCombatStart(attacker: Fleet, target: Fleet) {
+        const witnesses = [this.game.getPlayerFleet(), ...this.game.getNpcFleets()];
+        for (const witness of witnesses) {
+            if (witness === attacker || witness === target || witness.isStation) continue;
+            if (!['civilian', 'military', 'mercenary'].includes(witness.faction)) continue;
+            if (witness.activeBattle || witness.currentTarget) continue;
+            if (!this.game.canFleetTarget(witness, attacker)) continue;
+
+            witness.witnessHostility.add(attacker);
+            witness.witnessedAggressors.add(attacker);
+        }
+    }
+
     public isHostile(a: Fleet, b: Fleet): boolean {
         if (a === b) return false;
         if (a.hostileTo.has(b)) return true;
+        if (a.witnessHostility.has(b)) return true;
         const f1 = a.faction;
         const f2 = b.faction;
 
@@ -367,7 +386,6 @@ export class AIController {
         // Military/Mercenary protect peace
         if (f1 === 'military' || f1 === 'mercenary') {
             if (['pirate', 'orc', 'raider'].includes(f2)) return true;
-            if (b.currentTarget && this.isAlly(a, b.currentTarget)) return true;
             return false;
         }
 
@@ -375,7 +393,6 @@ export class AIController {
 
         // Civilians and Traders only fight back if attacked
         if (f1 === 'civilian' || f1 === 'trader') {
-            if (b.currentTarget && this.isAlly(a, b.currentTarget)) return true;
             return false;
         }
 

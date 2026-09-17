@@ -88,6 +88,10 @@ export class Fleet extends Entity {
     public lastAcceleration: Vector2 = new Vector2(0, 0);
     public currentTarget: Fleet | null = null; // Current attack target
     public hostileTo: Set<Fleet> = new Set(); // Persistent hostility to other fleets
+    /** Temporary legal hostility created only when this fleet witnesses an attack. */
+    public witnessHostility: Set<Fleet> = new Set();
+    /** One-use permission to answer the aggressor of a battle seen at its start. */
+    public witnessedAggressors: Set<Fleet> = new Set();
     public lootDropped: boolean = false;
     public worldEventId: string | null = null;
     public worldEventRole: 'transport' | 'raider' | 'responder' | null = null;

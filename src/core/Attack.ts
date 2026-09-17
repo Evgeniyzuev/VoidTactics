@@ -20,6 +20,12 @@ export class Attack {
             attacker.state = 'mining';
             return;
         }
+        const witnessResponse = attacker.witnessedAggressors.has(target);
+        const startsNewIncident = !witnessResponse && !attacker.activeBattle && !target.activeBattle &&
+            attacker.currentTarget === null && target.currentTarget === null;
+        if (startsNewIncident) {
+            this.game.registerCombatStart?.(attacker, target);
+        }
         // Set attack states
         attacker.currentTarget = target;
         attacker.state = 'combat';

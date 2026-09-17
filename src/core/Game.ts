@@ -72,6 +72,10 @@ export class Game {
     public getCrates(): (AbilityCrate | ResourceCrate)[] { return this.crates; }
     public getSystemRadius(): number { return this.SYSTEM_RADIUS; }
 
+    public registerCombatStart(attacker: Fleet, target: Fleet) {
+        this.aiController?.recordCombatStart(attacker, target);
+    }
+
     public addCombatShot(attacker: Fleet, target: Fleet, type: DamageType, hit: boolean) {
         const isVisible = (fleet: Fleet) => {
             if (fleet === this.playerFleet) return true;
@@ -2038,7 +2042,14 @@ export class Game {
                 if (toRemove.includes(target) || attacker === target) continue;
 
                 // Skip if attacker is already attacking someone
-                if (attacker.currentTarget) continue;
+                if (attacker.currentTarget || attacker.activeBattle) continue;
+
+                // A battle is private once it has started. The only allowed
+                // third party is a lawful witness that saw the first attack
+                // and was granted a one-use response against the aggressor.
+                const targetAlreadyInFight = target.activeBattle !== null || target.currentTarget !== null;
+                const witnessResponse = attacker.witnessedAggressors.has(target);
+                if (targetAlreadyInFight && !witnessResponse) continue;
 
                 const baseTriggerDist = attacker.attackRadius;
 
@@ -2055,25 +2066,9 @@ export class Game {
                     if (dist < triggerDist) {
                         const attack = new Attack(attacker, target, this);
                         this.attacks.push(attack);
-
-                        // Special case: Player attacking civilian or military triggers hostility
-                        if (attacker.isPlayer && (target.faction === 'civilian' || target.faction === 'military' || target.faction === 'mercenary')) {
-                            const detectionRadius = 2000;
-                            const player = attacker;
-
-                            // All military in detection radius become hostile to player
-                            for (const fleet of allFleets) {
-                                if ((fleet.faction === 'military' || fleet.faction === 'mercenary') && Vector2.distance(fleet.position, player.position) <= detectionRadius) {
-                                    fleet.hostileTo.add(player);
-                                }
-                            }
-
-                            // All civilians larger than player in detection radius become hostile to player
-                            for (const fleet of allFleets) {
-                            if (fleet.faction === 'civilian' && fleet.threatRating > player.threatRating && Vector2.distance(fleet.position, player.position) <= detectionRadius) {
-                                    fleet.hostileTo.add(player);
-                                }
-                            }
+                        if (witnessResponse) {
+                            attacker.witnessedAggressors.delete(target);
+                            attacker.witnessHostility.delete(target);
                         }
                     }
                 }
@@ -2554,25 +2549,6 @@ export class Game {
                     // Auto-follow the target
                     this.playerFleet.setFollowTarget(fleet, 'contact');
 
-                    // Special case: Player attacking civilian or military triggers hostility
-                    if (fleet.faction === 'civilian' || fleet.faction === 'military' || fleet.faction === 'mercenary') {
-                        const detectionRadius = 2000;
-                        const allFleets = [this.playerFleet, ...this.npcFleets];
-
-                        // All military in detection radius become hostile to player
-                        for (const f of allFleets) {
-                            if ((f.faction === 'military' || f.faction === 'mercenary') && Vector2.distance(f.position, this.playerFleet.position) <= detectionRadius) {
-                                f.hostileTo.add(this.playerFleet);
-                            }
-                        }
-
-                        // All civilians larger than player in detection radius become hostile to player
-                        for (const f of allFleets) {
-                            if (f.faction === 'civilian' && f.threatRating > this.playerFleet.threatRating && Vector2.distance(f.position, this.playerFleet.position) <= detectionRadius) {
-                                f.hostileTo.add(this.playerFleet);
-                            }
-                        }
-                    }
                 } else {
                     console.log('Cannot initiate attack - one fleet is already attacking');
                 }
