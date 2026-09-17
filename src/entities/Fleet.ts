@@ -6,7 +6,6 @@ import { DEFAULT_FORMATION, TACTICAL_BALANCE, type DamageType, type FleetDoctrin
 import { FleetGenerator } from '../tactical/FleetGenerator';
 import { RepairService } from '../tactical/RepairService';
 import { ABILITY_CHARGE_BALANCE, ABILITY_DEFINITIONS, type FleetAbilityId } from '../tactical/AbilityService';
-import { CELL_SHAPES, drawOrganismCell, type CellShape } from '../renderer/OrganicShapes';
 
 export type Faction = 'civilian' | 'pirate' | 'orc' | 'military' | 'player' | 'raider' | 'trader' | 'mercenary';
 export interface FleetResources { fuel: number; maxFuel: number; supplies: number; maxSupplies: number; readiness: number }
@@ -68,8 +67,6 @@ export class Fleet extends Entity {
     public inAsteroidBelt = false;
     private stopThreshold: number = 5;
 
-    /** Stable variation seed for the organic cell rendering (wobble/organelles). */
-    private cellSeed = 0;
     /** Inertial world-space nucleus position; lags behind the course while moving. */
     private nucleusWorld: Vector2 | null = null;
 
@@ -690,133 +687,18 @@ export class Fleet extends Entity {
             ctx.globalAlpha = 0.1;
         }
 
-        if (this.ships.length) { this.drawTacticalFleet(ctx, camera); ctx.restore(); return; }
-
-        // Draw Ship (single-cell organism, the lone-cell fallback body)
-        ctx.rotate(this.rotation + Math.PI / 2); // +90deg because drawing points up
-        this.drawLoneCell(ctx);
+        // Keep one strategic icon at every zoom level. The camera may scale
+        // the icon, but its silhouette never switches to a detailed ship
+        // organism when the player zooms in.
+        this.drawFleetIcon(ctx, camera, 'strategic');
 
         ctx.restore();
-
-        // Draw Attack Line - If attacking
-        if (this.currentTarget && !this.currentTarget.isCloaked) {
-            const targetScreenPos = camera.worldToScreen(this.currentTarget.position);
-            const myScreenPos = camera.worldToScreen(this.position);
-
-            // Pulsing attack line with particles
-            const time = this.tacticalClock * 5;
-            const pulse = 0.5 + 0.5 * Math.sin(time);
-            const alpha = 0.8 + 0.2 * Math.sin(time * 2);
-
-            // Main attack line
-            ctx.strokeStyle = `rgba(255, 50, 50, ${alpha})`;
-            ctx.lineWidth = 3 + pulse * 2;
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = 'rgba(255, 0, 0, 0.8)';
-
-            ctx.beginPath();
-            ctx.moveTo(myScreenPos.x, myScreenPos.y);
-            ctx.lineTo(targetScreenPos.x, targetScreenPos.y);
-            ctx.stroke();
-
-            // Energy particles along the line
-            const dist = Math.sqrt((targetScreenPos.x - myScreenPos.x) ** 2 + (targetScreenPos.y - myScreenPos.y) ** 2);
-            const numParticles = Math.floor(dist / 20);
-            for (let i = 0; i < numParticles; i++) {
-                const t = i / numParticles;
-                const wave = Math.sin(i * 12.9898 + this.tacticalClock * 7.1);
-                const crossWave = Math.cos(i * 8.233 + this.tacticalClock * 5.7);
-                const x = myScreenPos.x + (targetScreenPos.x - myScreenPos.x) * t + wave * 5;
-                const y = myScreenPos.y + (targetScreenPos.y - myScreenPos.y) * t + crossWave * 5;
-                const size = 1 + (wave * 0.5 + 0.5) * 2;
-                ctx.fillStyle = `rgba(255, 150, 0, ${0.15 + (crossWave * 0.5 + 0.5) * 0.35})`;
-                ctx.beginPath();
-                ctx.arc(x, y, size, 0, Math.PI * 2);
-                ctx.fill();
-            }
-
-            ctx.shadowBlur = 0; // Reset shadow
-        }
-
-        // Draw Target Marker (Bubble) - Only for Player
-        if (this.isPlayer && this.target) {
-            const tPos = camera.worldToScreen(this.target);
-            ctx.fillStyle = 'rgba(0, 255, 255, 0.2)';
-            ctx.strokeStyle = 'rgba(0, 255, 255, 0.6)';
-            ctx.lineWidth = 1;
-
-            ctx.beginPath();
-            ctx.arc(tPos.x, tPos.y, 10, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-
-            // Inner dot (softer)
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-            ctx.beginPath();
-            ctx.arc(tPos.x, tPos.y, 2, 0, Math.PI * 2);
-            ctx.fill();
-        }
-    }
-
-    private drawTacticalFleet(ctx: CanvasRenderingContext2D, camera: Camera) {
-        const alive = this.ships.filter(ship => ship.alive);
-        const iconShip = this.flagship || alive[0];
-        if (!iconShip) return;
-        const visualTier = camera.zoom < 0.24 ? 'strategic' : camera.zoom < 0.58 ? 'tactical' : 'detail';
-        if (visualTier !== 'detail') {
-            this.drawFleetIcon(ctx, camera, visualTier);
-            return;
-        }
-        this.ensureCellSeed();
-        if (!this.nucleusWorld) this.nucleusWorld = this.position.clone();
-        const velocityAngle = this.velocity.mag() > 1 ? Math.atan2(this.velocity.y, this.velocity.x) + Math.PI / 2 : this.rotation + Math.PI / 2;
-        // The fleet marker is one recognizable silhouette at every zoom level.
-        // Fleet role still affects combat behavior, not the readability of the
-        // strategic map.
-        const shape: CellShape = CELL_SHAPES.flagship;
-        const speed01 = Math.min(1, this.velocity.mag() / Math.max(1, this.maxSpeed));
-        // Sun-facing highlight and the inertial nucleus lag, both expressed in
-        // the cell's rotated local frame.
-        const sunLocalAngle = Math.atan2(-this.position.y, -this.position.x) - velocityAngle;
-        const rel = this.nucleusWorld.sub(this.position);
-        const cosA = Math.cos(-velocityAngle), sinA = Math.sin(-velocityAngle);
-        const nucleusLocal = { x: rel.x * cosA - rel.y * sinA, y: rel.x * sinA + rel.y * cosA };
-        const visualScale = this.isPlayer ? 1.35 : 1.12;
-        ctx.save(); ctx.rotate(velocityAngle); ctx.scale(visualScale, visualScale);
-        drawOrganismCell(ctx, shape, {
-            color: this.color,
-            selected: this.isPlayer,
-            hitFlash: iconShip.hitFlash,
-            shieldFlash: iconShip.shieldFlash,
-            clock: this.tacticalClock,
-            seed: this.cellSeed,
-            // No flight model in the current build: speed doubles as the burn.
-            throttle: speed01,
-            speed01,
-            braking: false,
-            inCombat: this.state === 'combat' || this.currentTarget !== null,
-            detail: camera.zoom > 0.55,
-            sunLocalAngle,
-            nucleusLocal
-        });
-        ctx.restore();
-        if (this.currentTarget && !this.currentTarget.isCloaked) {
-            const targetScreen = camera.worldToScreen(this.currentTarget.position);
-            const originScreen = camera.worldToScreen(this.position);
-            const tx = targetScreen.x - originScreen.x, ty = targetScreen.y - originScreen.y;
-            const phase = (this.tacticalClock * 1.7) % 1;
-            ctx.strokeStyle = 'rgba(255,100,60,.28)'; ctx.setLineDash([3, 10]);
-            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(tx, ty); ctx.stroke(); ctx.setLineDash([]);
-            ctx.fillStyle = '#ffe0a8'; ctx.shadowColor = '#ff5a2a'; ctx.shadowBlur = 10;
-            ctx.beginPath(); ctx.arc(tx * phase, ty * phase, 2.5, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
-        }
     }
 
     /**
-     * At system-map scale a full organic hull is too small to read and too
-     * expensive to draw for every contact. Use a directional fleet glyph:
-     * tactical view keeps the silhouette large, strategic view keeps only the
-     * heading, faction and approximate command mass.
+     * Use the compact strategic directional glyph at every zoom level. The
+     * camera still scales world-space size naturally, but the icon's visual
+     * language never changes.
      */
     private drawFleetIcon(
         ctx: CanvasRenderingContext2D,
@@ -948,34 +830,4 @@ export class Fleet extends Entity {
         ctx.restore();
     }
 
-    /** Derives a stable visual seed from the fleet identity, like the orbit direction. */
-    private ensureCellSeed() {
-        if (this.cellSeed !== 0) return;
-        const seed = this.ships[0]?.id || `fleet-${Math.round(this.position.x)}-${Math.round(this.position.y)}`;
-        let hash = 7;
-        for (let index = 0; index < seed.length; index++) hash = (hash * 31 + seed.charCodeAt(index)) % 9973;
-        this.cellSeed = hash;
-    }
-
-    /** Fallback body for fleets with no ships: a small lone cell. */
-    private drawLoneCell(ctx: CanvasRenderingContext2D) {
-        this.ensureCellSeed();
-        if (!this.nucleusWorld) this.nucleusWorld = this.position.clone();
-        const speed01 = Math.min(1, this.velocity.mag() / 400);
-        drawOrganismCell(ctx, CELL_SHAPES.flagship, {
-            color: this.color,
-            selected: this.isPlayer,
-            hitFlash: 0,
-            shieldFlash: 0,
-            clock: this.tacticalClock,
-            seed: this.cellSeed,
-            throttle: 0,
-            speed01,
-            braking: false,
-            inCombat: this.state === 'combat',
-            detail: true,
-            sunLocalAngle: Math.atan2(-this.position.y, -this.position.x) - (this.rotation + Math.PI / 2),
-            nucleusLocal: { x: 0, y: 1.2 }
-        });
-    }
 }
