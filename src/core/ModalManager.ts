@@ -2,7 +2,7 @@ import { formatNumber } from '../utils/NumberFormatter';
 import { SaveSystem } from './SaveSystem';
 import type { FleetSkillId } from '../entities/Fleet';
 import { FLEET_SKILLS } from '../entities/Fleet';
-import { getShopShipStats, getShopSizeMultiplier, getShopTechMultiplier, getShopMultiplier, getShopRequirements, SHOP_SHIPS } from '../tactical/FleetGenerator';
+import { getShopCommandCost, getShopShipStats, getShopSizeMultiplier, getShopTechMultiplier, getShopMultiplier, getShopRequirements, SHOP_SHIPS } from '../tactical/FleetGenerator';
 import { ABILITY_EQUIPMENT_MARKET, type FleetAbilityId } from '../tactical/AbilityService';
 import type { StationServiceMode } from '../tactical/RepairService';
 import { TACTICAL_BALANCE } from '../tactical/ShipDefinitions';
@@ -951,7 +951,7 @@ export class ModalManager {
             ['Что делать на Terra?', 'SHIPYARD меняет состав флота, а EQUIPMENT MARKET позволяет покупать и продавать charges всех расходников. REFUEL, REPAIR и SERVICE ALL работают частично и тратят доступный бюджет, если денег не хватает на полный объём; shield и Energy на станции заряжаются бесплатно.'],
             ['Что делает cloak?', 'Cloak снижает Signature и сбрасывает входящие захваты цели. После активации преследователи теряют право на атаку и должны заново обнаружить флот; cloak нельзя включить во время собственной атаки.'],
             ['Что защищает Terra?', 'У Terra нет постоянных станций или неподвижных флотов. Военные NPC появляются в системе по обычным правилам.'],
-            ['Как понять Threat и увеличить флот?', 'Threat — оценка оружия, корпуса и поддержки, а не здоровье. Каждый корабль занимает 1 command point; Leadership даёт ещё 3. Size и Tech открывают более сильные корпуса и не расходуются при покупке.'],
+            ['Как понять Threat и увеличить флот?', 'Threat — оценка оружия, корпуса и поддержки, а не здоровье. Корабль занимает столько command points, каков его Size; Leadership даёт +10 за уровень. Size и Tech открывают более сильные корпуса и не расходуются при покупке.'],
             ['Зачем нужны роли?', 'Defender перехватывает часть атак, striker наносит урон, artillery стреляет издалека, scout разведывает, support ремонтирует и стабилизирует disabled, flagship обеспечивает командование.']
         ];
         for (const [title, body] of sections) {
@@ -967,7 +967,7 @@ export class ModalManager {
     }
 
     showFleetManagementDialog(
-        getState: () => { money: number; commandUsed: number; commandCapacity: number; level: number; skillPoints: number; skills: Record<FleetSkillId, number>; ships: { id: string; name: string; role: string; state: string; commandCost: number; refund: number; threat: number; hull: number; armor: number; shield: number; dps: number }[] },
+        getState: () => { money: number; commandUsed: number; commandCapacity: number; level: number; skillPoints: number; skills: Record<FleetSkillId, number>; ships: { id: string; name: string; role: string; state: string; commandCost: number; sizeLevel: number; techLevel: number; refund: number; threat: number; hull: number; armor: number; shield: number; dps: number }[] },
         onBuy: (id: string) => boolean,
         onSkill: (skill: FleetSkillId) => boolean,
         onDismiss: (id: string) => boolean,
@@ -1033,7 +1033,7 @@ export class ModalManager {
             for (const ship of [...SHOP_SHIPS].sort((a, b) => a.rank - b.rank)) {
                 const card = document.createElement('div');
                 card.style.cssText = 'background:linear-gradient(145deg,rgba(30,64,92,.9),rgba(15,23,42,.96));border:1px solid rgba(98,216,255,.28);border-radius:9px;padding:10px;box-shadow:0 5px 14px rgba(0,0,0,.2)';
-                const commandCost = 1;
+                const commandCost = getShopCommandCost(ship);
                 const preview = getShopShipStats(ship);
                 const requirements = getShopRequirements(ship);
                 const missingSkills = Object.entries(requirements)
@@ -1044,8 +1044,13 @@ export class ModalManager {
                     return `<span style="display:inline-block;padding:2px 5px;margin:2px;border-radius:4px;background:${ready ? '#176b4d' : '#8b3030'};color:#fff">${skill} ${level}</span>`;
                 }).join('');
                 const can = missingSkills.length === 0 && state.money >= ship.price && state.commandUsed + commandCost <= state.commandCapacity;
+                card.title = `Size ${commandCost} · Tech ${getShopTechMultiplier(ship.techRequired)} · Command ${commandCost}`;
                 const reason = missingSkills.length > 0 ? `Нужны навыки: ${missingSkills.join(', ')}` : state.commandUsed + commandCost > state.commandCapacity ? 'Не хватает command' : state.money < ship.price ? 'Не хватает кредитов' : 'Недоступно';
                 card.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><b style="color:#f8fafc">${ship.name}</b><span style="color:#62d8ff">R${ship.rank}</span></div><small style="display:block;color:#a8dadc;margin-top:3px">${ship.role} · ${ship.size}</small><div style="display:flex;justify-content:space-between;align-items:baseline;margin:7px 0"><b style="font-size:18px;color:#ffd166">$${formatNumber(ship.price)}</b><b style="font-size:16px;color:#f8fafc">Threat ${Math.round(preview.threat)}</b></div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;color:#c8d5e2;font-size:10px;text-align:center"><span>DPS<br/><b>${Math.round(preview.dps)}</b></span><span>Shield<br/><b>${Math.round(preview.shield)}</b></span><span>Armor<br/><b>${Math.round(preview.armor)}</b></span><span>Hull<br/><b>${Math.round(preview.hull)}</b></span></div><div style="margin-top:7px;font-size:10px">${requirementChips || '<span style="color:#74c69d">Без требований навыков</span>'}</div><small style="display:block;color:#94a3b8;margin-top:4px">Size×${getShopSizeMultiplier(ship.sizeRequired)} · Tech×${getShopTechMultiplier(ship.techRequired)} = ×${getShopMultiplier(ship)}</small>`;
+                const progression = document.createElement('small');
+                progression.textContent = `Size ${commandCost} · Tech ${getShopTechMultiplier(ship.techRequired)} · Command ${commandCost} · Stats ×${getShopMultiplier(ship)}`;
+                progression.style.cssText = 'display:block;color:#9edfff;margin-top:5px;font-size:10px';
+                card.appendChild(progression);
                 const buy = this.makeButton(can ? 'Купить' : reason, can ? '#167c80' : '#334155', () => { if (onBuy(ship.id)) update(); });
                 buy.disabled = !can; buy.style.opacity = can ? '1' : '0.55'; buy.style.width = '100%'; card.appendChild(buy); grid.appendChild(card);
             }

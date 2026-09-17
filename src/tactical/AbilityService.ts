@@ -119,6 +119,7 @@ export class AbilityService {
             TACTICAL_BALANCE.scanPulseDuration,
             TACTICAL_BALANCE.scanPulseSignatureDuration
         );
+        fleet.startScanPulse(TACTICAL_BALANCE.scanPulseDuration);
         return { ok: true, chargeConsumed: false };
     }
 }

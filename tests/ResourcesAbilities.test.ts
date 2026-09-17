@@ -35,6 +35,50 @@ function createGameStub(player: Fleet) {
     } as unknown as Game;
 }
 
+describe('ship progression and fleet stances', () => {
+    it('scales ship output by Size x Tech while command cost follows Size', () => {
+        const ship = new Ship({ hullId: 'lance', weaponIds: ['pulse'], moduleIds: [] });
+        const baseHull = ship.maxHull;
+        const baseDps = ship.weaponDps;
+
+        ship.setProgression(3, 2);
+        ship.setStatScale(ship.progressionMultiplier);
+
+        expect(ship.commandCost).toBe(3);
+        expect(ship.maxHull).toBeCloseTo(baseHull * 6, 10);
+        expect(ship.weaponDps).toBeCloseTo(baseDps * 6, 10);
+
+        const restored = Ship.fromSnapshot(ship.snapshot());
+        expect(restored.sizeLevel).toBe(3);
+        expect(restored.techLevel).toBe(2);
+        expect(restored.commandCost).toBe(3);
+    });
+
+    it('gives Leadership ten command points per level', () => {
+        const fleet = new Fleet(0, 0, '#fff', true);
+        const before = fleet.commandCapacity;
+        expect(fleet.learnSkill('leadership')).toBe(true);
+        expect(fleet.commandCapacity).toBe(before + 10);
+    });
+
+    it('makes scan pulse consume additional Energy and slow the fleet while active', () => {
+        const fleet = createFleet();
+        const sensors = new SensorService();
+        fleet.setTarget(new Vector2(10_000, 0));
+        const result = AbilityService.activateScanPulse(fleet, sensors, 0);
+        expect(result.ok).toBe(true);
+
+        const baseline = createFleet();
+        baseline.setTarget(new Vector2(10_000, 0));
+        baseline.update(1);
+        fleet.update(1);
+
+        expect(fleet.totalEnergy).toBeLessThan(baseline.totalEnergy);
+        expect(fleet.scanPulseActive).toBe(true);
+        expect(sensors.getFleetProfile(fleet, 1).scanPulseActive).toBe(true);
+    });
+});
+
 describe('fleet fuel and readiness', () => {
     it('rolls independent fuel and supply drops that scale with wreck size', () => {
         const small = {

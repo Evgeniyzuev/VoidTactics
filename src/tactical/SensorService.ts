@@ -242,6 +242,7 @@ export class SensorService {
         if (fleet.isCloaked) signatureMultiplier *= this.config.cloakSignatureMultiplier;
         if (fleet.abilities.afterburner.active) signatureMultiplier *= this.config.afterburnerSignatureMultiplier;
         if (scanPulseSignatureActive) signatureMultiplier *= this.config.scanPulseSignatureMultiplier;
+        if (fleet.assaultMode) signatureMultiplier *= TACTICAL_BALANCE.assaultSignatureMultiplier;
         if (activeShips.length > 0 && fleet.fuel <= 0) {
             signatureMultiplier *= this.config.emptyFuelSignatureMultiplier;
         }
@@ -256,6 +257,7 @@ export class SensorService {
 
         return {
             sensorRange: sensorRange * this.config.baseSensorRangeMultiplier * skillRangeMultiplier * rangeMultiplier
+                * (fleet.assaultMode ? TACTICAL_BALANCE.assaultSensorRangeMultiplier : 1)
                 * (fleet.inAsteroidBelt ? 0.2 : 1),
             scanResolution: Math.max(this.config.minimumScanResolution, scanResolution),
             signature: Math.max(0.01, signature),

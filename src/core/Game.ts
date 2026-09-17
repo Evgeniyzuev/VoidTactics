@@ -22,7 +22,7 @@ import { MilitaryStation } from '../entities/MilitaryStation';
 import { Ship } from '../tactical/Ship';
 import { RepairService, type StationServiceMode } from '../tactical/RepairService';
 import { WorldEvent } from '../entities/WorldEvent';
-import { FleetGenerator, getShopMultiplier, getShopRequirements, SHOP_SHIPS } from '../tactical/FleetGenerator';
+import { FleetGenerator, getShopMultiplier, getShopRequirements, getShopSizeLevel, getShopTechLevel, SHOP_SHIPS } from '../tactical/FleetGenerator';
 import { CombatEffects } from '../renderer/CombatEffects';
 import { COMBAT_BALANCE, TACTICAL_BALANCE, type DamageType } from '../tactical/ShipDefinitions';
 import { bindButtonAction } from '../utils/TouchButton';
@@ -761,7 +761,7 @@ export class Game {
 
     private applyExpeditionEffects() {
         if (!this.playerFleet || !this.expedition) return;
-        const baselineCapacity = 4 + this.playerFleet.skills.leadership * 3;
+        const baselineCapacity = 4 + this.playerFleet.skills.leadership * 10;
         const artifactCapacity = this.expedition.hasArtifact('artifact-command-relay') ? 3 : 0;
         this.playerFleet.commandCapacity = Math.max(this.playerFleet.commandCapacity, baselineCapacity + artifactCapacity);
     }
@@ -2360,7 +2360,7 @@ export class Game {
                 }), { shield: 0, maxShield: 0, armor: 0, maxArmor: 0, hull: 0, maxHull: 0 });
                 const damage = fleet.ships
                     .filter(ship => ship.alive && ship.order.type !== 'repair')
-                    .reduce((sum, ship) => sum + ship.weaponDps * (ship.overchargeTimer > 0 ? TACTICAL_BALANCE.overchargeDamageMultiplier : 1), 0) * fleet.readinessEfficiency * fleet.energyEfficiency * COMBAT_BALANCE.damageScale;
+                    .reduce((sum, ship) => sum + ship.weaponDps * (ship.overchargeTimer > 0 ? TACTICAL_BALANCE.overchargeDamageMultiplier : 1), 0) * fleet.readinessEfficiency * fleet.energyEfficiency * (fleet.assaultMode ? TACTICAL_BALANCE.assaultDamageMultiplier : 1) * COMBAT_BALANCE.damageScale;
                 info += `<span style="color:#ffb86b">Damage: ${formatNumber(Math.round(damage))} DPS</span><br/>`;
                 info += `<span style="color:#66ccff">Shield: ${formatNumber(Math.ceil(defenses.shield))} / ${formatNumber(Math.ceil(defenses.maxShield))}</span><br/>`;
                 info += `<span style="color:#d6b26e">Armor: ${formatNumber(Math.ceil(defenses.armor))} / ${formatNumber(Math.ceil(defenses.maxArmor))}</span><br/>`;
@@ -2626,6 +2626,8 @@ export class Game {
                     role: ship.role,
                     state: ship.state,
                     commandCost: ship.commandCost,
+                    sizeLevel: ship.sizeLevel,
+                    techLevel: ship.techLevel,
                     refund: Math.floor(ship.purchasePrice * 0.5),
                     threat: ship.combatRating,
                     dps: ship.weaponDps,
@@ -2640,6 +2642,7 @@ export class Game {
                 const requirements = getShopRequirements(offer);
                 if (Object.entries(requirements).some(([skill, level]) => this.playerFleet.getSkillLevel(skill as FleetSkillId) < (level || 0))) return false;
                 const ship = new Ship({ ...offer.loadout, weaponIds: [...offer.loadout.weaponIds], moduleIds: [...offer.loadout.moduleIds] });
+                ship.setProgression(getShopSizeLevel(offer), getShopTechLevel(offer));
                 ship.setStatScale(getShopMultiplier(offer));
                 ship.variantName = offer.name;
                 ship.purchasePrice = offer.price;
@@ -3427,6 +3430,14 @@ export class Game {
     }
 
     private activateAbility(id: string) {
+        if (id === 'assault') {
+            const active = this.playerFleet.setAssaultMode(!this.playerFleet.assaultMode);
+            this.ui.addEvent(active
+                ? `Assault stance: +${Math.round((TACTICAL_BALANCE.assaultDamageMultiplier - 1) * 100)}% damage, lower speed and Energy recovery.`
+                : 'Assault stance disengaged.');
+            this.ui.updateAbilities(this.playerFleet);
+            return;
+        }
         if (id === 'scan') {
             const result = AbilityService.activateScanPulse(this.playerFleet, this.sensors, this.gameClock);
             this.ui.addEvent(result.ok ? 'Active scan pulse: radar range doubled; our signature is exposed.' : result.reason || 'Scan failed.');

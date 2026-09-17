@@ -381,7 +381,12 @@ export class UIManager {
             const effect = ship.overchargeTimer > 0 ? ` · OVR +${Math.round((TACTICAL_BALANCE.overchargeDamageMultiplier - 1) * 100)}% ${ship.overchargeTimer.toFixed(1)}s`
                 : ship.emergencyRepairTimer > 0 ? ` · REPAIR ${ship.emergencyRepairTimer.toFixed(1)}s` : '';
             row.innerHTML = `<i></i><span><b>${ship.displayName}</b><small>${ship.role} · ${ship.state} · ${ship.order.type}${effect}</small><small class="defense-stats">S ${shield}/${Math.ceil(ship.maxShield)} · A ${armor}/${Math.ceil(ship.maxArmor)} · H ${hull}/${Math.ceil(ship.maxHull)} · E ${Math.round(ship.energy)}/${Math.round(ship.maxEnergy)} · AM ${Math.floor(ship.ammunition)}</small></span><em>${hp}%</em>`;
+            const progression = document.createElement('small');
+            progression.textContent = `Size ${ship.sizeLevel} · Tech ${ship.techLevel} · Command ${ship.commandCost}`;
+            progression.style.color = '#9edfff';
+            row.querySelector('span')?.appendChild(progression);
             roster.appendChild(row);
+            row.title = `Size ${ship.sizeLevel} · Tech ${ship.techLevel} · Command ${ship.commandCost}`;
             existingRows.delete(ship.id);
         }
         existingRows.forEach(row => row.remove());
@@ -390,7 +395,7 @@ export class UIManager {
     private updateFleetSummary(fleet: Fleet, active = fleet.ships.filter(ship => ship.state === 'active').length, disabled = fleet.ships.filter(ship => ship.state === 'disabled').length) {
         const summary = this.fleetPanel.querySelector('.fleet-summary');
         if (!summary) return;
-        const dps = fleet.ships.filter(ship => ship.alive && ship.order.type !== 'repair').reduce((sum, ship) => sum + ship.weaponDps * fleet.readinessEfficiency * fleet.energyEfficiency * COMBAT_BALANCE.damageScale * (ship.overchargeTimer > 0 ? TACTICAL_BALANCE.overchargeDamageMultiplier : 1), 0);
+        const dps = fleet.ships.filter(ship => ship.alive && ship.order.type !== 'repair').reduce((sum, ship) => sum + ship.weaponDps * fleet.readinessEfficiency * fleet.energyEfficiency * COMBAT_BALANCE.damageScale * (fleet.assaultMode ? TACTICAL_BALANCE.assaultDamageMultiplier : 1) * (ship.overchargeTimer > 0 ? TACTICAL_BALANCE.overchargeDamageMultiplier : 1), 0);
         const energy = Math.ceil(fleet.totalEnergy);
         const maxEnergy = Math.ceil(fleet.maxEnergy);
         const selected = fleet.ships.find(ship => ship.id === fleet.selectedShipId);
@@ -506,6 +511,20 @@ export class UIManager {
             color: '#D58CFF',
             title: 'Stasis Net (halve target speed for ' + TACTICAL_BALANCE.netDuration + 's)'
         });
+        abilities.push({
+            id: 'assault',
+            icon: '⚔',
+            color: '#FF6B6B',
+            title: `Assault stance (+${Math.round((TACTICAL_BALANCE.assaultDamageMultiplier - 1) * 100)}% damage, lower speed, sensor range and Energy recovery)`
+        });
+        const scanAbility = abilities.find(ability => ability.id === 'scan');
+        if (scanAbility) {
+            scanAbility.title = `Active Scan Pulse (2x radar, -${Math.round((1 - TACTICAL_BALANCE.scanPulseSpeedMultiplier) * 100)}% speed, Energy drain, visible signature)`;
+        }
+        const afterburnerAbility = abilities.find(ability => ability.id === 'afterburner');
+        if (afterburnerAbility) {
+            afterburnerAbility.title = `Afterburner (+${Math.round((TACTICAL_BALANCE.afterburnerSpeedMultiplier - 1) * 100)}% speed, fuel x${TACTICAL_BALANCE.afterburnerFuelMultiplier}, readiness drain)`;
+        }
         const shieldAbility = abilities.find(ability => ability.id === 'shield');
         if (shieldAbility) {
             shieldAbility.title = 'Shield Cell (restore ' +
@@ -640,6 +659,15 @@ export class UIManager {
                     btn.style.boxShadow = 'none';
                 }
             }
+        }
+
+        const assaultBtn = this.abilityButtons.assault;
+        if (assaultBtn) {
+            const active = Boolean(fleet.assaultMode);
+            assaultBtn.style.opacity = '1';
+            assaultBtn.style.cursor = 'pointer';
+            assaultBtn.style.border = active ? '2px solid #FF6B6B' : '2px solid rgba(255, 255, 255, 0.1)';
+            assaultBtn.style.boxShadow = active ? '0 0 18px rgba(255,107,107,.85)' : 'none';
         }
 
     }

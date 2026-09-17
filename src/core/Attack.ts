@@ -117,10 +117,13 @@ export class Attack {
                 const usesAmmo = weapon.damageType !== 'energy';
                 if (usesAmmo && ship.ammunition <= 0) continue;
                 const overcharged = ship.overchargeTimer > 0;
-                const energyPerSecond = weapon.energyCost / Math.max(0.1, weapon.cooldown) * (overcharged ? TACTICAL_BALANCE.overchargeEnergyMultiplier : 1);
+                const energyPerSecond = weapon.energyCost / Math.max(0.1, weapon.cooldown)
+                    * (overcharged ? TACTICAL_BALANCE.overchargeEnergyMultiplier : 1)
+                    * (this.attacker.assaultMode ? TACTICAL_BALANCE.assaultEnergyCostMultiplier : 1);
                 if (!ship.spendEnergy(energyPerSecond * dt)) continue;
                 let damage = weapon.damage * ship.statScale / Math.max(0.1, weapon.cooldown) * COMBAT_BALANCE.damageScale * dt * weaponsPenalty * this.attacker.readinessEfficiency * volleyEnergyEfficiency;
                 if (overcharged) damage *= TACTICAL_BALANCE.overchargeDamageMultiplier;
+                if (this.attacker.assaultMode) damage *= TACTICAL_BALANCE.assaultDamageMultiplier;
                 if (usesAmmo) ship.ammunition = Math.max(0, ship.ammunition - dt / Math.max(0.1, weapon.cooldown) * 0.05);
                 totalDamage += damage;
                 const hullDamage = this.target.receiveTacticalDamage(damage, weapon.damageType, targetShip.id);

@@ -29,8 +29,20 @@ export function getShopSizeMultiplier(sizeRequired: number): number {
     return sizeRequired + 1;
 }
 
+export function getShopSizeLevel(offer: Pick<ShopShipDefinition, 'sizeRequired'>): number {
+    return getShopSizeMultiplier(offer.sizeRequired);
+}
+
 export function getShopTechMultiplier(techRequired: number): number {
     return techRequired + 1;
+}
+
+export function getShopTechLevel(offer: Pick<ShopShipDefinition, 'techRequired'>): number {
+    return getShopTechMultiplier(offer.techRequired);
+}
+
+export function getShopCommandCost(offer: Pick<ShopShipDefinition, 'sizeRequired'>): number {
+    return getShopSizeLevel(offer);
 }
 
 export function getShopMultiplier(offer: Pick<ShopShipDefinition, 'sizeRequired' | 'techRequired'>): number {

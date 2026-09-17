@@ -9,6 +9,9 @@ export interface ShipSnapshot {
     energy: number;
     order: FleetOrder;
     statScale?: number;
+    /** Progression levels. Old saves default to the starter 1/1 hull. */
+    sizeLevel?: number;
+    techLevel?: number;
     state?: ShipState;
     /** Legacy v3 field, used only by save migration. */
     flux?: number;
@@ -39,6 +42,10 @@ export class Ship {
     public hitFlash = 0;
     public shieldRechargeDelay = 0;
     public statScale = 1;
+    /** Hull scale in command points. Size 1 is a light hull. */
+    public sizeLevel = 1;
+    /** Technology generation. Tech 1 is the baseline shipyard tier. */
+    public techLevel = 1;
     public state: ShipState = 'active';
     public targetShipId: string | null = null;
     public variantName: string | null = null;
@@ -81,8 +88,10 @@ export class Ship {
     get effectiveHealth() { return Math.max(0, this.hull) + Math.max(0, this.armor) + Math.max(0, this.shield); }
     get maxEffectiveHealth() { return this.maxHull + this.maxArmor + this.maxShield; }
     get weaponDps() { return this.weapons.reduce((sum, weapon) => sum + weapon.damage / Math.max(0.1, weapon.cooldown), 0) * this.statScale; }
-    /** Every concrete ship occupies one command point; hull size is a skill gate. */
-    get commandCost() { return 1; }
+    /** Most ship output scales from the Size x Tech progression product. */
+    get progressionMultiplier() { return this.sizeLevel * this.techLevel; }
+    /** Each size unit consumes one point of fleet command capacity. */
+    get commandCost() { return this.sizeLevel; }
     get utilityRating() { return (this.role === 'support' || this.role === 'scout' ? 6 : this.role === 'defender' || this.role === 'flagship' ? 5 : 2) * this.statScale; }
     get maxCombatRating() {
         return this.maxHull * COMBAT_BALANCE.hullThreatWeight + this.weaponDps * COMBAT_BALANCE.offenseThreatWeight + this.utilityRating;
@@ -92,7 +101,7 @@ export class Ship {
         return Math.max(0, this.hull) * COMBAT_BALANCE.hullThreatWeight + this.weaponDps * COMBAT_BALANCE.offenseThreatWeight + this.utilityRating;
     }
 
-    update(dt: number, readinessEfficiency = 1, energyRechargeMultiplier = 1) {
+    update(dt: number, readinessEfficiency = 1, energyRechargeMultiplier = 1, shieldRechargeMultiplier = 1) {
         this.targetLockTimer = Math.max(0, this.targetLockTimer - dt);
         this.shieldRechargeDelay = Math.max(0, this.shieldRechargeDelay - dt);
         this.shieldFlash = Math.max(0, this.shieldFlash - dt * 3);
@@ -114,7 +123,7 @@ export class Ship {
             this.emergencyRepairTimer = Math.max(0, this.emergencyRepairTimer - dt);
         }
         if (this.shieldRechargeDelay <= 0 && this.shield < this.maxShield && this.energy > 0) {
-            const wanted = Math.min(this.maxShield - this.shield, this.maxShield * TACTICAL_BALANCE.shieldRechargeFraction * dt);
+            const wanted = Math.min(this.maxShield - this.shield, this.maxShield * TACTICAL_BALANCE.shieldRechargeFraction * Math.max(0, shieldRechargeMultiplier) * dt);
             const affordable = this.energy / TACTICAL_BALANCE.shieldEnergyPerPoint;
             const restored = Math.min(wanted, affordable);
             this.shield += restored;
@@ -171,6 +180,11 @@ export class Ship {
         this.ammunition *= ratio; this.crew *= ratio;
     }
 
+    setProgression(sizeLevel: number, techLevel: number) {
+        this.sizeLevel = Math.max(1, Math.min(4, Math.floor(sizeLevel)));
+        this.techLevel = Math.max(1, Math.min(6, Math.floor(techLevel)));
+    }
+
     restore(amount: number) { this.hull = Math.min(this.maxHull, this.hull + amount); }
 
     restoreShield(amount: number) {
@@ -201,12 +215,13 @@ export class Ship {
     }
 
     snapshot(): ShipSnapshot {
-        return { id: this.id, loadout: this.loadout, hull: this.hull, armor: this.armor, shield: this.shield, energy: this.energy, order: this.order, statScale: this.statScale, state: this.state, targetShipId: this.targetShipId, variantName: this.variantName || undefined, purchasePrice: this.purchasePrice || undefined, ammunition: this.ammunition, crew: this.crew, damagedSystems: [...this.damagedSystems], disabledDamage: this.disabledDamage, shieldRechargeDelay: this.shieldRechargeDelay };
+        return { id: this.id, loadout: this.loadout, hull: this.hull, armor: this.armor, shield: this.shield, energy: this.energy, order: this.order, statScale: this.statScale, sizeLevel: this.sizeLevel, techLevel: this.techLevel, state: this.state, targetShipId: this.targetShipId, variantName: this.variantName || undefined, purchasePrice: this.purchasePrice || undefined, ammunition: this.ammunition, crew: this.crew, damagedSystems: [...this.damagedSystems], disabledDamage: this.disabledDamage, shieldRechargeDelay: this.shieldRechargeDelay };
     }
 
     static fromSnapshot(data: ShipSnapshot) {
         const ship = new Ship(data.loadout, data.id);
         ship.statScale = data.statScale || 1;
+        ship.setProgression(data.sizeLevel ?? 1, data.techLevel ?? 1);
         ship.hull = data.hull;
         ship.armor = data.armor;
         ship.shield = data.shield;
@@ -235,6 +250,7 @@ export class Ship {
 
 export function createStarterShips(): Ship[] {
     const ship = new Ship({ hullId: 'lance', weaponIds: ['pulse', 'missile'], moduleIds: [] });
+    ship.setProgression(1, 1);
     ship.variantName = 'Skiff';
     ship.setStatScale(10 / ship.maxCombatRating);
     return [ship];

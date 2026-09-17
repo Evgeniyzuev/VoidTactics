@@ -11,14 +11,14 @@ export type Faction = 'civilian' | 'pirate' | 'orc' | 'military' | 'player' | 'r
 export interface FleetResources { fuel: number; maxFuel: number; supplies: number; maxSupplies: number; readiness: number }
 export type FleetSkillId = 'leadership' | 'logistics' | 'engineering' | 'sensors' | 'navigation' | 'tactics' | 'size' | 'tech';
 export const FLEET_SKILLS: Record<FleetSkillId, { name: string; description: string }> = {
-    leadership: { name: 'Leadership', description: '+3 command capacity per level' },
+    leadership: { name: 'Leadership', description: '+10 command capacity per level' },
     logistics: { name: 'Logistics', description: '+10 supply capacity and better readiness' },
     engineering: { name: 'Engineering', description: 'Faster field repairs' },
     sensors: { name: 'Sensors', description: 'Longer sensor range and lower fleet signature' },
     navigation: { name: 'Navigation', description: 'Higher strategic speed' },
     tactics: { name: 'Tactics', description: 'More defender intercept charges' },
-    size: { name: 'Size', description: 'Unlocks medium and large hulls' },
-    tech: { name: 'Tech', description: 'Unlocks higher ship tiers' }
+    size: { name: 'Size', description: 'Unlocks ships one size class larger per level' },
+    tech: { name: 'Tech', description: 'Unlocks the next technology tier per level' }
 };
 
 /**
@@ -118,6 +118,21 @@ export class Fleet extends Entity {
     public shieldCellRate = 0;
     public stunTimer: number = 0;
     public money: number = 0; // Only for player
+    /** Active scan has an upfront cost and continues draining Energy. */
+    private scanPulseTimer = 0;
+    /** Assault is a free stance, balanced by speed, Energy and readiness loss. */
+    public assaultMode = false;
+
+    public get scanPulseActive() { return this.scanPulseTimer > 0; }
+
+    public startScanPulse(duration = TACTICAL_BALANCE.scanPulseDuration) {
+        this.scanPulseTimer = Math.max(this.scanPulseTimer, duration);
+    }
+
+    public setAssaultMode(active: boolean) {
+        this.assaultMode = Boolean(active);
+        return this.assaultMode;
+    }
 
     // Mining properties
     public isMining: boolean = false;
@@ -233,6 +248,8 @@ export class Fleet extends Entity {
         signature *= Math.max(0.6, 1 - this.skills.sensors * 0.08);
         if (this.isCloaked) signature *= 0.25;
         if (this.abilities.afterburner.active) signature *= TACTICAL_BALANCE.afterburnerSignatureMultiplier;
+        if (this.scanPulseActive) signature *= TACTICAL_BALANCE.scanPulseSignatureMultiplier;
+        if (this.assaultMode) signature *= TACTICAL_BALANCE.assaultSignatureMultiplier;
         if (this.fuel <= 0) signature *= TACTICAL_BALANCE.emptyFuelSignatureMultiplier;
         return Math.max(0.01, signature);
     }
@@ -242,7 +259,7 @@ export class Fleet extends Entity {
         if (!this.canLearnSkill(skill)) return false;
         this.skillPoints--;
         this.skills[skill]++;
-        if (skill === 'leadership') this.commandCapacity += 3;
+        if (skill === 'leadership') this.commandCapacity += 10;
         if (skill === 'logistics') { this.supplies += 10; }
         return true;
     }
@@ -402,18 +419,24 @@ export class Fleet extends Entity {
         this.clampSuppliesToCapacity();
         this.clampFuelToCapacity();
         this.netSlowTimer = Math.max(0, this.netSlowTimer - Math.max(0, dt));
+        this.scanPulseTimer = Math.max(0, this.scanPulseTimer - Math.max(0, dt));
         const activeShips = this.ships.filter(ship => ship.alive);
+        const stanceRechargeMultiplier = this.assaultMode ? TACTICAL_BALANCE.assaultEnergyRechargeMultiplier : 1;
         const potentialEnergy = activeShips.reduce((sum, ship) => sum + Math.min(
             Math.max(0, ship.maxEnergy - ship.energy),
             ship.energyRecharge * this.readinessEfficiency * Math.max(0, dt)
-        ), 0);
+        ), 0) * stanceRechargeMultiplier;
         const energyFuel = potentialEnergy * TACTICAL_BALANCE.energyFuelPerPoint;
         const energyRechargeMultiplier = energyFuel > 0 ? Math.min(1, this.fuel / energyFuel) : 0;
         let energyRestored = 0;
         for (const ship of this.ships) {
-            energyRestored += ship.update(dt, this.readinessEfficiency, energyRechargeMultiplier);
+            energyRestored += ship.update(dt, this.readinessEfficiency, energyRechargeMultiplier * stanceRechargeMultiplier, stanceRechargeMultiplier);
         }
         this.fuel = Math.max(0, this.fuel - energyRestored * TACTICAL_BALANCE.energyFuelPerPoint);
+        if (this.scanPulseActive) {
+            const scanDrain = this.maxEnergy * TACTICAL_BALANCE.scanPulseEnergyPerSecond * Math.max(0, dt);
+            if (this.consumePooledEnergy(scanDrain) + 1e-6 < scanDrain) this.scanPulseTimer = 0;
+        }
         this.updateShieldCell(dt);
         if (this.velocity.mag() > 5) {
             const afterburnerMultiplier = this.abilities.afterburner.active ? TACTICAL_BALANCE.afterburnerFuelMultiplier : 1;
@@ -424,7 +447,11 @@ export class Fleet extends Entity {
         if (inCombat) this.setReadiness(this.operationalReadiness - TACTICAL_BALANCE.combatReadinessPerSecond * dt);
         if (this.abilities.afterburner.active) {
             this.setReadiness(this.operationalReadiness - TACTICAL_BALANCE.afterburnerReadinessPerSecond * dt);
-        } else if (!inCombat && this.operationalReadiness < 100 && this.supplies > 0) {
+        }
+        if (this.assaultMode) {
+            this.setReadiness(this.operationalReadiness - TACTICAL_BALANCE.assaultReadinessPerSecond * dt);
+        }
+        if (!this.assaultMode && !this.abilities.afterburner.active && !inCombat && this.operationalReadiness < 100 && this.supplies > 0) {
             const recovery = Math.min(TACTICAL_BALANCE.readinessRecoveryPerSecond * dt, 100 - this.operationalReadiness, this.supplies * TACTICAL_BALANCE.readinessPerSupply);
             this.setReadiness(this.operationalReadiness + recovery);
             this.supplies = Math.max(0, this.supplies - recovery / TACTICAL_BALANCE.readinessPerSupply);
@@ -497,6 +524,8 @@ export class Fleet extends Entity {
         if (this.abilities.afterburner.active) {
             currentMaxSpeed *= TACTICAL_BALANCE.afterburnerSpeedMultiplier;
         }
+        if (this.scanPulseActive) currentMaxSpeed *= TACTICAL_BALANCE.scanPulseSpeedMultiplier;
+        if (this.assaultMode) currentMaxSpeed *= TACTICAL_BALANCE.assaultSpeedMultiplier;
         if (this.fuel <= 0) currentMaxSpeed *= TACTICAL_BALANCE.emergencySpeedMultiplier;
         currentMaxSpeed *= this.readinessEfficiency;
         currentMaxSpeed *= this.energyEfficiency;
