@@ -278,41 +278,131 @@ export class Game {
         const ctx = this.backgroundCanvas.getContext('2d');
         if (!ctx) return;
 
-        // 1. Deep Space Base
-        const gradient = ctx.createLinearGradient(0, 0, 0, height);
-        gradient.addColorStop(0, '#020205'); // Deepest black-blue
-        gradient.addColorStop(1, '#050510'); // Slightly lighter
-        ctx.fillStyle = gradient;
+        // Keep the atmosphere deterministic for a system, so a resize does not
+        // make the nebula jump. The game still gets a distinct visual identity
+        // per sector without loading a large bitmap texture.
+        const palette = this.getSectorVisualPalette();
+        let state = (0x9e3779b9 ^ Math.imul(this.currentSystemId, 0x45d9f3b)) >>> 0;
+        const random = () => {
+            state = (Math.imul(state ^ (state >>> 15), 1 | state) + 0x6D2B79F5) >>> 0;
+            return state / 0x100000000;
+        };
+        const rgba = (rgb: readonly [number, number, number], alpha: number) =>
+            `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha})`;
+
+        const base = ctx.createLinearGradient(0, 0, width, height);
+        base.addColorStop(0, palette.baseTop);
+        base.addColorStop(0.52, palette.baseMid);
+        base.addColorStop(1, palette.baseBottom);
+        ctx.fillStyle = base;
         ctx.fillRect(0, 0, width, height);
 
-        // 2. Stars
-        const starCount = Math.floor((width * height) / 2000);
-        for (let i = 0; i < starCount; i++) {
-            const x = Math.random() * width;
-            const y = Math.random() * height;
-            const size = Math.random() * 1.5;
-            const alpha = Math.random();
-            ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
-            ctx.fillRect(x, y, size, size);
-        }
-
-        // 3. Subtle Nebula / Dust (Noise-like clouds)
-        const cloudCount = 5;
-        for (let i = 0; i < cloudCount; i++) {
-            const x = Math.random() * width;
-            const y = Math.random() * height;
-            const radius = 200 + Math.random() * 400;
-
-            const cloudGrad = ctx.createRadialGradient(x, y, 0, x, y, radius);
-            const r = Math.floor(Math.random() * 50);
-            const g = Math.floor(Math.random() * 20);
-            const b = Math.floor(50 + Math.random() * 100); // Blue-ish
-            cloudGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.04)`);
-            cloudGrad.addColorStop(1, 'transparent');
-
-            ctx.fillStyle = cloudGrad;
+        // Broad nebulas establish depth. Screen-space rendering is intentional:
+        // the background should feel like a distant skybox while ships move.
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        for (let i = 0; i < 9; i++) {
+            const x = (0.04 + random() * 0.92) * width;
+            const y = (0.02 + random() * 0.96) * height;
+            const radius = Math.max(width, height) * (0.2 + random() * 0.34);
+            const color = i % 3 === 0 ? palette.nebulaWarm : i % 2 === 0 ? palette.nebulaSecondary : palette.nebulaPrimary;
+            const cloud = ctx.createRadialGradient(x, y, 0, x, y, radius);
+            cloud.addColorStop(0, rgba(color, 0.18 + random() * 0.1));
+            cloud.addColorStop(0.35, rgba(color, 0.08));
+            cloud.addColorStop(1, rgba(color, 0));
+            ctx.fillStyle = cloud;
             ctx.fillRect(0, 0, width, height);
         }
+
+        // Long blurred wisps give the background the photographed, cinematic
+        // quality of the reference without a particle simulation.
+        ctx.filter = 'blur(18px)';
+        ctx.lineCap = 'round';
+        for (let i = 0; i < 7; i++) {
+            const startX = -width * 0.15 + random() * width * 0.35;
+            const startY = random() * height;
+            const endX = width * (0.7 + random() * 0.45);
+            const endY = startY + (random() - 0.5) * height * 0.9;
+            const bendX = width * (0.25 + random() * 0.45);
+            const bendY = startY + (random() - 0.5) * height;
+            ctx.strokeStyle = rgba(i % 2 ? palette.nebulaPrimary : palette.nebulaSecondary, 0.12);
+            ctx.lineWidth = height * (0.035 + random() * 0.045);
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+            ctx.quadraticCurveTo(bendX, bendY, endX, endY);
+            ctx.stroke();
+        }
+        ctx.filter = 'none';
+        ctx.lineWidth = 1;
+        ctx.filter = 'blur(3px)';
+        for (let i = 0; i < 18; i++) {
+            const startX = -width * 0.1 + random() * width * 0.15;
+            const startY = random() * height;
+            const endX = width * (0.82 + random() * 0.3);
+            const endY = startY + (random() - 0.5) * height * 0.65;
+            const bendX = width * (0.2 + random() * 0.55);
+            const bendY = startY + (random() - 0.5) * height * 0.7;
+            ctx.strokeStyle = rgba(i % 3 === 0 ? palette.nebulaWarm : palette.nebulaPrimary, 0.055 + random() * 0.035);
+            ctx.lineWidth = 2 + random() * 7;
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+            ctx.quadraticCurveTo(bendX, bendY, endX, endY);
+            ctx.stroke();
+        }
+        ctx.filter = 'none';
+        ctx.restore();
+
+        // Dark dust lanes break up the smooth gradients and make bright ships
+        // read clearly, especially on mobile screens.
+        ctx.save();
+        for (let i = 0; i < 5; i++) {
+            const x = random() * width;
+            const y = random() * height;
+            const radius = Math.max(width, height) * (0.12 + random() * 0.18);
+            const dust = ctx.createRadialGradient(x, y, radius * 0.1, x, y, radius);
+            dust.addColorStop(0, 'rgba(0, 5, 12, 0.28)');
+            dust.addColorStop(0.7, 'rgba(0, 5, 12, 0.1)');
+            dust.addColorStop(1, 'rgba(0, 5, 12, 0)');
+            ctx.fillStyle = dust;
+            ctx.fillRect(0, 0, width, height);
+        }
+        ctx.restore();
+
+        // Two star fields: small quiet stars and a few soft, readable beacons.
+        const starCount = Math.min(320, Math.max(120, Math.floor((width * height) / 4800)));
+        for (let i = 0; i < starCount; i++) {
+            const x = random() * width;
+            const y = random() * height;
+            const size = 0.35 + random() * 1.35;
+            const alpha = 0.18 + random() * 0.62;
+            ctx.fillStyle = i % 9 === 0 ? rgba(palette.starTint, alpha) : `rgba(205, 232, 245, ${alpha})`;
+            ctx.fillRect(x, y, size, size);
+        }
+        for (let i = 0; i < 13; i++) {
+            const x = random() * width;
+            const y = random() * height;
+            const radius = 1.2 + random() * 2.4;
+            const glow = ctx.createRadialGradient(x, y, 0, x, y, radius * 8);
+            glow.addColorStop(0, 'rgba(255,255,255,.95)');
+            glow.addColorStop(0.15, rgba(palette.starTint, 0.65));
+            glow.addColorStop(1, rgba(palette.starTint, 0));
+            ctx.fillStyle = glow;
+            ctx.fillRect(x - radius * 8, y - radius * 8, radius * 16, radius * 16);
+        }
+    }
+
+    private getSectorVisualPalette() {
+        const palettes = {
+            1: { baseTop: '#06131d', baseMid: '#071b29', baseBottom: '#02080f', nebulaPrimary: [52, 151, 190] as [number, number, number], nebulaSecondary: [33, 92, 142] as [number, number, number], nebulaWarm: [46, 117, 130] as [number, number, number], starTint: [173, 229, 255] as [number, number, number] },
+            2: { baseTop: '#081620', baseMid: '#0a2630', baseBottom: '#030a11', nebulaPrimary: [42, 174, 193] as [number, number, number], nebulaSecondary: [34, 105, 158] as [number, number, number], nebulaWarm: [190, 136, 76] as [number, number, number], starTint: [196, 241, 255] as [number, number, number] },
+            3: { baseTop: '#07151b', baseMid: '#082934', baseBottom: '#02090f', nebulaPrimary: [30, 159, 170] as [number, number, number], nebulaSecondary: [28, 91, 126] as [number, number, number], nebulaWarm: [60, 139, 124] as [number, number, number], starTint: [157, 244, 239] as [number, number, number] },
+            4: { baseTop: '#071421', baseMid: '#102a43', baseBottom: '#030913', nebulaPrimary: [49, 121, 208] as [number, number, number], nebulaSecondary: [91, 103, 196] as [number, number, number], nebulaWarm: [75, 177, 205] as [number, number, number], starTint: [183, 222, 255] as [number, number, number] },
+            5: { baseTop: '#0c1024', baseMid: '#1c1640', baseBottom: '#050714', nebulaPrimary: [126, 83, 220] as [number, number, number], nebulaSecondary: [45, 123, 205] as [number, number, number], nebulaWarm: [194, 82, 183] as [number, number, number], starTint: [225, 201, 255] as [number, number, number] },
+            6: { baseTop: '#1a0d15', baseMid: '#32121c', baseBottom: '#08070c', nebulaPrimary: [170, 47, 75] as [number, number, number], nebulaSecondary: [78, 54, 145] as [number, number, number], nebulaWarm: [210, 108, 45] as [number, number, number], starTint: [255, 207, 180] as [number, number, number] },
+            7: { baseTop: '#091124', baseMid: '#111d4a', baseBottom: '#030711', nebulaPrimary: [72, 92, 210] as [number, number, number], nebulaSecondary: [53, 159, 208] as [number, number, number], nebulaWarm: [121, 73, 198] as [number, number, number], starTint: [196, 211, 255] as [number, number, number] },
+            8: { baseTop: '#090d17', baseMid: '#18223a', baseBottom: '#02050b', nebulaPrimary: [73, 103, 151] as [number, number, number], nebulaSecondary: [45, 65, 111] as [number, number, number], nebulaWarm: [137, 160, 183] as [number, number, number], starTint: [218, 236, 255] as [number, number, number] }
+        } as const;
+        return palettes[this.currentSystemId as keyof typeof palettes] || palettes[1];
     }
 
     private initWorld(
@@ -327,6 +417,8 @@ export class Game {
         this.currentSystemId = systemId || 1;
         this.expedition = new ExpeditionManager(expeditionSnapshot, expeditionSnapshot?.seed ?? ((Date.now() ^ this.currentSystemId ^ 0x564f4944) >>> 0));
         this.expedition.setCurrentBySystemId(this.currentSystemId);
+        const dimensions = this.renderer.getDimensions();
+        this.generateBackground(dimensions.width, dimensions.height);
 
         // Clear existing state
         this.entities = [];
@@ -2747,6 +2839,8 @@ export class Game {
             e.draw(ctx, this.camera);
         }
         this.combatEffects.draw(ctx, this.camera);
+        this.drawTacticalRadar(ctx);
+        this.drawPlayerReticle(ctx);
 
         // Threat rings are deliberately separate from the ship silhouette:
         // hull shape communicates role, ring color communicates danger.
@@ -3004,12 +3098,92 @@ export class Game {
         }
     }
 
+    /** Compact tactical scope inspired by cockpit HUDs; the simulation still
+     * uses the full sensor service and this is only a visual projection. */
+    private drawTacticalRadar(ctx: CanvasRenderingContext2D) {
+        const { width } = this.renderer.getDimensions();
+        const profile = this.sensors.getFleetProfile(this.playerFleet, this.gameClock);
+        const radius = Math.min(92, Math.max(66, width * 0.075));
+        const cx = width - radius - 24;
+        const cy = 86 + radius;
+        const range = Math.max(900, profile.sensorRange * 2.5);
+
+        ctx.save();
+        ctx.globalAlpha = 0.92;
+        ctx.fillStyle = 'rgba(3, 13, 22, .52)';
+        ctx.beginPath(); ctx.arc(cx, cy, radius + 8, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(157, 232, 255, .55)';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = 'rgba(110, 194, 221, .18)';
+        ctx.beginPath(); ctx.arc(cx, cy, radius * 0.5, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx - radius, cy); ctx.lineTo(cx + radius, cy); ctx.moveTo(cx, cy - radius); ctx.lineTo(cx, cy + radius); ctx.stroke();
+
+        const sweep = this.gameClock * 0.65;
+        const sweepGradient = ctx.createConicGradient(sweep, cx, cy);
+        sweepGradient.addColorStop(0, 'rgba(115, 235, 255, .22)');
+        sweepGradient.addColorStop(0.08, 'rgba(115, 235, 255, 0)');
+        sweepGradient.addColorStop(1, 'rgba(115, 235, 255, 0)');
+        ctx.fillStyle = sweepGradient;
+        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, radius, sweep, sweep + Math.PI * 0.8); ctx.closePath(); ctx.fill();
+
+        for (const fleet of this.npcFleets) {
+            const contact = this.sensors.getContact(this.playerFleet, fleet);
+            if (!contact || contact.stale || !this.sensors.canRender(this.playerFleet, fleet)) continue;
+            const dx = fleet.position.x - this.playerFleet.position.x;
+            const dy = fleet.position.y - this.playerFleet.position.y;
+            const distance = Math.hypot(dx, dy);
+            if (distance > range) continue;
+            const px = cx + (dx / range) * radius;
+            const py = cy + (dy / range) * radius;
+            const blipColor = fleet.isPlayer ? '#7ff4ff' : fleet.color;
+            ctx.fillStyle = blipColor;
+            ctx.shadowColor = blipColor;
+            ctx.shadowBlur = 5;
+            ctx.beginPath();
+            ctx.arc(px, py, contact.level === 'identified' ? 2.4 : 1.6, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+        ctx.fillStyle = '#7ff4ff';
+        ctx.shadowColor = '#7ff4ff'; ctx.shadowBlur = 8;
+        ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = 'rgba(183, 239, 255, .85)';
+        ctx.font = '9px ui-monospace, monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(`SCOPE ${Math.round(profile.sensorRange)}`, cx + radius, cy + radius + 17);
+        ctx.restore();
+    }
+
+    private drawPlayerReticle(ctx: CanvasRenderingContext2D) {
+        const screen = this.camera.worldToScreen(this.playerFleet.position);
+        const { width, height } = this.renderer.getDimensions();
+        if (screen.x < -40 || screen.x > width + 40 || screen.y < -40 || screen.y > height + 40) return;
+        const pulse = 0.5 + Math.sin(this.gameClock * 2.4) * 0.15;
+        const radius = 18 + Math.sin(this.gameClock * 1.7) * 2;
+        ctx.save();
+        ctx.translate(screen.x, screen.y);
+        ctx.strokeStyle = `rgba(151, 240, 255, ${pulse})`;
+        ctx.lineWidth = 1.2;
+        ctx.lineCap = 'square';
+        for (let i = 0; i < 4; i++) {
+            ctx.rotate(Math.PI / 2);
+            ctx.beginPath();
+            ctx.moveTo(-radius, -radius * 0.45); ctx.lineTo(-radius, -radius); ctx.lineTo(-radius * 0.45, -radius);
+            ctx.stroke();
+        }
+        ctx.fillStyle = 'rgba(216, 250, 255, .95)';
+        ctx.beginPath(); ctx.arc(0, 0, 1.5, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+    }
+
     private drawBackground() {
         const ctx = this.renderer.getContext();
         const { width, height } = this.renderer.getDimensions();
         ctx.drawImage(this.backgroundCanvas, 0, 0, width, height);
 
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+        ctx.strokeStyle = 'rgba(155, 219, 235, 0.008)';
         ctx.lineWidth = 1;
 
         const gridSize = 500;
@@ -3054,14 +3228,14 @@ export class Game {
             // does not shimmer between frames.
             ctx.beginPath();
             ctx.arc(center.x, center.y, radius - beltWidth * 0.5, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(191, 145, 82, 0.16)';
+            ctx.strokeStyle = 'rgba(191, 145, 82, 0.08)';
             ctx.lineWidth = Math.max(8, beltWidth);
             ctx.stroke();
 
             ctx.setLineDash([10 * this.camera.zoom, 18 * this.camera.zoom]);
             ctx.beginPath();
             ctx.arc(center.x, center.y, beltInnerRadius, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(220, 180, 110, 0.32)';
+            ctx.strokeStyle = 'rgba(220, 180, 110, 0.18)';
             ctx.lineWidth = Math.max(1, 1.5 * this.camera.zoom);
             ctx.stroke();
 
@@ -3082,7 +3256,7 @@ export class Game {
             // Outer glow / "Danger Zone"
             ctx.beginPath();
             ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(255, 50, 50, 0.1)';
+            ctx.strokeStyle = 'rgba(255, 50, 50, 0.05)';
             ctx.lineWidth = 20 * this.camera.zoom;
             ctx.stroke();
 
@@ -3090,13 +3264,13 @@ export class Game {
             ctx.beginPath();
             ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
             ctx.setLineDash([20 * this.camera.zoom, 20 * this.camera.zoom]);
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.strokeStyle = 'rgba(185, 231, 244, 0.08)';
             ctx.lineWidth = 2;
             ctx.stroke();
 
             // Internal markers/ticks
             ctx.setLineDash([]);
-            ctx.strokeStyle = 'rgba(0, 255, 255, 0.05)';
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.025)';
             ctx.lineWidth = 1;
             const segments = 64;
             const tickSize = 100 * this.camera.zoom;
@@ -3114,6 +3288,19 @@ export class Game {
 
             ctx.restore();
         }
+
+        // A soft cockpit vignette keeps attention on the fleet and gives the
+        // scene a rendered, rather than editor-grid, finish.
+        const palette = this.getSectorVisualPalette();
+        const vignette = ctx.createRadialGradient(width * 0.5, height * 0.48, Math.min(width, height) * 0.14, width * 0.5, height * 0.48, Math.max(width, height) * 0.78);
+        vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        vignette.addColorStop(0.72, 'rgba(0, 4, 10, .08)');
+        vignette.addColorStop(1, 'rgba(0, 3, 9, .58)');
+        ctx.fillStyle = vignette;
+        ctx.fillRect(0, 0, width, height);
+        ctx.strokeStyle = `rgba(${palette.starTint[0]}, ${palette.starTint[1]}, ${palette.starTint[2]}, .07)`;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(10, 10, width - 20, height - 20);
     }
 
     private warpToSystem(targetSystemId: number, expeditionSnapshot?: ProgressionState) {

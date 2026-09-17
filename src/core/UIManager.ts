@@ -433,6 +433,11 @@ export class UIManager {
             (panel.style as any).webkitOverflowScrolling = 'touch';
         }
 
+        const resourceStrip = document.createElement('div');
+        resourceStrip.id = 'resource-strip';
+        resourceStrip.addEventListener('click', (e) => e.stopPropagation());
+        resourceStrip.addEventListener('pointerdown', (e) => e.stopPropagation());
+
         // Strength display
         const strengthDisplay = document.createElement('div');
         strengthDisplay.id = 'strength-display';
@@ -442,7 +447,7 @@ export class UIManager {
         strengthDisplay.style.fontFamily = 'monospace';
         strengthDisplay.style.whiteSpace = 'nowrap';
         strengthDisplay.textContent = '10/10';
-        panel.appendChild(strengthDisplay);
+        resourceStrip.appendChild(strengthDisplay);
 
         // Money display
         const moneyDisplay = document.createElement('div');
@@ -453,7 +458,7 @@ export class UIManager {
         moneyDisplay.style.fontFamily = 'monospace';
         moneyDisplay.style.whiteSpace = 'nowrap';
         moneyDisplay.textContent = '$0';
-        panel.appendChild(moneyDisplay);
+        resourceStrip.appendChild(moneyDisplay);
 
         const levelDisplay = document.createElement('div');
         levelDisplay.id = 'level-display';
@@ -472,7 +477,7 @@ export class UIManager {
         levelTrack.appendChild(this.levelFill);
         levelDisplay.appendChild(this.levelText);
         levelDisplay.appendChild(levelTrack);
-        panel.appendChild(levelDisplay);
+        resourceStrip.appendChild(levelDisplay);
 
         this.abilityPoolDisplay = document.createElement('div');
         this.abilityPoolDisplay.className = 'ability-pool-display';
@@ -482,7 +487,7 @@ export class UIManager {
         this.abilityPoolDisplay.style.fontWeight = 'bold';
         this.abilityPoolDisplay.style.whiteSpace = 'nowrap';
         this.abilityPoolDisplay.textContent = 'SYSTEM CHARGES 0/5';
-        panel.appendChild(this.abilityPoolDisplay);
+        resourceStrip.appendChild(this.abilityPoolDisplay);
 
         const abilities = [
             { id: 'scan', icon: '◎', color: '#68FF9A', title: 'Active Scan Pulse (2x radar, costs 15% Energy)' },
@@ -571,6 +576,7 @@ export class UIManager {
         panel.addEventListener('click', (e) => e.stopPropagation());
         panel.addEventListener('pointerdown', (e) => e.stopPropagation());
 
+        this.container.appendChild(resourceStrip);
         this.container.appendChild(panel);
     }
 

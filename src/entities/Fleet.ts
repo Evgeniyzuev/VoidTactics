@@ -750,7 +750,8 @@ export class Fleet extends Entity {
         const rel = this.nucleusWorld.sub(this.position);
         const cosA = Math.cos(-velocityAngle), sinA = Math.sin(-velocityAngle);
         const nucleusLocal = { x: rel.x * cosA - rel.y * sinA, y: rel.x * sinA + rel.y * cosA };
-        ctx.save(); ctx.rotate(velocityAngle);
+        const visualScale = this.isPlayer ? 1.35 : 1.12;
+        ctx.save(); ctx.rotate(velocityAngle); ctx.scale(visualScale, visualScale);
         drawOrganismCell(ctx, shape, {
             color: this.color,
             selected: this.isPlayer,

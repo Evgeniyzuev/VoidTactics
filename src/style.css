@@ -230,3 +230,125 @@ button {
 .experience-track { width:100%; height:5px; overflow:hidden; border-radius:4px; background:rgba(255,255,255,.16); }
 .experience-fill { width:0%; height:100%; border-radius:inherit; background:linear-gradient(90deg,#48c8ff,#a4f7ff); box-shadow:0 0 8px rgba(72,200,255,.7); transition:width .2s ease; }
 @media(max-width:600px) { .experience-display { min-width:88px; font-size:9px; } }
+
+/* Cinematic tactical presentation: thin cockpit glass, cyan instrumentation
+   and enough negative space for the nebula and silhouettes to remain the focus. */
+#resource-strip {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 51;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: min(660px, calc(100vw - 24px));
+  min-height: 34px;
+  box-sizing: border-box;
+  padding: 6px 9px;
+  overflow: hidden;
+  border: 1px solid rgba(130, 221, 241, .3);
+  border-radius: 4px;
+  background: linear-gradient(180deg, rgba(5, 20, 30, .86), rgba(2, 8, 14, .72));
+  box-shadow: 0 0 24px rgba(19, 129, 165, .14), inset 0 0 16px rgba(100, 220, 255, .04);
+  color: #d8f6ff;
+  font: 10px ui-monospace, monospace;
+  pointer-events: auto;
+}
+#resource-strip #strength-display {
+  min-width: 0;
+  overflow: hidden;
+  color: #d8f6ff !important;
+  font-size: 10px !important;
+  text-overflow: ellipsis;
+}
+#resource-strip #money-display { color: #ffe38a !important; font-size: 11px !important; }
+#resource-strip #level-display { flex: 0 0 112px; min-width: 112px; font-size: 10px; }
+#resource-strip .ability-pool-display { color: #9edfff !important; font-size: 9px !important; }
+#hud {
+  top: 14px;
+  left: auto;
+  right: 18px;
+  transform: none;
+  border: 1px solid rgba(148, 225, 244, .28);
+  border-radius: 3px;
+  background: linear-gradient(135deg, rgba(4, 18, 28, .82), rgba(2, 8, 14, .54));
+  box-shadow: 0 0 28px rgba(34, 166, 205, .12), inset 0 0 18px rgba(100, 220, 255, .04);
+}
+#hud::before {
+  content: 'TACTICAL LINK';
+  position: absolute;
+  right: 8px;
+  top: -12px;
+  color: rgba(151, 233, 255, .64);
+  font: 8px ui-monospace, monospace;
+  letter-spacing: .18em;
+  pointer-events: none;
+}
+#hud .control-btn {
+  border-radius: 2px;
+  border-color: rgba(135, 220, 241, .22);
+  background: rgba(72, 148, 172, .08);
+  color: #c9f5ff;
+  text-shadow: 0 0 8px rgba(116, 225, 255, .6);
+}
+#hud .control-btn:hover, #hud .control-btn.active {
+  background: rgba(72, 188, 221, .2);
+  border-color: rgba(145, 237, 255, .72);
+  box-shadow: 0 0 12px rgba(78, 203, 240, .22);
+  color: #fff;
+}
+#ability-panel {
+  background: linear-gradient(180deg, rgba(5, 20, 30, .86), rgba(2, 8, 14, .72)) !important;
+  border: 1px solid rgba(130, 221, 241, .3) !important;
+  border-radius: 4px !important;
+  flex-wrap: nowrap !important;
+  gap: 4px !important;
+  box-shadow: 0 0 30px rgba(19, 129, 165, .16), inset 0 0 18px rgba(100, 220, 255, .04) !important;
+}
+#ability-panel .ability-btn {
+  border-radius: 3px !important;
+  background: rgba(8, 29, 40, .78) !important;
+  border-color: rgba(143, 224, 242, .28) !important;
+  box-shadow: inset 0 0 10px rgba(114, 219, 242, .04);
+}
+#ability-panel .ability-btn:hover { box-shadow: 0 0 14px rgba(93, 224, 255, .32) !important; }
+#fleet-panel {
+  left: auto;
+  right: 12px;
+  border-radius: 4px;
+  background: linear-gradient(145deg, rgba(4, 18, 28, .9), rgba(2, 8, 14, .76));
+  border-color: rgba(105, 211, 235, .3);
+  box-shadow: 0 0 28px rgba(18, 129, 163, .12), inset 0 0 18px rgba(116, 222, 247, .035);
+}
+#event-log {
+  border-left-color: rgba(129, 224, 244, .5);
+  background: linear-gradient(90deg, rgba(4, 15, 24, .72), transparent);
+  text-shadow: 0 0 8px rgba(126, 222, 245, .32);
+}
+@media(min-width:701px) {
+  #resource-strip { bottom: 66px; }
+  #ability-panel { left: 48% !important; }
+  #ability-panel > #strength-display,
+  #ability-panel > #money-display,
+  #ability-panel > #level-display,
+  #ability-panel > .ability-pool-display { display: none !important; }
+  #ability-panel { padding: 5px 8px !important; }
+}
+@media(max-width:700px) {
+  #ability-panel { left: 50% !important; }
+  #hud { right: 6px; max-width: calc(100vw - 12px); }
+  #fleet-panel { left: 12px; right: 12px; width: auto; }
+  #resource-strip {
+    top: 104px;
+    right: 6px;
+    bottom: auto;
+    left: 6px;
+    width: auto;
+    min-height: 44px;
+    flex-wrap: wrap;
+    gap: 3px 8px;
+    padding: 5px 7px;
+  }
+  #resource-strip #strength-display { flex: 1 1 100%; }
+  #resource-strip #level-display { flex-basis: 96px; min-width: 96px; }
+}

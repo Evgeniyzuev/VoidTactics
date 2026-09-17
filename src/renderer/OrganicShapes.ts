@@ -235,6 +235,34 @@ export function drawOrganismCellOutline(ctx: CanvasRenderingContext2D, shape: Ce
         ctx.stroke();
         ctx.globalAlpha = 1;
     }
+
+    // Fine hull seams make the silhouettes read as ships at a glance while
+    // preserving the living, soft-body identity of the current art direction.
+    if (s.detail) {
+        ctx.save();
+        ctx.globalAlpha = 0.28;
+        ctx.strokeStyle = '#c8f3ff';
+        ctx.lineWidth = 0.7;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(0, -R * (shape.elongation * 0.72));
+        ctx.lineTo(0, R * 0.72);
+        ctx.stroke();
+        for (const offset of [-0.45, 0.08, 0.55]) {
+            const span = R * (0.35 + (1 - Math.abs(offset)) * 0.28);
+            const y = offset * R;
+            ctx.beginPath();
+            ctx.moveTo(-span, y);
+            ctx.lineTo(span, y);
+            ctx.stroke();
+        }
+        if (shape.elongation > 1.2) {
+            ctx.globalAlpha = 0.38;
+            ctx.beginPath(); ctx.moveTo(-R * 0.55, -R * 0.18); ctx.lineTo(-R * 1.05, R * 0.18); ctx.lineTo(-R * 0.48, R * 0.1); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(R * 0.55, -R * 0.18); ctx.lineTo(R * 1.05, R * 0.18); ctx.lineTo(R * 0.48, R * 0.1); ctx.stroke();
+        }
+        ctx.restore();
+    }
 }
 
 export function drawOrganismCellLimbs(ctx: CanvasRenderingContext2D, shape: CellShape, s: CellState) {
@@ -272,6 +300,22 @@ export function drawOrganismCellLimbs(ctx: CanvasRenderingContext2D, shape: Cell
     if (glow > 0.03) {
         const flicker = Math.sin(s.clock * 9 + s.seed * 0.7);
         const plume = R * (0.6 + glow * 1.5) + flicker * (1.5 + glow * 2);
+        const trailLength = R * (1.8 + glow * 3.4);
+        const trail = ctx.createLinearGradient(0, rear.y, 0, rear.y + trailLength);
+        trail.addColorStop(0, `${s.color}cc`);
+        trail.addColorStop(0.32, `${s.color}66`);
+        trail.addColorStop(1, `${s.color}00`);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.7 * glow;
+        ctx.fillStyle = trail;
+        ctx.beginPath();
+        ctx.moveTo(-R * (0.22 + glow * 0.14), rear.y);
+        ctx.quadraticCurveTo(-R * 0.12, rear.y + trailLength * 0.55, 0, rear.y + trailLength);
+        ctx.quadraticCurveTo(R * 0.12, rear.y + trailLength * 0.55, R * (0.22 + glow * 0.14), rear.y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
         ctx.fillStyle = s.color;
         for (let k = 0; k < shape.tail; k++) {
             const t = (k + 1) / shape.tail;
