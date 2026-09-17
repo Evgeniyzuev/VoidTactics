@@ -6,6 +6,7 @@ import { DEFAULT_FORMATION, TACTICAL_BALANCE, type DamageType, type FleetDoctrin
 import { FleetGenerator } from '../tactical/FleetGenerator';
 import { RepairService } from '../tactical/RepairService';
 import { ABILITY_CHARGE_BALANCE, ABILITY_DEFINITIONS, type FleetAbilityId } from '../tactical/AbilityService';
+import { CELL_SHAPES, LONE_CELL, drawOrganismCell, type CellShape } from '../renderer/OrganicShapes';
 
 export type Faction = 'civilian' | 'pirate' | 'orc' | 'military' | 'player' | 'raider' | 'trader' | 'mercenary';
 export interface FleetResources { fuel: number; maxFuel: number; supplies: number; maxSupplies: number; readiness: number }
@@ -51,6 +52,11 @@ export class Fleet extends Entity {
     /** True while the fleet is inside the outer asteroid belt. */
     public inAsteroidBelt = false;
     private stopThreshold: number = 5;
+
+    /** Stable variation seed for the organic cell rendering (wobble/organelles). */
+    private cellSeed = 0;
+    /** Inertial world-space nucleus position; lags behind the course while moving. */
+    private nucleusWorld: Vector2 | null = null;
 
     private rotation: number = 0;
     public color: string;
@@ -625,6 +631,19 @@ export class Fleet extends Entity {
         // Apply Velocity
         this.position = this.position.add(this.velocity.scale(dt));
 
+        // The nucleus is a mass with inertia: it trails the course and only
+        // drifts back to centre while the fleet rests, which gives turns and
+        // burns a soft organic lag instead of the whole icon snapping around.
+        if (!this.nucleusWorld) this.nucleusWorld = this.position.clone();
+        this.nucleusWorld = this.nucleusWorld.add(this.velocity.scale(dt));
+        const nucleusToBody = this.position.sub(this.nucleusWorld);
+        const drag = Math.pow(0.12, dt);
+        if (nucleusToBody.mag() < 2.5) {
+            this.nucleusWorld = this.position.clone();
+        } else {
+            this.nucleusWorld = this.position.sub(nucleusToBody.scale(drag));
+        }
+
         // Final sanitization to prevent NaN errors
         if (!isFinite(this.position.x) || !isFinite(this.position.y)) this.position = new Vector2(0, 0);
         if (!isFinite(this.velocity.x) || !isFinite(this.velocity.y)) this.velocity = new Vector2(0, 0);
@@ -650,66 +669,9 @@ export class Fleet extends Entity {
 
         if (this.ships.length) { this.drawTacticalFleet(ctx, camera); ctx.restore(); return; }
 
+        // Draw Ship (single-cell organism, the lone-cell fallback body)
         ctx.rotate(this.rotation + Math.PI / 2); // +90deg because drawing points up
-
-        // Draw Ship (Perfect Warp Bubble)
-        ctx.beginPath();
-        const baseRadius = 8;
-        const shipRadius = baseRadius;
-        ctx.arc(0, 0, shipRadius, 0, Math.PI * 2);
-
-        // Calculate highlight relative to the sun (0,0)
-        const toSun = new Vector2(-this.position.x, -this.position.y);
-        const angleToSun = Math.atan2(toSun.y, toSun.x);
-        // Ship is already rotated by (this.rotation + Math.PI / 2)
-        const currentRotation = this.rotation + Math.PI / 2;
-        const relAngle = angleToSun - currentRotation;
-
-        const hOffset = shipRadius * 0.4;
-        const hX = Math.cos(relAngle) * hOffset;
-        const hY = Math.sin(relAngle) * hOffset;
-
-        // Fill with Gradient for "Bubble" effect
-        const grad = ctx.createRadialGradient(hX, hY, shipRadius * 0.1, 0, 0, shipRadius);
-        grad.addColorStop(0, '#FFFFFF'); // Highlight
-        grad.addColorStop(0.5, this.color);
-        grad.addColorStop(1, '#000033'); // Darker edge
-        ctx.fillStyle = grad;
-        ctx.fill();
-
-        // Combat Flashes
-        if (this.state === 'combat' && Math.sin(this.tacticalClock * 13 + this.position.x * 0.01) > 0.45) {
-            ctx.fillStyle = 'white';
-            ctx.fill();
-        }
-
-        // High contrast stroke with glow
-        ctx.strokeStyle = '#FFFFFF';
-        ctx.lineWidth = 1.5;
-        ctx.shadowBlur = this.state === 'combat' ? 20 : 8;
-        ctx.shadowColor = this.state === 'combat' ? '#FFFFFF' : this.color;
-        ctx.stroke();
-        ctx.shadowBlur = 0; // Reset after stroke
-
-        // Directional Indicator (Centered Arrow)
-        ctx.beginPath();
-        const arrowSize = 4;
-        ctx.moveTo(0, -arrowSize * 1.25); // Front
-        ctx.lineTo(arrowSize * 0.75, arrowSize * 0.75);
-        ctx.lineTo(-arrowSize * 0.75, arrowSize * 0.75);
-        ctx.closePath();
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-        ctx.fill();
-
-        // Engine Glow/Trail (Behind)
-        if (this.velocity.mag() > 10 && this.state !== 'combat') {
-            ctx.beginPath();
-            ctx.moveTo(-arrowSize, arrowSize * 1.75);
-            ctx.quadraticCurveTo(0, arrowSize * 3, arrowSize, arrowSize * 1.75);
-            ctx.strokeStyle = this.color;
-            ctx.lineWidth = 1.5;
-            ctx.stroke();
-        }
+        this.drawLoneCell(ctx);
 
         ctx.restore();
 
@@ -775,20 +737,36 @@ export class Fleet extends Entity {
 
     private drawTacticalFleet(ctx: CanvasRenderingContext2D, camera: Camera) {
         const alive = this.ships.filter(ship => ship.alive);
-        const velocityAngle = this.velocity.mag() > 1 ? Math.atan2(this.velocity.y, this.velocity.x) + Math.PI / 2 : this.rotation + Math.PI / 2;
         const iconShip = this.flagship || alive[0];
         if (!iconShip) return;
+        this.ensureCellSeed();
+        if (!this.nucleusWorld) this.nucleusWorld = this.position.clone();
+        const velocityAngle = this.velocity.mag() > 1 ? Math.atan2(this.velocity.y, this.velocity.x) + Math.PI / 2 : this.rotation + Math.PI / 2;
+        const shape: CellShape = CELL_SHAPES[iconShip.role] ?? CELL_SHAPES.flagship;
+        const speed01 = Math.min(1, this.velocity.mag() / Math.max(1, this.maxSpeed));
+        // Sun-facing highlight and the inertial nucleus lag, both expressed in
+        // the cell's rotated local frame.
+        const sunLocalAngle = Math.atan2(-this.position.y, -this.position.x) - velocityAngle;
+        const rel = this.nucleusWorld.sub(this.position);
+        const cosA = Math.cos(-velocityAngle), sinA = Math.sin(-velocityAngle);
+        const nucleusLocal = { x: rel.x * cosA - rel.y * sinA, y: rel.x * sinA + rel.y * cosA };
         ctx.save(); ctx.rotate(velocityAngle);
-        this.drawShipSilhouette(ctx, iconShip.role, this.isPlayer, iconShip.hitFlash);
-        if (iconShip.shieldFlash > 0) {
-                ctx.strokeStyle = `rgba(80, 210, 255, ${iconShip.shieldFlash * 0.85})`; ctx.lineWidth = 2;
-                ctx.beginPath(); ctx.ellipse(0, 0, 13, 18, 0, 0, Math.PI * 2); ctx.stroke();
-        }
-        if (this.velocity.mag() > 20) {
-                const flicker = 4 + 2 * Math.sin(this.tacticalClock * 17);
-                ctx.strokeStyle = this.color; ctx.lineWidth = 2; ctx.beginPath();
-                ctx.moveTo(-4, 10); ctx.lineTo(-3, 10 + flicker); ctx.moveTo(4, 10); ctx.lineTo(3, 10 + flicker); ctx.stroke();
-        }
+        drawOrganismCell(ctx, shape, {
+            color: this.color,
+            selected: this.isPlayer,
+            hitFlash: iconShip.hitFlash,
+            shieldFlash: iconShip.shieldFlash,
+            clock: this.tacticalClock,
+            seed: this.cellSeed,
+            // No flight model in the current build: speed doubles as the burn.
+            throttle: speed01,
+            speed01,
+            braking: false,
+            inCombat: this.state === 'combat' || this.currentTarget !== null,
+            detail: camera.zoom > 0.55,
+            sunLocalAngle,
+            nucleusLocal
+        });
         ctx.restore();
         if (this.currentTarget && !this.currentTarget.isCloaked) {
             const targetScreen = camera.worldToScreen(this.currentTarget.position);
@@ -825,16 +803,34 @@ export class Fleet extends Entity {
         ctx.restore();
     }
 
-    private drawShipSilhouette(ctx: CanvasRenderingContext2D, role: Ship['role'], selected: boolean, hitFlash: number) {
-        ctx.beginPath();
-        if (role === 'defender') { ctx.moveTo(0, -13); ctx.lineTo(11, -4); ctx.lineTo(9, 10); ctx.lineTo(0, 7); ctx.lineTo(-9, 10); ctx.lineTo(-11, -4); }
-        else if (role === 'artillery') { ctx.moveTo(0, -18); ctx.lineTo(5, -6); ctx.lineTo(7, 12); ctx.lineTo(0, 8); ctx.lineTo(-7, 12); ctx.lineTo(-5, -6); }
-        else if (role === 'scout') { ctx.moveTo(0, -11); ctx.lineTo(7, 8); ctx.lineTo(0, 5); ctx.lineTo(-7, 8); }
-        else if (role === 'support') { ctx.moveTo(0, -10); ctx.lineTo(9, -1); ctx.lineTo(7, 11); ctx.lineTo(-7, 11); ctx.lineTo(-9, -1); }
-        else if (role === 'striker') { ctx.moveTo(0, -15); ctx.lineTo(8, 10); ctx.lineTo(0, 6); ctx.lineTo(-8, 10); }
-        else { ctx.moveTo(0, -16); ctx.lineTo(10, 7); ctx.lineTo(5, 11); ctx.lineTo(0, 7); ctx.lineTo(-5, 11); ctx.lineTo(-10, 7); }
-        ctx.closePath(); ctx.fillStyle = hitFlash > 0 ? '#fff' : '#182434'; ctx.strokeStyle = selected ? '#fff' : this.color;
-        ctx.lineWidth = selected ? 2.4 : 1.5; ctx.shadowColor = this.color; ctx.shadowBlur = selected ? 12 : 5;
-        ctx.fill(); ctx.stroke(); ctx.shadowBlur = 0; ctx.fillStyle = this.color; ctx.fillRect(-2, -3, 4, 7);
+    /** Derives a stable visual seed from the fleet identity, like the orbit direction. */
+    private ensureCellSeed() {
+        if (this.cellSeed !== 0) return;
+        const seed = this.ships[0]?.id || `fleet-${Math.round(this.position.x)}-${Math.round(this.position.y)}`;
+        let hash = 7;
+        for (let index = 0; index < seed.length; index++) hash = (hash * 31 + seed.charCodeAt(index)) % 9973;
+        this.cellSeed = hash;
+    }
+
+    /** Fallback body for fleets with no ships: a small lone cell. */
+    private drawLoneCell(ctx: CanvasRenderingContext2D) {
+        this.ensureCellSeed();
+        if (!this.nucleusWorld) this.nucleusWorld = this.position.clone();
+        const speed01 = Math.min(1, this.velocity.mag() / 400);
+        drawOrganismCell(ctx, LONE_CELL, {
+            color: this.color,
+            selected: this.isPlayer,
+            hitFlash: 0,
+            shieldFlash: 0,
+            clock: this.tacticalClock,
+            seed: this.cellSeed,
+            throttle: 0,
+            speed01,
+            braking: false,
+            inCombat: this.state === 'combat',
+            detail: true,
+            sunLocalAngle: Math.atan2(-this.position.y, -this.position.x) - (this.rotation + Math.PI / 2),
+            nucleusLocal: { x: 0, y: 1.2 }
+        });
     }
 }
