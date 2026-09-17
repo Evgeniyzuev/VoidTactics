@@ -23,6 +23,8 @@ export const TACTICAL_BALANCE = {
     afterburnerSignatureMultiplier: 1.75,
     afterburnerEnergyFraction: 0.12,
     afterburnerReadinessPerSecond: 2,
+    /** Fleet steering response. Lower values make acceleration and turns take longer. */
+    fleetSteeringResponse: 1.2,
     emergencySpeedMultiplier: 0.25,
     emptyFuelSignatureMultiplier: 1.25,
     combatReadinessPerSecond: 0.05,

@@ -46,4 +46,19 @@ describe('lawful combat witnesses', () => {
 
         expect(controller.isHostile(civilian, military)).toBe(false);
     });
+
+    it('does not create a lawful response when the opening attack targets an enemy faction', () => {
+        const attacker = new Fleet(0, 0, '#fff');
+        attacker.faction = 'player';
+        const pirate = new Fleet(20, 0, '#fff');
+        pirate.faction = 'pirate';
+        const witness = new Fleet(40, 0, '#fff');
+        witness.faction = 'civilian';
+        const controller = new AIController(createGame(witness, [attacker, pirate]));
+
+        controller.recordCombatStart(attacker, pirate);
+
+        expect(witness.witnessedAggressors.has(attacker)).toBe(false);
+        expect(controller.isHostile(witness, attacker)).toBe(false);
+    });
 });

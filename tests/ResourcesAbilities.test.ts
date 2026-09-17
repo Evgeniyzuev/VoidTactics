@@ -61,6 +61,16 @@ describe('ship progression and fleet stances', () => {
         expect(fleet.commandCapacity).toBe(before + 10);
     });
 
+    it('uses the slower steering response for acceleration and turns', () => {
+        const fleet = createFleet();
+        fleet.setTarget(new Vector2(10_000, 0));
+
+        fleet.update(0.1);
+
+        const expectedSpeed = 500 * (1 - Math.exp(-TACTICAL_BALANCE.fleetSteeringResponse * 0.1));
+        expect(fleet.velocity.mag()).toBeCloseTo(expectedSpeed, 8);
+    });
+
     it('makes scan pulse consume additional Energy and slow the fleet while active', () => {
         const fleet = createFleet();
         const sensors = new SensorService();

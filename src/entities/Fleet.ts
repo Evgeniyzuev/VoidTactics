@@ -657,9 +657,9 @@ export class Fleet extends Entity {
 
                 const steering = desired.sub(this.velocity);
 
-                // Acceleration depends on size (larger is slower to accelerate)
-                // Snappier responsiveness: 1.2 base
-                let responsiveness = 2.4;
+                // Lower steering response makes acceleration, braking and
+                // direction changes take roughly twice as long as before.
+                let responsiveness = TACTICAL_BALANCE.fleetSteeringResponse;
                 if (this.abilities.afterburner.active) responsiveness *= 1.25;
                 // Critically damped steering: frame-rate independent and
                 // visually smooth when a fleet changes course or speed.

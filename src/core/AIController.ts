@@ -343,6 +343,10 @@ export class AIController {
         for (const witness of witnesses) {
             if (witness === attacker || witness === target || witness.isStation) continue;
             if (!['civilian', 'military', 'mercenary'].includes(witness.faction)) continue;
+            // Lawful witnesses only intervene when the opening attack harmed
+            // one of their own side. A lawful fleet engaging pirates, orcs or
+            // raiders must not turn every nearby civilian into a responder.
+            if (!this.isAlly(witness, target)) continue;
             if (witness.activeBattle || witness.currentTarget) continue;
             if (!this.game.canFleetTarget(witness, attacker)) continue;
 
