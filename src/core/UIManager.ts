@@ -5,6 +5,19 @@ import { bindButtonAction } from '../utils/TouchButton';
 import type { WorldEvent } from '../entities/WorldEvent';
 import type { SensorContact } from '../tactical/SensorService';
 
+export interface ExpeditionHudState {
+    sectorName: string;
+    sectorType: string;
+    dangerTier: number;
+    danger: number;
+    discovered: number;
+    totalSectors: number;
+    artifacts: number;
+    totalArtifacts: number;
+    nextDecision: string;
+    recovery: boolean;
+}
+
 export class UIManager {
     private container: HTMLElement;
     private onPlayPause: () => void;
@@ -16,6 +29,7 @@ export class UIManager {
     private onDoctrine: (priority: TargetPriority) => void;
     private onFaq: () => void;
     private onSignalAction: (action: 'track' | 'inspect', event: WorldEvent) => void;
+    private onExpeditionMap: () => void;
     private fleetPanel!: HTMLElement;
     private eventLog!: HTMLElement;
     private signalTracker!: HTMLElement;
@@ -39,6 +53,7 @@ export class UIManager {
     private levelText!: HTMLElement;
     private levelFill!: HTMLElement;
     private abilityPoolDisplay!: HTMLElement;
+    private expeditionDisplay!: HTMLElement;
 
     constructor(
         containerId: string,
@@ -51,7 +66,8 @@ export class UIManager {
             onOrder: (order: FleetOrderType) => void,
             onDoctrine: (priority: TargetPriority) => void,
             onFaq: () => void,
-            onSignalAction: (action: 'track' | 'inspect', event: WorldEvent) => void
+            onSignalAction: (action: 'track' | 'inspect', event: WorldEvent) => void,
+            onExpeditionMap: () => void
         }
     ) {
         const el = document.getElementById(containerId);
@@ -66,6 +82,7 @@ export class UIManager {
         this.onDoctrine = callbacks.onDoctrine;
         this.onFaq = callbacks.onFaq;
         this.onSignalAction = callbacks.onSignalAction;
+        this.onExpeditionMap = callbacks.onExpeditionMap;
 
         this.render();
     }
@@ -187,12 +204,24 @@ export class UIManager {
         faqBtn.title = 'FAQ / Help';
         bindButtonAction(faqBtn, () => this.onFaq());
 
+        const mapBtn = document.createElement('button');
+        mapBtn.className = 'control-btn';
+        mapBtn.innerText = '✦';
+        mapBtn.title = 'Expedition map';
+        bindButtonAction(mapBtn, () => this.onExpeditionMap());
+
         hud.appendChild(this.playBtn);
         hud.appendChild(speedContainer);
         hud.appendChild(this.cameraFollowBtn);
         hud.appendChild(faqBtn);
+        hud.appendChild(mapBtn);
         hud.appendChild(menuBtn);
         this.container.appendChild(hud);
+
+        this.expeditionDisplay = document.createElement('div');
+        this.expeditionDisplay.id = 'expedition-status';
+        this.expeditionDisplay.textContent = 'EXPEDITION · SOL SYSTEM';
+        this.container.appendChild(this.expeditionDisplay);
 
         // Initialize speed scaling (fix for page reload issue)
         this.onSpeedChange(this.currentSpeed);
@@ -668,5 +697,11 @@ export class UIManager {
         this.levelText.textContent = `Lv ${level} · XP ${formatNumber(prog)}/${formatNumber(required)}`;
         this.levelFill.style.width = `${Math.min(100, (prog / required) * 100)}%`;
         this.levelDisplay.title = `Level ${level}: ${formatNumber(prog)} / ${formatNumber(required)} XP`;
+    }
+
+    public updateExpedition(state: ExpeditionHudState) {
+        if (!this.expeditionDisplay) return;
+        const recovery = state.recovery ? ' · RECOVERY' : '';
+        this.expeditionDisplay.textContent = `${state.sectorName.toUpperCase()} · TIER ${state.dangerTier} · DANGER ${Math.round(state.danger)}% · MAP ${state.discovered}/${state.totalSectors} · ARTIFACTS ${state.artifacts}/${state.totalArtifacts}${recovery}${state.nextDecision ? ` · ${state.nextDecision}` : ''}`;
     }
 }

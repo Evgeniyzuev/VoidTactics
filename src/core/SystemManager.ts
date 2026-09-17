@@ -4,6 +4,7 @@ import { WarpGate } from '../entities/WarpGate';
 import { Vector2 } from '../utils/Vector2';
 import { Entity } from '../entities/Entity';
 import { FleetGenerator } from '../tactical/FleetGenerator';
+import { SECTOR_NODES, getSectorSeed, type SectorNode } from './Expedition';
 
 export interface SpawnRules {
     targetFleetCount: number;
@@ -72,6 +73,102 @@ export class SystemManager {
             },
             entities: this.createAlphaCentauriEntities()
         });
+
+        // The first two systems keep their authored layouts. The remaining
+        // expedition nodes use deterministic local templates so the strategic
+        // graph always has a complete, playable route.
+        for (const node of SECTOR_NODES) {
+            if (node.systemId <= 2) continue;
+            this.systems.set(node.systemId, {
+                id: node.systemId,
+                name: node.name,
+                spawnRules: this.getProceduralSpawnRules(node),
+                entities: this.createProceduralEntities(node)
+            });
+        }
+    }
+
+    private getProceduralSpawnRules(node: SectorNode): SpawnRules {
+        const danger = node.dangerTier;
+        const factionWeights: { type: Faction; weight: number }[] = node.type === 'relay'
+            ? [
+                { type: 'civilian', weight: 0.2 }, { type: 'trader', weight: 0.2 },
+                { type: 'military', weight: 0.25 }, { type: 'pirate', weight: 0.15 },
+                { type: 'raider', weight: 0.1 }, { type: 'orc', weight: 0.05 }, { type: 'mercenary', weight: 0.05 }
+            ]
+            : node.type === 'warzone' || node.type === 'void'
+                ? [
+                    { type: 'pirate', weight: 0.22 }, { type: 'raider', weight: 0.2 },
+                    { type: 'orc', weight: 0.18 }, { type: 'military', weight: 0.18 },
+                    { type: 'mercenary', weight: 0.1 }, { type: 'civilian', weight: 0.07 }, { type: 'trader', weight: 0.05 }
+                ]
+                : [
+                    { type: 'civilian', weight: 0.16 }, { type: 'trader', weight: 0.1 },
+                    { type: 'pirate', weight: 0.2 }, { type: 'raider', weight: 0.18 },
+                    { type: 'military', weight: 0.14 }, { type: 'orc', weight: 0.12 }, { type: 'mercenary', weight: 0.1 }
+                ];
+        return {
+            targetFleetCount: Math.max(34, 42 - danger * 2),
+            factionWeights,
+            strengthMin: 10 * danger,
+            strengthMax: 600 * danger,
+            spawnInterval: node.type === 'void' ? 7 : undefined
+        };
+    }
+
+    private createProceduralEntities(node: SectorNode): Entity[] {
+        const entities: Entity[] = [];
+        let state = getSectorSeed(0x564f4944, node);
+        const random = () => {
+            state = (Math.imul(state ^ (state >>> 15), 1 | state) + 0x6D2B79F5) >>> 0;
+            return state / 0x100000000;
+        };
+        const starColors: Record<SectorNode['type'], string> = {
+            home: '#FFD700', frontier: '#FFA500', relay: '#A8D8FF', anomaly: '#C084FC',
+            warzone: '#FF6347', deep: '#64748B', void: '#CBD5E1'
+        };
+        entities.push(new CelestialBody(0, 0, 110 + node.dangerTier * 5, starColors[node.type], `${node.name} Primary`, true));
+
+        const planetCount = 2 + (node.systemId % 3);
+        for (let index = 0; index < planetCount; index++) {
+            const angle = random() * Math.PI * 2;
+            const distance = 500 + index * 520 + random() * 180;
+            const radius = 20 + random() * 28;
+            const colors = ['#38BDF8', '#F59E0B', '#A78BFA', '#34D399', '#F87171'];
+            entities.push(new CelestialBody(
+                Math.cos(angle) * distance,
+                Math.sin(angle) * distance,
+                radius,
+                colors[index % colors.length]!,
+                `${node.name} ${String.fromCharCode(65 + index)}`
+            ));
+        }
+
+        for (let index = 0; index < 18 + node.dangerTier * 2; index++) {
+            const angle = random() * Math.PI * 2;
+            const distance = 1900 + random() * 2600;
+            entities.push(new CelestialBody(
+                Math.cos(angle) * distance,
+                Math.sin(angle) * distance,
+                5 + random() * 12,
+                node.type === 'anomaly' ? '#C084FC' : '#64748B',
+                'Asteroid'
+            ));
+        }
+
+        entities.push(new CelestialBody(-650, 700, 18, node.safeHarbor ? '#32CD32' : '#EF4444', `${node.name} Outpost`));
+        node.connections.forEach((neighborId, index) => {
+            const neighbor = SECTOR_NODES.find(candidate => candidate.id === neighborId);
+            if (!neighbor) return;
+            const angle = (index / Math.max(1, node.connections.length)) * Math.PI * 2 - Math.PI / 2;
+            entities.push(new WarpGate(
+                Math.cos(angle) * 3500,
+                Math.sin(angle) * 3500,
+                neighbor.systemId,
+                `Gate to ${neighbor.name}`
+            ));
+        });
+        return entities;
     }
 
     private createSolEntities(): Entity[] {
@@ -141,6 +238,8 @@ export class SystemManager {
         // Warp Gate to Alpha Centauri
         const warpGate = new WarpGate(3500, 2500, 2, 'Gate to Alpha Centauri');
         entities.push(warpGate);
+        entities.push(new WarpGate(-3500, 2500, 3, 'Gate to Frontier Reach'));
+        entities.push(new WarpGate(3500, -2500, 4, 'Gate to Relay Expanse'));
 
         return entities;
     }
@@ -191,6 +290,8 @@ export class SystemManager {
         // Warp Gate back to Sol
         const warpGate = new WarpGate(-3500, -2500, 1, 'Gate to Sol System');
         entities.push(warpGate);
+        entities.push(new WarpGate(3500, -2500, 3, 'Gate to Frontier Reach'));
+        entities.push(new WarpGate(-3500, 2500, 5, 'Gate to Anomaly Verge'));
 
         return entities;
     }
@@ -371,7 +472,12 @@ export class SystemManager {
         const coefficient = this.threatCoefficients[cursor % this.threatCoefficients.length];
         this.threatCoefficientCursor.set(systemId, cursor + 1);
         const variance = 0.7 + Math.random() * 0.6;
-        const fleetBudget = Math.max(0, playerStrength * coefficient * variance);
+        const sectorTier = SECTOR_NODES.find(node => node.systemId === systemId)?.dangerTier || 1;
+        // Sector danger is the main driver of NPC power. Player threat only
+        // contributes a bounded catch-up term, so a successful expedition can
+        // snowball instead of fighting an endlessly rubber-banded universe.
+        const sectorReferenceThreat = Math.max(10, sectorTier * 22 + systemDanger * 0.35, playerStrength * 0.35);
+        const fleetBudget = Math.max(0, sectorReferenceThreat * coefficient * variance);
         npc.ships = FleetGenerator.generate(fleetBudget, selectedFaction);
         npc.supplies = npc.maxSupplies;
         npc.fuel = npc.maxFuel;

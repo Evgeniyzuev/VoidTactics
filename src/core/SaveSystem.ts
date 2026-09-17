@@ -4,6 +4,7 @@ import { Ship, type ShipSnapshot } from '../tactical/Ship';
 import { HULLS, MODULES, type FleetDoctrine } from '../tactical/ShipDefinitions';
 import { SignalDirector, type SignalDirectorSnapshot } from './SignalDirector';
 import { Vector2 } from '../utils/Vector2';
+import { ExpeditionManager, type ProgressionState } from './Expedition';
 
 export interface SavedFleetState {
     x: number;
@@ -78,6 +79,7 @@ export interface SaveWorldState {
     currentSystemId?: string;
     signalDirector?: SignalDirectorSnapshot;
     worldEvents?: WorldEventRuntimeSnapshot[];
+    expedition?: ProgressionState;
 }
 
 export interface GameSaveDataV4 {
@@ -103,14 +105,23 @@ export interface GameSaveDataV4 {
     lastSaveTime: number;
 }
 
+export interface GameSaveDataV5 extends Omit<GameSaveDataV4, 'version'> {
+    version: 5;
+    expedition: ProgressionState;
+}
+
 /** Backwards-compatible name used by the current Game integration. */
-export type GameSaveData = GameSaveDataV4;
+export type GameSaveData = GameSaveDataV4 | GameSaveDataV5;
 export type SaveSlot = 'manual' | 'autosave';
 
 export class SaveSystem {
     private static readonly SAVE_KEYS: Record<SaveSlot, string> = {
         manual: 'vt_save_v4',
         autosave: 'vt_autosave_v4'
+    };
+    private static readonly EXPEDITION_SAVE_KEYS: Record<SaveSlot, string> = {
+        manual: 'vt_save_v5',
+        autosave: 'vt_autosave_v5'
     };
     static save(
         player: Fleet,
@@ -166,11 +177,27 @@ export class SaveSystem {
             worldEvents: world.worldEvents,
             lastSaveTime: Date.now()
         };
-        localStorage.setItem(this.SAVE_KEYS[slot], JSON.stringify(data));
+        if (world.expedition) {
+            const expeditionData: GameSaveDataV5 = { ...data, version: 5, expedition: world.expedition };
+            localStorage.setItem(this.EXPEDITION_SAVE_KEYS[slot], JSON.stringify(expeditionData));
+        } else {
+            localStorage.setItem(this.SAVE_KEYS[slot], JSON.stringify(data));
+        }
     }
 
     static load(slot: SaveSlot = 'manual'): GameSaveData | null {
         try {
+            const v5Raw = localStorage.getItem(this.EXPEDITION_SAVE_KEYS[slot]);
+            if (v5Raw) {
+                const raw = JSON.parse(v5Raw) as Partial<GameSaveDataV5>;
+                const data = this.normalizeV5(raw);
+                data.systemId ||= data.currentSystemId || 'sol';
+                data.currentSystemId ||= data.systemId;
+                data.worldSeed ??= data.signalDirector?.seed ?? data.expedition.seed;
+                data.rngState ??= data.signalDirector?.rngState ?? 0;
+                data.systemDanger ??= data.signalDirector?.systemDanger ?? 0;
+                return data;
+            }
             const v4Raw = localStorage.getItem(this.SAVE_KEYS[slot]);
             if (v4Raw) {
                 const raw = JSON.parse(v4Raw) as Partial<GameSaveData>;
@@ -261,6 +288,7 @@ export class SaveSystem {
         localStorage.removeItem('vt_save_v2');
         localStorage.removeItem('vt_save_v3');
         localStorage.removeItem('vt_save_v4');
+        localStorage.removeItem('vt_save_v5');
     }
 
     static saveFleetSize(size: number) {
@@ -319,6 +347,7 @@ export class SaveSystem {
 
     static clearAutosave() {
         localStorage.removeItem('vt_autosave_v4');
+        localStorage.removeItem('vt_autosave_v5');
         localStorage.removeItem('vt_autosave_fleet_size');
         localStorage.removeItem('vt_autosave_fleet_progress');
         localStorage.removeItem('vt_autosave_fleet_ability_charges');
@@ -344,6 +373,12 @@ export class SaveSystem {
             });
         }
         return raw as GameSaveData;
+    }
+
+    private static normalizeV5(raw: Partial<GameSaveDataV5>): GameSaveDataV5 {
+        const base = this.normalizeV4(raw as Partial<GameSaveDataV4>);
+        const expedition = raw.expedition || ExpeditionManager.create(raw.worldSeed || 0x564f4944).snapshot;
+        return { ...base, version: 5, expedition } as GameSaveDataV5;
     }
 
     private static defaultSavedFleet(): SavedFleetState {
