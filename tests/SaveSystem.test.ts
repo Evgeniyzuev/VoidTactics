@@ -158,7 +158,7 @@ describe('SaveSystem v4', () => {
             fuel: 143.25,
             maxFuel: player.maxFuel,
             supplies: 18.5,
-            maxSupplies: 80,
+            maxSupplies: player.maxSupplies,
             readiness: 63.5
         });
         expect(loaded!.skills).toEqual(player.skills);

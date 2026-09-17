@@ -6,7 +6,7 @@ import { DEFAULT_FORMATION, TACTICAL_BALANCE, type DamageType, type FleetDoctrin
 import { FleetGenerator } from '../tactical/FleetGenerator';
 import { RepairService } from '../tactical/RepairService';
 import { ABILITY_CHARGE_BALANCE, ABILITY_DEFINITIONS, type FleetAbilityId } from '../tactical/AbilityService';
-import { CELL_SHAPES, LONE_CELL, drawOrganismCell, type CellShape } from '../renderer/OrganicShapes';
+import { CELL_SHAPES, drawOrganismCell, type CellShape } from '../renderer/OrganicShapes';
 
 export type Faction = 'civilian' | 'pirate' | 'orc' | 'military' | 'player' | 'raider' | 'trader' | 'mercenary';
 export interface FleetResources { fuel: number; maxFuel: number; supplies: number; maxSupplies: number; readiness: number }
@@ -21,6 +21,21 @@ export const FLEET_SKILLS: Record<FleetSkillId, { name: string; description: str
     size: { name: 'Size', description: 'Unlocks medium and large hulls' },
     tech: { name: 'Tech', description: 'Unlocks higher ship tiers' }
 };
+
+/**
+ * Converts relative fleet power into a clock-like ring fill.
+ *
+ * Six o'clock is the player's reference strength. Stronger fleets use a
+ * compressed logarithmic-style tail: 2x reaches nine o'clock and 4x reaches
+ * ten-thirty instead of immediately saturating the ring.
+ */
+export function getThreatIndicatorProgress(threat: number, referenceThreat: number): number {
+    const ratio = Math.max(0, threat) / Math.max(1, referenceThreat);
+    const progress = ratio < 1
+        ? ratio * 0.5
+        : 1 - 0.5 / Math.max(1, ratio);
+    return Math.max(0.03, Math.min(0.98, progress));
+}
 
 export class Fleet extends Entity {
     public ships: Ship[] = [];
@@ -424,7 +439,7 @@ export class Fleet extends Entity {
 
         if (this.stunTimer > 0) {
             this.stunTimer -= dt;
-            this.velocity = this.velocity.scale(0.5); // Rapidly bleed velocity
+            this.velocity = this.velocity.scale(Math.pow(0.5, Math.max(0, dt) * 8)); // Smoothly bleed velocity
             if (this.velocity.mag() < 1) this.velocity = new Vector2(0, 0);
             this.position = this.position.add(this.velocity.scale(dt));
             return;
@@ -466,7 +481,7 @@ export class Fleet extends Entity {
             // The normal movement code below applies the combat speed cap and
             // still honours direct targets and manual steering.
             if (!this.isPlayer) {
-                this.velocity = this.velocity.scale(0.9);
+                this.velocity = this.velocity.scale(Math.pow(0.9, Math.max(0, dt) * 60));
                 this.position = this.position.add(this.velocity.scale(dt));
                 return;
             }
@@ -614,17 +629,21 @@ export class Fleet extends Entity {
 
                 // Acceleration depends on size (larger is slower to accelerate)
                 // Snappier responsiveness: 1.2 base
-                let responsiveness = 1.2;
-                if (this.abilities.afterburner.active) responsiveness *= 1.5;
-
-                let steerForce = steering.scale(responsiveness * dt);
+                let responsiveness = 2.4;
+                if (this.abilities.afterburner.active) responsiveness *= 1.25;
+                // Critically damped steering: frame-rate independent and
+                // visually smooth when a fleet changes course or speed.
+                if (desired.mag() < this.velocity.mag()) responsiveness *= 1.45;
+                const response = 1 - Math.exp(-responsiveness * Math.max(0, dt));
+                let steerForce = steering.scale(response);
                 if (!isFinite(steerForce.x) || !isFinite(steerForce.y)) steerForce = new Vector2(0, 0);
                 this.velocity = this.velocity.add(steerForce);
-                this.lastAcceleration = steerForce.scale(1 / dt);
+                this.lastAcceleration = dt > 0 ? steerForce.scale(1 / dt) : new Vector2(0, 0);
             }
         } else {
             // Friction/Drag when no target
-            this.velocity = this.velocity.scale(0.95); // simple drag
+            this.velocity = this.velocity.scale(Math.pow(0.95, Math.max(0, dt) * 60));
+            if (this.velocity.mag() < 0.5) this.velocity = new Vector2(0, 0);
             this.lastAcceleration = new Vector2(0, 0);
         }
 
@@ -651,9 +670,9 @@ export class Fleet extends Entity {
         // Update Rotation (Smooth turn towards velocity)
         if (this.velocity.mag() > 1) {
             const desiredAngle = Math.atan2(this.velocity.y, this.velocity.x);
-            // Simple approach: Set rotation directly for now.
-            // Better: Lerp rotation. But instant is fine for this style.
-            this.rotation = desiredAngle;
+            const delta = Math.atan2(Math.sin(desiredAngle - this.rotation), Math.cos(desiredAngle - this.rotation));
+            const turnResponse = 1 - Math.exp(-9 * Math.max(0, dt));
+            this.rotation += delta * turnResponse;
         }
     }
 
@@ -739,10 +758,18 @@ export class Fleet extends Entity {
         const alive = this.ships.filter(ship => ship.alive);
         const iconShip = this.flagship || alive[0];
         if (!iconShip) return;
+        const visualTier = camera.zoom < 0.24 ? 'strategic' : camera.zoom < 0.58 ? 'tactical' : 'detail';
+        if (visualTier !== 'detail') {
+            this.drawFleetIcon(ctx, camera, visualTier);
+            return;
+        }
         this.ensureCellSeed();
         if (!this.nucleusWorld) this.nucleusWorld = this.position.clone();
         const velocityAngle = this.velocity.mag() > 1 ? Math.atan2(this.velocity.y, this.velocity.x) + Math.PI / 2 : this.rotation + Math.PI / 2;
-        const shape: CellShape = CELL_SHAPES[iconShip.role] ?? CELL_SHAPES.flagship;
+        // The fleet marker is one recognizable silhouette at every zoom level.
+        // Fleet role still affects combat behavior, not the readability of the
+        // strategic map.
+        const shape: CellShape = CELL_SHAPES.flagship;
         const speed01 = Math.min(1, this.velocity.mag() / Math.max(1, this.maxSpeed));
         // Sun-facing highlight and the inertial nucleus lag, both expressed in
         // the cell's rotated local frame.
@@ -781,13 +808,126 @@ export class Fleet extends Entity {
         }
     }
 
+    /**
+     * At system-map scale a full organic hull is too small to read and too
+     * expensive to draw for every contact. Use a directional fleet glyph:
+     * tactical view keeps the silhouette large, strategic view keeps only the
+     * heading, faction and approximate command mass.
+     */
+    private drawFleetIcon(
+        ctx: CanvasRenderingContext2D,
+        camera: Camera,
+        tier: 'tactical' | 'strategic'
+    ) {
+        const commandMass = Math.max(1, this.commandUsed);
+        const size = tier === 'strategic'
+            ? Math.max(4.5, Math.min(10.5, 4.5 + Math.sqrt(commandMass) * 1.3))
+            : Math.max(8, Math.min(17, 8 + Math.sqrt(commandMass) * 1.8));
+        const heading = this.velocity.mag() > 1
+            ? Math.atan2(this.velocity.y, this.velocity.x) + Math.PI / 2
+            : this.rotation + Math.PI / 2;
+        const color = this.getFleetIconColor();
+
+        ctx.save();
+        ctx.rotate(heading);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = tier === 'strategic' ? 0.18 : 0.28;
+        ctx.fillStyle = color;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = tier === 'strategic' ? 7 : 12;
+        ctx.beginPath();
+        ctx.arc(0, 0, size * 1.25, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.shadowBlur = 0;
+
+        // A compact pointed hull reads at both zoom levels and communicates
+        // direction without requiring a sprite sheet.
+        ctx.fillStyle = '#06131e';
+        ctx.strokeStyle = color;
+        ctx.lineWidth = tier === 'strategic' ? 1 : 1.4;
+        ctx.beginPath();
+        ctx.moveTo(0, -size * 1.25);
+        ctx.lineTo(size * 0.9, size * 0.55);
+        ctx.lineTo(0, size * 0.25);
+        ctx.lineTo(-size * 0.9, size * 0.55);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        if (tier === 'tactical') {
+            ctx.globalAlpha = 0.72;
+            ctx.strokeStyle = '#e7fbff';
+            ctx.lineWidth = 0.8;
+            ctx.beginPath();
+            ctx.moveTo(-size * 0.45, -size * 0.12);
+            ctx.lineTo(size * 0.45, -size * 0.12);
+            ctx.moveTo(-size * 0.35, size * 0.3);
+            ctx.lineTo(size * 0.35, size * 0.3);
+            ctx.stroke();
+        }
+
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.fillStyle = color;
+        ctx.beginPath(); ctx.arc(0, -size * 0.35, tier === 'strategic' ? 1.1 : 1.6, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+
+        if (this.isPlayer) {
+            ctx.save();
+            ctx.strokeStyle = '#a9f5ff';
+            ctx.globalAlpha = 0.82;
+            ctx.lineWidth = tier === 'strategic' ? 1 : 1.3;
+            ctx.setLineDash(tier === 'strategic' ? [2, 3] : [4, 3]);
+            ctx.beginPath(); ctx.arc(0, 0, size * 1.65, 0, Math.PI * 2); ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.restore();
+        } else if (tier === 'strategic' && commandMass > 2) {
+            ctx.save();
+            ctx.fillStyle = color;
+            ctx.globalAlpha = 0.82;
+            ctx.font = '8px ui-monospace, monospace';
+            ctx.textAlign = 'left';
+            ctx.fillText(`${Math.min(99, commandMass)}`, size * 1.8, 3);
+            ctx.restore();
+        }
+
+        // Keep an important pursuit legible even when the ships collapse to
+        // strategic markers.
+        if (this.currentTarget && !this.currentTarget.isCloaked && tier === 'tactical') {
+            const targetScreen = camera.worldToScreen(this.currentTarget.position);
+            const originScreen = camera.worldToScreen(this.position);
+            ctx.save();
+            ctx.strokeStyle = `${color}66`;
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 8]);
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(targetScreen.x - originScreen.x, targetScreen.y - originScreen.y);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.restore();
+        }
+    }
+
+    private getFleetIconColor(): string {
+        if (this.isPlayer || this.faction === 'player') return '#75ecff';
+        switch (this.faction) {
+            case 'pirate':
+            case 'raider': return '#ff5f68';
+            case 'military': return '#ffd66b';
+            case 'mercenary': return '#ffad67';
+            case 'orc': return '#c59aff';
+            case 'trader': return '#e8cc84';
+            case 'civilian': return '#d8f5ff';
+            default: return this.color;
+        }
+    }
+
     public drawThreatIndicator(ctx: CanvasRenderingContext2D, camera: Camera, referenceThreat: number) {
         if (!this.ships.some(ship => ship.state !== 'destroyed')) return;
         const screen = camera.worldToScreen(this.position);
-        const ratio = this.isPlayer ? 1 : this.threatRating / Math.max(1, referenceThreat);
-        const level = this.isPlayer ? 0 : ratio < 0.55 ? 1 : ratio < 1.5 ? 2 : ratio < 6 ? 3 : 4;
-        const color = this.isPlayer ? '#55d8ff' : level === 1 ? '#67dc88' : level === 2 ? '#ffe06b' : level === 3 ? '#ffad5c' : '#ff5f63';
-        const progress = this.isPlayer ? 1 : level === 1 ? 0.25 : level === 2 ? 0.5 : level === 3 ? 0.75 : 1;
+        const color = this.color;
+        const progress = getThreatIndicatorProgress(this.threatRating, referenceThreat);
         const radius = 10 * Math.max(0.85, Math.min(1.15, camera.zoom));
 
         ctx.save();
@@ -818,7 +958,7 @@ export class Fleet extends Entity {
         this.ensureCellSeed();
         if (!this.nucleusWorld) this.nucleusWorld = this.position.clone();
         const speed01 = Math.min(1, this.velocity.mag() / 400);
-        drawOrganismCell(ctx, LONE_CELL, {
+        drawOrganismCell(ctx, CELL_SHAPES.flagship, {
             color: this.color,
             selected: this.isPlayer,
             hitFlash: 0,

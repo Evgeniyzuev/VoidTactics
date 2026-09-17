@@ -135,10 +135,15 @@ export class Attack {
                 this.game.awardPlayerExperience(this.game.getCombatDamageExperience(this.target, totalAppliedDamage));
             }
 
-            // Spawn debris for each damage point
-            if (this.target.accumulatedDamage >= 4) {
-                this.game.spawnDebris(this.target.position.x, this.target.position.y, Math.max(1, Math.floor(this.target.accumulatedDamage / 4)));
-                this.target.accumulatedDamage %= 4;
+            // Leave fewer, more readable salvage markers instead of a dense
+            // trail of tiny debris during a prolonged exchange.
+            if (this.target.accumulatedDamage >= TACTICAL_BALANCE.salvageDamageChunk) {
+                this.game.spawnDebris(
+                    this.target.position.x,
+                    this.target.position.y,
+                    Math.max(1, Math.ceil(this.target.accumulatedDamage / TACTICAL_BALANCE.salvageDamageValueDivisor))
+                );
+                this.target.accumulatedDamage %= TACTICAL_BALANCE.salvageDamageChunk;
             }
 
             // NPC deploys bubble if conditions met (skip for asteroids)

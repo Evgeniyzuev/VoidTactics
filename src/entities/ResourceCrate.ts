@@ -14,23 +14,31 @@ export class ResourceCrate extends Entity {
         super(x, y);
         this.fuel = fuel;
         this.supplies = supplies;
-        this.radius = 4;
+        this.radius = 6;
     }
 
     update(_dt: number): void {}
 
     draw(ctx: CanvasRenderingContext2D, camera: Camera): void {
         const screen = camera.worldToScreen(this.position);
+        const onlyFuel = this.fuel > 0 && this.supplies <= 0;
+        const onlySupplies = this.supplies > 0 && this.fuel <= 0;
+        const stroke = onlyFuel ? '#ffd34f' : onlySupplies ? '#63e6b1' : '#e3bf5d';
+        const fill = onlyFuel ? '#fff3a1' : onlySupplies ? '#c9ffe8' : '#fff0a5';
         ctx.save();
         ctx.translate(screen.x, screen.y);
-        ctx.rotate(Math.PI / 4);
-        ctx.fillStyle = '#d5a94b';
-        ctx.strokeStyle = '#fff0a5';
-        ctx.lineWidth = 1;
-        ctx.shadowColor = '#ffc64d';
+        ctx.strokeStyle = stroke;
+        ctx.fillStyle = fill;
+        ctx.lineWidth = 1.25;
+        ctx.shadowColor = stroke;
         ctx.shadowBlur = 8;
-        ctx.fillRect(-4, -4, 8, 8);
-        ctx.strokeRect(-4, -4, 8, 8);
+        ctx.beginPath();
+        ctx.arc(0, 0, 4.5, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.beginPath();
+        ctx.arc(0, 0, 1.5, 0, Math.PI * 2);
+        ctx.fill();
         ctx.restore();
     }
 }

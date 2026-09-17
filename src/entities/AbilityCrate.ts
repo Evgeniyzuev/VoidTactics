@@ -16,12 +16,18 @@ export class AbilityCrate extends Entity {
         const screen = camera.worldToScreen(this.position);
         ctx.save();
         ctx.translate(screen.x, screen.y);
-        ctx.fillStyle = '#33cc77';
+        ctx.strokeStyle = '#33cc77';
+        ctx.fillStyle = '#d9fff0';
+        ctx.lineWidth = 1.25;
         ctx.shadowColor = '#76ffc0';
         ctx.shadowBlur = 8;
-        ctx.fillRect(-3, -3, 6, 6);
-        ctx.fillStyle = '#d9fff0';
-        ctx.fillRect(-1, -1, 2, 2);
+        ctx.beginPath();
+        ctx.arc(0, 0, 4, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.beginPath();
+        ctx.arc(0, 0, 1.35, 0, Math.PI * 2);
+        ctx.fill();
         ctx.restore();
     }
 }

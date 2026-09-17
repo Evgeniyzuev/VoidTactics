@@ -138,7 +138,9 @@ export class SaveSystem {
         const data: GameSaveDataV4 = {
             version: 4,
             player: serializeFleet(player),
-            npcs: npcs.map(serializeFleet),
+            // Anchored world guardians are regenerated from the system
+            // definition and should not become ordinary moving NPCs in saves.
+            npcs: npcs.filter(fleet => !fleet.isStation).map(serializeFleet),
             playerShips: player.ships.map(ship => ship.snapshot()),
             commandCapacity: player.commandCapacity,
             resources: {

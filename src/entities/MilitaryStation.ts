@@ -2,12 +2,12 @@ import { Camera } from '../renderer/Camera';
 import { Vector2 } from '../utils/Vector2';
 import { Fleet } from './Fleet';
 import { FleetGenerator } from '../tactical/FleetGenerator';
-import { COMBAT_BALANCE } from '../tactical/ShipDefinitions';
+import { COMBAT_BALANCE, type DamageType } from '../tactical/ShipDefinitions';
 import { RepairService } from '../tactical/RepairService';
 import { AbilityService } from '../tactical/AbilityService';
 
 /**
- * A stationary military fleet assigned to Terra's defense ring.
+ * A stationary civilian fleet assigned to Terra's defense ring.
  *
  * The station deliberately reuses Fleet so threat, DPS, defensive layers and
  * the normal inspection window stay consistent with moving fleets. Only the
@@ -40,15 +40,17 @@ export class MilitaryStation extends Fleet {
         super(x, y, '#5f86d6', false);
         this.name = name;
         this.isStation = true;
-        this.faction = 'military';
+        this.faction = 'civilian';
         this.maxSpeed = 0;
         this.velocity = new Vector2(0, 0);
+        // Terra projects a defensive interception envelope twice as far as a
+        // normal fleet, while still remaining a civilian home fleet.
         this.attackRadius = options.attackRadius ?? 200;
         this.fireInterval = options.fireInterval ?? 1;
 
-        // These are real ships for inspection and threat calculation, not a
-        // giant visual marker. Each Terra fleet has threat 10,000 by default.
-        this.ships = FleetGenerator.generate(options.threatBudget ?? 10000, 'military');
+        // These are real ships for inspection, sensors and threat calculation,
+        // not a giant abstract marker.
+        this.ships = FleetGenerator.generate(options.threatBudget ?? 12000, 'civilian');
         this.supplies = this.maxSupplies;
         this.selectedShipId = this.ships[0]?.id || null;
         const stationDps = this.ships.reduce((sum, ship) => sum + ship.weaponDps, 0) * COMBAT_BALANCE.damageScale;
@@ -58,6 +60,12 @@ export class MilitaryStation extends Fleet {
         this.supplies = this.maxSupplies;
         this.fuel = this.maxFuel;
         this.operationalReadiness = 100;
+    }
+
+    /** Terra cannot be destroyed; incoming fire is ignored instead of repaired. */
+    override receiveTacticalDamage(_amount: number, _type: DamageType = 'energy', _targetShipId?: string): number {
+        this.lastTacticalDamage = 0;
+        return 0;
     }
 
     override update(dt: number) {

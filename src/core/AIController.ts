@@ -20,6 +20,14 @@ export class AIController {
         const allFleets = [player, ...npcs];
 
         for (const npc of npcs) {
+            // Terra's guardian fleet is an anchored defensive actor. It is
+            // still present in tactical combat, but must not roam to random
+            // POIs like an ordinary civilian convoy.
+            if (npc.isStation) {
+                npc.stopFollowing();
+                npc.decisionTimer = 1;
+                continue;
+            }
             const isMilitaryLike = npc.faction === 'military' || npc.faction === 'mercenary';
             const orcAttackWhenOutmatched = npc.faction === 'orc' && Math.random() < 0.5;
             let followedFleet = npc.followTarget instanceof Fleet ? npc.followTarget : null;
@@ -330,6 +338,11 @@ export class AIController {
         if (a.hostileTo.has(b)) return true;
         const f1 = a.faction;
         const f2 = b.faction;
+
+        // The Terra guardian is technically civilian so it is shown and
+        // treated as a home fleet, but it answers fire from hostile factions.
+        if (a.isStation) return ['pirate', 'orc', 'raider'].includes(f2);
+        if (b.isStation) return ['pirate', 'orc', 'raider'].includes(f1);
 
         // Player relations
         if (f1 === 'player') {

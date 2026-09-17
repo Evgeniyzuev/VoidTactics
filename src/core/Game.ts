@@ -18,6 +18,7 @@ import { WarpMine } from '../entities/WarpMine';
 import { Debris } from '../entities/Debris';
 import { AbilityCrate } from '../entities/AbilityCrate';
 import { ResourceCrate } from '../entities/ResourceCrate';
+import { MilitaryStation } from '../entities/MilitaryStation';
 import { Ship } from '../tactical/Ship';
 import { RepairService, type StationServiceMode } from '../tactical/RepairService';
 import { WorldEvent } from '../entities/WorldEvent';
@@ -27,7 +28,8 @@ import { COMBAT_BALANCE, TACTICAL_BALANCE, type DamageType } from '../tactical/S
 import { bindButtonAction } from '../utils/TouchButton';
 import { assessRelativeThreat } from '../tactical/Ecosystem';
 import { SensorService, type SensorContact } from '../tactical/SensorService';
-import { ABILITY_EQUIPMENT_MARKET, AbilityService, type FleetAbilityId } from '../tactical/AbilityService';
+import { ABILITY_DEFINITIONS, ABILITY_EQUIPMENT_MARKET, AbilityService, type FleetAbilityId } from '../tactical/AbilityService';
+import { rollFleetLoot } from '../tactical/LootBalance';
 import { SIGNAL_DEFINITIONS, SIGNAL_EVENT_BALANCE, SignalDirector, toWorldEventConstructorArgs, type SignalDirectorSnapshot, type SignalEventKind, type SignalSpawnDescriptor } from './SignalDirector';
 import { ARTIFACT_DEFINITIONS, ExpeditionManager, type ProgressionState } from './Expedition';
 
@@ -86,7 +88,7 @@ export class Game {
             const dist = Vector2.distance(new Vector2(x, y), existing.position);
             if (dist < 50 && existing.kind === kind) { // Combine if within 50 units
                 existing.value += value;
-                existing.radius = Math.max(2, Math.min(8, Math.sqrt(existing.value)));
+                existing.radius = Debris.markerRadius(existing.value);
                 return;
             }
         }
@@ -107,6 +109,7 @@ export class Game {
     }
 
     private spawnResourceCrate(x: number, y: number, fuel: number, supplies: number) {
+        if (fuel <= 0 && supplies <= 0) return;
         const crate = new ResourceCrate(x, y, fuel, supplies);
         this.crates.push(crate);
         this.entities.push(crate);
@@ -242,7 +245,7 @@ export class Game {
                 const savedCharges = tacticalSave?.abilityCharges || SaveSystem.loadFleetAbilityCharges() || this.getDefaultAbilityCharges();
                 const savedCommandCapacity = tacticalSave?.commandCapacity || savedSize || 4;
                 const systemId = tacticalSave ? Number(tacticalSave.systemId || tacticalSave.currentSystemId) || 1 : undefined;
-                this.initWorld(savedCommandCapacity, systemId, undefined, savedProgress, savedCharges, tacticalSave && 'expedition' in tacticalSave ? tacticalSave.expedition : undefined);
+                this.initWorld(savedCommandCapacity, systemId, undefined, savedProgress, savedCharges, tacticalSave && 'expedition' in tacticalSave ? tacticalSave.expedition : undefined, false);
                 if (tacticalSave) {
                     SaveSystem.restoreFleet(this.playerFleet, tacticalSave);
                     this.applyExpeditionEffects();
@@ -259,7 +262,7 @@ export class Game {
                 const autosaveCharges = tacticalSave?.abilityCharges || SaveSystem.loadAutosaveFleetAbilityCharges() || this.getDefaultAbilityCharges();
                 const savedCommandCapacity = tacticalSave?.commandCapacity || autosaveSize || 4;
                 const systemId = tacticalSave ? Number(tacticalSave.systemId || tacticalSave.currentSystemId) || 1 : undefined;
-                this.initWorld(savedCommandCapacity, systemId, undefined, autosaveProgress, autosaveCharges, tacticalSave && 'expedition' in tacticalSave ? tacticalSave.expedition : undefined);
+                this.initWorld(savedCommandCapacity, systemId, undefined, autosaveProgress, autosaveCharges, tacticalSave && 'expedition' in tacticalSave ? tacticalSave.expedition : undefined, false);
                 if (tacticalSave) {
                     SaveSystem.restoreFleet(this.playerFleet, tacticalSave);
                     this.applyExpeditionEffects();
@@ -368,15 +371,22 @@ export class Game {
         }
         ctx.restore();
 
+        // Lower the nebula contrast while keeping the star field crisp. The
+        // stars are drawn after this veil so they remain visible as points.
+        ctx.fillStyle = 'rgba(0, 5, 12, 0.16)';
+        ctx.fillRect(0, 0, width, height);
+
         // Two star fields: small quiet stars and a few soft, readable beacons.
-        const starCount = Math.min(320, Math.max(120, Math.floor((width * height) / 4800)));
+        const starCount = Math.min(360, Math.max(150, Math.floor((width * height) / 4500)));
         for (let i = 0; i < starCount; i++) {
             const x = random() * width;
             const y = random() * height;
-            const size = 0.35 + random() * 1.35;
-            const alpha = 0.18 + random() * 0.62;
+            const size = 0.45 + random() * 1.2;
+            const alpha = 0.22 + random() * 0.58;
             ctx.fillStyle = i % 9 === 0 ? rgba(palette.starTint, alpha) : `rgba(205, 232, 245, ${alpha})`;
-            ctx.fillRect(x, y, size, size);
+            ctx.beginPath();
+            ctx.arc(x, y, size, 0, Math.PI * 2);
+            ctx.fill();
         }
         for (let i = 0; i < 13; i++) {
             const x = random() * width;
@@ -411,7 +421,8 @@ export class Game {
         spawnNearGate?: Vector2,
         progress?: { totalMoneyEarned: number; level: number; levelThreshold: number; nextLevelThreshold: number },
         abilityCharges?: { afterburner: number; cloak: number; bubble: number; mine: number; medkit: number; fire: number; shield: number; net?: number },
-        expeditionSnapshot?: ProgressionState
+        expeditionSnapshot?: ProgressionState,
+        spawnProtection = true
     ) {
         // Set current system
         this.currentSystemId = systemId || 1;
@@ -447,6 +458,16 @@ export class Game {
 
         // Load system entities from SystemManager
         this.entities = this.systemManager.getSystemEntities(this.currentSystemId);
+        const anchoredFleets = this.entities.filter(entity => entity instanceof MilitaryStation) as MilitaryStation[];
+        for (const station of anchoredFleets) {
+            station.state = 'normal';
+            station.currentTarget = null;
+            station.activeBattle = null;
+            station.lastTarget = null;
+            station.beamTimer = 0;
+            station.cooldown = 0;
+        }
+        this.npcFleets.push(...anchoredFleets);
 
         // Player Fleet Initialization
         // Priority: forcedStrength (from menu buttons) > savedSize (from persistence) > default (10)
@@ -455,7 +476,8 @@ export class Game {
 
         console.log('Initializing player fleet...', `Strength: ${startStrength}`);
 
-        // Determine spawn position: near gate if provided, otherwise default (500, 500)
+        // New runs and recovery in Sol begin above Terra instead of inside the
+        // normal NPC spawn field. Gate arrivals retain their route position.
         let spawnX = 500;
         let spawnY = 500;
 
@@ -466,6 +488,13 @@ export class Game {
             spawnX = spawnNearGate.x + Math.cos(angle) * offsetDistance;
             spawnY = spawnNearGate.y + Math.sin(angle) * offsetDistance;
             console.log(`Spawning player near gate at (${spawnX.toFixed(0)}, ${spawnY.toFixed(0)})`);
+        } else if (spawnProtection && this.currentSystemId === 1) {
+            const terra = this.entities.find(entity => entity instanceof CelestialBody && entity.name === 'Terra') as CelestialBody | undefined;
+            if (terra) {
+                spawnX = terra.position.x;
+                spawnY = terra.position.y - 300;
+                console.log(`Spawning player above Terra at (${spawnX.toFixed(0)}, ${spawnY.toFixed(0)})`);
+            }
         }
 
         this.playerFleet = new Fleet(spawnX, spawnY, '#00AAFF', true);
@@ -486,6 +515,8 @@ export class Game {
                 (this.playerFleet.abilities as any)[key].charges = 0;
             }
         }
+
+        if (spawnProtection) this.activateRespawnCloak();
 
         this.entities.push(this.playerFleet);
         this.initializeWorldEvents();
@@ -589,8 +620,10 @@ export class Game {
         requestAnimationFrame((t) => this.loop(t));
     }
 
-    private SYSTEM_RADIUS: number = 8000;
-    private ASTEROID_BELT_WIDTH: number = 700;
+    // A broad system gives the camera room to move between tactical and
+    // strategic views. Local encounters still happen in the inner region.
+    private SYSTEM_RADIUS: number = 18000;
+    private ASTEROID_BELT_WIDTH: number = 1600;
 
     public getAsteroidBeltInnerRadius() {
         return this.SYSTEM_RADIUS - this.ASTEROID_BELT_WIDTH;
@@ -860,6 +893,8 @@ export class Game {
 
             const added = player.addAbilityCharge(crate.abilityId as FleetAbilityId);
             if (added > 0) {
+                const definition = ABILITY_DEFINITIONS[crate.abilityId as FleetAbilityId];
+                this.ui.addEvent(`Unknown cache recovered: ${definition?.name || 'system charge'}.`);
                 this.ui.updateAbilities(player);
                 this.crates.splice(i, 1);
                 const eidx = this.entities.indexOf(crate);
@@ -1865,7 +1900,8 @@ export class Game {
             const camTarget = this.playerFleet.position;
             const lerpSpeed = 5.0;
             const diff = camTarget.sub(this.camera.position);
-            this.camera.position = this.camera.position.add(diff.scale(lerpSpeed * dt));
+            const followResponse = 1 - Math.exp(-lerpSpeed * Math.max(0, dt));
+            this.camera.position = this.camera.position.add(diff.scale(followResponse));
         }
 
         // Handle proximity triggers for follow modes
@@ -1938,19 +1974,33 @@ export class Game {
         fleet.lootDropped = true;
 
         const debrisValue = Math.max(1, Math.floor(
-            fleet.ships.reduce((sum, ship) => sum + ship.definition.tacticalValue, 0) / 20
+            fleet.ships.reduce((sum, ship) => sum + ship.definition.tacticalValue, 0) / TACTICAL_BALANCE.salvageFleetValueDivisor
         ));
         this.spawnDebris(fleet.position.x, fleet.position.y, debrisValue);
 
-        const dropCount = Math.random() < 0.5 ? 1 : 2;
-        const abilityIds = ['afterburner', 'bubble', 'cloak', 'mine', 'medkit', 'fire', 'shield', 'net'];
-        for (let i = 0; i < dropCount; i++) {
+        if (!fleet.isPlayer) {
+            const loot = rollFleetLoot({
+                shipCount: fleet.ships.length,
+                commandCost: fleet.ships.reduce((sum, ship) => sum + ship.commandCost, 0),
+                fuelCapacity: fleet.ships.reduce((sum, ship) => sum + ship.maxFuelCapacity, 0),
+                cargoCapacity: fleet.ships.reduce((sum, ship) => sum + ship.definition.cargo * ship.statScale, 0)
+            });
+            if (loot.fuel > 0) {
+                this.spawnResourceCrate(fleet.position.x + 18, fleet.position.y, loot.fuel, 0);
+            }
+            if (loot.supplies > 0) {
+                this.spawnResourceCrate(fleet.position.x - 18, fleet.position.y, 0, loot.supplies);
+            }
+        }
+
+        // Ability caches are rare: one unidentified cache on roughly half of
+        // destroyed fleets, never a visible list of guaranteed abilities.
+        if (Math.random() < 0.5) {
+            const abilityIds: FleetAbilityId[] = ['afterburner', 'bubble', 'cloak', 'mine', 'medkit', 'fire', 'shield', 'net'];
             const abilityId = abilityIds[Math.floor(Math.random() * abilityIds.length)];
-            const angle = Math.random() * Math.PI * 2;
-            const dist = 15 + Math.random() * 25;
             this.spawnAbilityCrate(
-                fleet.position.x + Math.cos(angle) * dist,
-                fleet.position.y + Math.sin(angle) * dist,
+                fleet.position.x - 18,
+                fleet.position.y,
                 abilityId
             );
         }
@@ -2080,16 +2130,32 @@ export class Game {
 
         const safeNode = this.expedition.getNode(recovery.safeNodeId);
         if (safeNode && safeNode.systemId !== this.currentSystemId) {
-            this.warpToSystem(safeNode.systemId, this.expedition.snapshot);
+            this.warpToSystem(safeNode.systemId, this.expedition.snapshot, true);
         } else {
-            this.playerFleet.position = new Vector2(500, 500);
+            const terra = this.currentSystemId === 1
+                ? this.entities.find(entity => entity instanceof CelestialBody && entity.name === 'Terra') as CelestialBody | undefined
+                : undefined;
+            this.playerFleet.position = terra
+                ? terra.position.add(new Vector2(0, -300))
+                : new Vector2(500, 500);
             this.playerFleet.velocity = new Vector2(0, 0);
             this.playerFleet.state = 'normal';
+            this.activateRespawnCloak();
+            this.camera.position = this.playerFleet.position.clone();
         }
         this.isGameOver = false;
         this.ui.addEvent(`Fleet recovered at ${safeNode?.name || 'safe harbor'}: supplies and readiness lost, ships preserved.`);
         this.ui.updateFleet(this.playerFleet);
         this.saveGame('autosave');
+    }
+
+    /** Grants a short, free arrival cloak without consuming a player charge. */
+    private activateRespawnCloak() {
+        const cloak = this.playerFleet.abilities.cloak;
+        cloak.active = true;
+        cloak.timer = Math.max(cloak.timer, ABILITY_DEFINITIONS.cloak.duration);
+        cloak.cooldown = Math.max(cloak.cooldown, ABILITY_DEFINITIONS.cloak.cooldown);
+        this.playerFleet.isCloaked = true;
     }
 
 
@@ -2173,6 +2239,7 @@ export class Game {
                         minDist = dist;
                     }
                 } else if (e instanceof AbilityCrate || e instanceof ResourceCrate) {
+                    if (!this.isInsidePlayerRadar(e.position)) continue;
                     const interactionRadius = Math.max(15, 30 / this.camera.zoom);
                     if (dist <= interactionRadius) {
                         closestEntity = e;
@@ -2345,10 +2412,15 @@ export class Game {
             info += `Value: ${formatNumber(debris.value)} units<br/>`;
             info += `Pos: (${debris.position.x.toFixed(0)}, ${debris.position.y.toFixed(0)})`;
         } else if (entity instanceof AbilityCrate) {
-            info = `<strong>Ability Crate</strong><br/>System charge: ${entity.abilityId}<br/>`;
+            info = '<strong>Unknown Cache</strong><br/>Unidentified system payload. Recover it to reveal the charge.<br/>';
             info += `Pos: (${entity.position.x.toFixed(0)}, ${entity.position.y.toFixed(0)})`;
         } else if (entity instanceof ResourceCrate) {
-            info = `<strong>Resource Crate</strong><br/>Fuel: ${Math.round(entity.fuel)} · Supplies: ${Math.round(entity.supplies)}<br/>`;
+            const title = entity.fuel > 0 && entity.supplies <= 0
+                ? 'Fuel Cache'
+                : entity.supplies > 0 && entity.fuel <= 0
+                    ? 'Supply Cache'
+                    : 'Resource Cache';
+            info = `<strong>${title}</strong><br/>Fuel: ${Math.round(entity.fuel)} · Supplies: ${Math.round(entity.supplies)}<br/>`;
             info += `Pos: (${entity.position.x.toFixed(0)}, ${entity.position.y.toFixed(0)})`;
         }
 
@@ -2815,6 +2887,11 @@ export class Game {
         const ctx = this.renderer.getContext();
         this.drawRadarOverlay(ctx);
         for (const e of this.entities) {
+            // Loot has no fleet signature, so it is not tracked as a normal
+            // SensorService contact. It still obeys the player's nominal
+            // radar envelope and must not be visible through unexplored space.
+            if ((e instanceof Debris || e instanceof AbilityCrate || e instanceof ResourceCrate)
+                && !this.isInsidePlayerRadar(e.position)) continue;
             if (e instanceof Fleet && e !== this.playerFleet) {
                 const contact = this.sensors.getContact(this.playerFleet, e);
                 if (!contact) continue;
@@ -2970,11 +3047,18 @@ export class Game {
         if (this.inspectedEntity) this.positionTooltip(this.inspectedEntity);
     }
 
+    private isInsidePlayerRadar(position: Vector2): boolean {
+        if (!this.playerFleet) return false;
+        return Vector2.distance(this.playerFleet.position, position)
+            <= this.getFleetSensorRange(this.playerFleet);
+    }
+
     private drawRadarOverlay(ctx: CanvasRenderingContext2D) {
         const profile = this.sensors.getFleetProfile(this.playerFleet, this.gameClock);
-        if (profile.sensorRange <= 0) return;
+        const radarRange = this.getFleetSensorRange(this.playerFleet);
+        if (radarRange <= 0) return;
         const center = this.camera.worldToScreen(this.playerFleet.position);
-        const radius = profile.sensorRange * this.camera.zoom;
+        const radius = radarRange * this.camera.zoom;
         ctx.save();
         ctx.beginPath();
         ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
@@ -2987,7 +3071,7 @@ export class Game {
         ctx.setLineDash([]);
         ctx.fillStyle = 'rgba(125,255,175,.72)';
         ctx.font = '10px ui-monospace, monospace';
-        ctx.fillText(`RADAR ${Math.round(profile.sensorRange)}${profile.scanPulseActive ? ' · PULSE' : ''}`, center.x + 12, center.y - radius + 16);
+        ctx.fillText(`RADAR ${Math.round(radarRange)}${profile.scanPulseActive ? ' · PULSE' : ''}`, center.x + 12, center.y - radius + 16);
         ctx.restore();
     }
 
@@ -3303,7 +3387,7 @@ export class Game {
         ctx.strokeRect(10, 10, width - 20, height - 20);
     }
 
-    private warpToSystem(targetSystemId: number, expeditionSnapshot?: ProgressionState) {
+    private warpToSystem(targetSystemId: number, expeditionSnapshot?: ProgressionState, spawnProtection = false) {
         console.log(`Warping from System ${this.currentSystemId} to System ${targetSystemId}...`);
 
         // Store player fleet state before transition
@@ -3334,7 +3418,16 @@ export class Game {
         }
 
         // Initialize the new system
-        this.initWorld(this.playerFleet.threatRating, targetSystemId, spawnNearGate, playerProgress, playerCharges, expeditionSnapshot || this.expedition.snapshot);
+        const protectedHomeArrival = spawnProtection && targetSystemId === 1;
+        this.initWorld(
+            this.playerFleet.threatRating,
+            targetSystemId,
+            protectedHomeArrival ? undefined : spawnNearGate,
+            playerProgress,
+            playerCharges,
+            expeditionSnapshot || this.expedition.snapshot,
+            spawnProtection
+        );
 
         // Restore player fleet state
         this.playerFleet.ships = playerShips.map(snapshot => Ship.fromSnapshot(snapshot));

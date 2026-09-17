@@ -5,6 +5,7 @@ import { Vector2 } from '../utils/Vector2';
 import { Entity } from '../entities/Entity';
 import { FleetGenerator } from '../tactical/FleetGenerator';
 import { SECTOR_NODES, getSectorSeed, type SectorNode } from './Expedition';
+import { MilitaryStation } from '../entities/MilitaryStation';
 
 export interface SpawnRules {
     targetFleetCount: number;
@@ -181,6 +182,12 @@ export class SystemManager {
         // Planets
         const terra = new CelestialBody(800, 0, 40, '#00CED1', 'Terra');
         entities.push(terra);
+        // Terra's home fleet is stationary, civilian and indestructible. It
+        // protects the respawn approach without adding a moving escort fleet.
+        entities.push(new MilitaryStation(800, -120, 'Terra Civilian Guard', {
+            attackRadius: 200,
+            threatBudget: 12000
+        }));
 
 
         const luna = new CelestialBody(860, 0, 10, '#AAAAAA', 'Luna');
@@ -453,12 +460,12 @@ export class SystemManager {
         let distance: number;
         if (systemId === 1) {
             if (selectedFaction === 'civilian' || selectedFaction === 'military' || selectedFaction === 'mercenary') {
-                distance = 500 + Math.random() * 3500; // Inner region: 500-4000
+                distance = 900 + Math.random() * 7600; // Inner region: 900-8500
             } else {
-                distance = 4000 + Math.random() * 4000; // Outer region: 4000-8000
+                distance = 8500 + Math.random() * 7500; // Outer region: 8500-16000
             }
         } else {
-            distance = 1000 + Math.random() * 3000;
+            distance = 1200 + Math.random() * 12000;
         }
         const startX = Math.cos(angle) * distance;
         const startY = Math.sin(angle) * distance;

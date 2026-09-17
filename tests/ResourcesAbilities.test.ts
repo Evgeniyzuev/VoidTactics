@@ -1,13 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Attack } from '../src/core/Attack';
 import type { Game } from '../src/core/Game';
-import { Fleet } from '../src/entities/Fleet';
+import { Fleet, getThreatIndicatorProgress } from '../src/entities/Fleet';
 import { ABILITY_DEFINITIONS, ABILITY_EQUIPMENT_MARKET, AbilityService } from '../src/tactical/AbilityService';
 import { SystemManager } from '../src/core/SystemManager';
+import { MilitaryStation } from '../src/entities/MilitaryStation';
 import { SensorService } from '../src/tactical/SensorService';
 import { RepairService } from '../src/tactical/RepairService';
 import { Ship } from '../src/tactical/Ship';
 import { TACTICAL_BALANCE, WEAPONS } from '../src/tactical/ShipDefinitions';
+import { getFleetLootProfile, rollFleetLoot } from '../src/tactical/LootBalance';
 import { Vector2 } from '../src/utils/Vector2';
 
 function createFleet(x = 0) {
@@ -34,6 +36,38 @@ function createGameStub(player: Fleet) {
 }
 
 describe('fleet fuel and readiness', () => {
+    it('rolls independent fuel and supply drops that scale with wreck size', () => {
+        const small = {
+            shipCount: 1,
+            commandCost: 3,
+            fuelCapacity: 90,
+            cargoCapacity: 10
+        };
+        const large = {
+            shipCount: 6,
+            commandCost: 22,
+            fuelCapacity: 600,
+            cargoCapacity: 240
+        };
+        const smallProfile = getFleetLootProfile(small);
+        const largeProfile = getFleetLootProfile(large);
+
+        expect(largeProfile.fuelMax).toBeGreaterThan(smallProfile.fuelMax);
+        expect(largeProfile.suppliesMax).toBeGreaterThan(smallProfile.suppliesMax);
+        expect(largeProfile.fuelChance).toBeGreaterThan(smallProfile.fuelChance);
+        expect(largeProfile.suppliesChance).toBeGreaterThan(smallProfile.suppliesChance);
+        expect(rollFleetLoot(large, () => 0).fuel).toBe(largeProfile.fuelMin);
+        expect(rollFleetLoot(large, () => 0).supplies).toBe(largeProfile.suppliesMin);
+        expect(rollFleetLoot(large, () => 0.999).fuel).toBe(0);
+        expect(rollFleetLoot(large, () => 0.999).supplies).toBe(0);
+    });
+
+    it('maps threat to a logarithmic clock fill around player strength', () => {
+        expect(getThreatIndicatorProgress(100, 100)).toBeCloseTo(0.5, 10);
+        expect(getThreatIndicatorProgress(200, 100)).toBeCloseTo(0.75, 10);
+        expect(getThreatIndicatorProgress(400, 100)).toBeCloseTo(0.875, 10);
+    });
+
     it('allows the player to steer while an active battle is running', () => {
         const fleet = new Fleet(0, 0, '#fff', true);
         fleet.activeBattle = {};
@@ -291,6 +325,7 @@ describe('narrow consumable effects', () => {
 
        const result = AbilityService.activate(fleet, 'shield');
         ship.shieldRechargeDelay = 100;
+        fleet.supplies = 0;
         fleet.fuel = 0;
         fleet.update(TACTICAL_BALANCE.shieldCellDuration);
 
@@ -506,10 +541,17 @@ describe('ship tactical persistence', () => {
 });
 
 describe('Terra defense ring', () => {
-    it('does not create permanent defense fleets around Terra', () => {
+    it('creates an immortal civilian Terra fleet with a doubled defense radius', () => {
         const entities = new SystemManager().getSystemEntities(1);
-        const defenseFleets = entities.filter(entity => entity instanceof Fleet && entity.faction === 'military' && entity.maxSpeed === 0);
+        const defenseFleets = entities.filter(entity => entity instanceof MilitaryStation) as MilitaryStation[];
 
-        expect(defenseFleets).toHaveLength(0);
+        expect(defenseFleets).toHaveLength(1);
+        expect(defenseFleets[0]?.faction).toBe('civilian');
+        expect(defenseFleets[0]?.maxSpeed).toBe(0);
+        expect(defenseFleets[0]?.attackRadius).toBe(200);
+        const station = defenseFleets[0]!;
+        const before = station.threatRating;
+        station.receiveTacticalDamage(99999, 'energy');
+        expect(station.threatRating).toBeCloseTo(before, 8);
     });
 });

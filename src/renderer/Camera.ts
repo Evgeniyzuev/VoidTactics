@@ -2,12 +2,13 @@ import { Vector2 } from '../utils/Vector2';
 
 export class Camera {
     public position: Vector2 = new Vector2(0, 0);
-    public zoom: number = 1.0;
+    /** Start in a readable tactical view; the wheel can still reach detail mode. */
+    public zoom: number = 0.48;
 
     private width: number;
     private height: number;
-    private minZoom: number = 0.05;
-    private maxZoom: number = 10.0;
+    private minZoom: number = 0.025;
+    private maxZoom: number = 6.0;
 
     constructor(width: number, height: number) {
         this.width = width;
