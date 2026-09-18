@@ -1,4 +1,4 @@
-import { COMBAT_BALANCE, HULLS, MODULES, TACTICAL_BALANCE, WEAPONS, type DamageType, type FleetOrder, type ShipLoadout, type ShipState } from './ShipDefinitions';
+import { COMBAT_BALANCE, clampShipProgressionLevel, getShipAccelerationMultiplier, getShipMassMultiplier, getShipProgressionScale, getShipSensorMultiplier, getShipSignatureMultiplier, getShipSpeedMultiplier, getShipTurnRateMultiplier, HULLS, MODULES, SHIP_PROGRESSION_BALANCE, TACTICAL_BALANCE, WEAPONS, type DamageType, type FleetOrder, type ShipLoadout, type ShipState } from './ShipDefinitions';
 
 export interface ShipSnapshot {
     id: string;
@@ -84,12 +84,21 @@ export class Ship {
     get maxEnergy() { return (this.definition.energyCapacity + this.modules.reduce((sum, module) => sum + (module.energyCapacityModifier || 0), 0)) * this.statScale; }
     get energyRecharge() { return (this.definition.energyRecharge + this.modules.reduce((sum, module) => sum + (module.energyRechargeModifier || 0), 0)) * this.statScale; }
     get maxFuelCapacity() { return this.definition.fuelCapacity * this.statScale; }
+    get maxAmmunition() { return this.definition.ammunition * this.statScale; }
+    get cargoCapacity() { return this.definition.cargo * this.statScale; }
+    get maxSpeed() { return SHIP_PROGRESSION_BALANCE.baseFleetSpeed * getShipSpeedMultiplier(this.sizeLevel, this.techLevel); }
+    get acceleration() { return getShipAccelerationMultiplier(this.sizeLevel, this.techLevel); }
+    get turnRate() { return getShipTurnRateMultiplier(this.sizeLevel, this.techLevel); }
+    get sensorRange() { return this.definition.sensorRange * getShipSensorMultiplier(this.sizeLevel, this.techLevel); }
+    get scanResolution() { return this.definition.scanResolution * getShipSensorMultiplier(this.sizeLevel, this.techLevel); }
+    get signature() { return this.definition.signature * Math.sqrt(Math.max(0.02, this.statScale)) * getShipSignatureMultiplier(this.sizeLevel, this.techLevel); }
+    get mass() { return this.definition.mass * getShipMassMultiplier(this.sizeLevel); }
     get integrity() { return this.hull / this.maxHull; }
     get effectiveHealth() { return Math.max(0, this.hull) + Math.max(0, this.armor) + Math.max(0, this.shield); }
     get maxEffectiveHealth() { return this.maxHull + this.maxArmor + this.maxShield; }
     get weaponDps() { return this.weapons.reduce((sum, weapon) => sum + weapon.damage / Math.max(0.1, weapon.cooldown), 0) * this.statScale; }
     /** Most ship output scales from the Size x Tech progression product. */
-    get progressionMultiplier() { return this.sizeLevel * this.techLevel; }
+    get progressionMultiplier() { return getShipProgressionScale(this.sizeLevel, this.techLevel); }
     /** Each size unit consumes one point of fleet command capacity. */
     get commandCost() { return this.sizeLevel; }
     get utilityRating() { return (this.role === 'support' || this.role === 'scout' ? 6 : this.role === 'defender' || this.role === 'flagship' ? 5 : 2) * this.statScale; }
@@ -181,8 +190,8 @@ export class Ship {
     }
 
     setProgression(sizeLevel: number, techLevel: number) {
-        this.sizeLevel = Math.max(1, Math.min(4, Math.floor(sizeLevel)));
-        this.techLevel = Math.max(1, Math.min(6, Math.floor(techLevel)));
+        this.sizeLevel = clampShipProgressionLevel(sizeLevel);
+        this.techLevel = clampShipProgressionLevel(techLevel);
     }
 
     restore(amount: number) { this.hull = Math.min(this.maxHull, this.hull + amount); }

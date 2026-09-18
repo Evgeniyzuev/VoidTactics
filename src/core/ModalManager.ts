@@ -6,6 +6,7 @@ import { getShopCommandCost, getShopShipStats, getShopSizeMultiplier, getShopTec
 import { ABILITY_EQUIPMENT_MARKET, type FleetAbilityId } from '../tactical/AbilityService';
 import type { StationServiceMode } from '../tactical/RepairService';
 import { TACTICAL_BALANCE } from '../tactical/ShipDefinitions';
+import { drawShipyardIcon } from '../renderer/ShipyardIcons';
 import { bindButtonAction } from '../utils/TouchButton';
 
 export interface TerraServiceQuoteView {
@@ -975,7 +976,7 @@ export class ModalManager {
     ) {
         this.closeModal();
         this.modalContainer = this.createOverlay();
-        const dialog = this.createDialog('ФЛОТ · ВЕРФЬ · НАВЫКИ', 760);
+        const dialog = this.createDialog('ФЛОТ · ВЕРФЬ · НАВЫКИ', 1180);
         const summary = document.createElement('div');
         summary.style.cssText = 'color:#ffd166;font:13px monospace;margin-bottom:12px';
         dialog.appendChild(summary);
@@ -1029,10 +1030,13 @@ export class ModalManager {
             shipTitle.style.cssText = 'color:#62d8ff;margin:18px 0 8px;font-size:14px';
             content.appendChild(shipTitle);
             const grid = document.createElement('div');
-            grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px';
+            grid.className = 'shipyard-grid';
+            const gridScroll = document.createElement('div');
+            gridScroll.className = 'shipyard-grid-scroll';
+            gridScroll.appendChild(grid);
             for (const ship of [...SHOP_SHIPS].sort((a, b) => a.rank - b.rank)) {
                 const card = document.createElement('div');
-                card.style.cssText = 'background:linear-gradient(145deg,rgba(30,64,92,.9),rgba(15,23,42,.96));border:1px solid rgba(98,216,255,.28);border-radius:9px;padding:10px;box-shadow:0 5px 14px rgba(0,0,0,.2)';
+                card.className = 'shipyard-card';
                 const commandCost = getShopCommandCost(ship);
                 const preview = getShopShipStats(ship);
                 const requirements = getShopRequirements(ship);
@@ -1044,17 +1048,25 @@ export class ModalManager {
                     return `<span style="display:inline-block;padding:2px 5px;margin:2px;border-radius:4px;background:${ready ? '#176b4d' : '#8b3030'};color:#fff">${skill} ${level}</span>`;
                 }).join('');
                 const can = missingSkills.length === 0 && state.money >= ship.price && state.commandUsed + commandCost <= state.commandCapacity;
-                card.title = `Size ${commandCost} · Tech ${getShopTechMultiplier(ship.techRequired)} · Command ${commandCost}`;
+                card.title = `Size ${commandCost} · Tech ${getShopTechMultiplier(ship.techRequired)} · Command ${commandCost}\n` +
+                    `DPS ${Math.round(preview.dps)} · Hull ${Math.round(preview.hull)} · Armor ${Math.round(preview.armor)} · Shield ${Math.round(preview.shield)}\n` +
+                    `Energy ${Math.round(preview.energy)} (+${preview.energyRecharge.toFixed(1)}/s) · Speed ${Math.round(preview.speed)} · Acc ${preview.acceleration.toFixed(2)} · Turn ${preview.turnRate.toFixed(2)}\n` +
+                    `Fuel ${Math.round(preview.fuel)} · Cargo ${Math.round(preview.cargo)} · Ammo ${Math.round(preview.ammunition)} · Sensor ${Math.round(preview.sensorRange)} · Signature ${preview.signature.toFixed(1)} · Mass ${Math.round(preview.mass)}`;
                 const reason = missingSkills.length > 0 ? `Нужны навыки: ${missingSkills.join(', ')}` : state.commandUsed + commandCost > state.commandCapacity ? 'Не хватает command' : state.money < ship.price ? 'Не хватает кредитов' : 'Недоступно';
-                card.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><b style="color:#f8fafc">${ship.name}</b><span style="color:#62d8ff">R${ship.rank}</span></div><small style="display:block;color:#a8dadc;margin-top:3px">${ship.role} · ${ship.size}</small><div style="display:flex;justify-content:space-between;align-items:baseline;margin:7px 0"><b style="font-size:18px;color:#ffd166">$${formatNumber(ship.price)}</b><b style="font-size:16px;color:#f8fafc">Threat ${Math.round(preview.threat)}</b></div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;color:#c8d5e2;font-size:10px;text-align:center"><span>DPS<br/><b>${Math.round(preview.dps)}</b></span><span>Shield<br/><b>${Math.round(preview.shield)}</b></span><span>Armor<br/><b>${Math.round(preview.armor)}</b></span><span>Hull<br/><b>${Math.round(preview.hull)}</b></span></div><div style="margin-top:7px;font-size:10px">${requirementChips || '<span style="color:#74c69d">Без требований навыков</span>'}</div><small style="display:block;color:#94a3b8;margin-top:4px">Size×${getShopSizeMultiplier(ship.sizeRequired)} · Tech×${getShopTechMultiplier(ship.techRequired)} = ×${getShopMultiplier(ship)}</small>`;
+                card.innerHTML = `<div class="shipyard-card-visual"><canvas width="88" height="96" aria-label="${ship.name}"></canvas><div class="shipyard-role">${ship.role}</div></div><div class="shipyard-card-body"><div class="shipyard-card-heading"><b>${ship.name}</b><span>R${ship.rank}</span></div><div class="shipyard-price"><b>$${formatNumber(ship.price)}</b><span>T ${Math.round(preview.threat)}</span></div><div class="shipyard-stat-grid"><span>DMG <b>${Math.round(preview.dps)}</b></span><span>HP <b>${Math.round(preview.hull)}</b></span><span>AR <b>${Math.round(preview.armor)}</b></span><span>SH <b>${Math.round(preview.shield)}</b></span><span>EN <b>${Math.round(preview.energy)}</b></span><span>REGEN <b>${preview.energyRecharge.toFixed(0)}</b></span><span>SPD <b>${Math.round(preview.speed)}</b></span><span>FUEL <b>${Math.round(preview.fuel)}</b></span><span>CARGO <b>${Math.round(preview.cargo)}</b></span><span>CMD <b>${preview.commandCost}</b></span></div><div class="shipyard-requirements">${requirementChips || '<span class="shipyard-ready">READY</span>'}</div><small class="shipyard-scale">S${getShopSizeMultiplier(ship.sizeRequired)} · T${getShopTechMultiplier(ship.techRequired)} · ×${getShopMultiplier(ship)}</small></div>`;
+                const icon = card.querySelector('canvas');
+                if (icon) {
+                    const iconContext = icon.getContext('2d');
+                    if (iconContext) drawShipyardIcon(iconContext, { sizeLevel: commandCost, techLevel: getShopTechMultiplier(ship.techRequired), role: ship.role });
+                }
                 const progression = document.createElement('small');
-                progression.textContent = `Size ${commandCost} · Tech ${getShopTechMultiplier(ship.techRequired)} · Command ${commandCost} · Stats ×${getShopMultiplier(ship)}`;
-                progression.style.cssText = 'display:block;color:#9edfff;margin-top:5px;font-size:10px';
-                card.appendChild(progression);
+                progression.textContent = `Size ${commandCost} · Tech ${getShopTechMultiplier(ship.techRequired)} · Command ${commandCost}`;
+                progression.className = 'shipyard-progression';
+                card.querySelector('.shipyard-card-body')?.appendChild(progression);
                 const buy = this.makeButton(can ? 'Купить' : reason, can ? '#167c80' : '#334155', () => { if (onBuy(ship.id)) update(); });
-                buy.disabled = !can; buy.style.opacity = can ? '1' : '0.55'; buy.style.width = '100%'; card.appendChild(buy); grid.appendChild(card);
+                buy.disabled = !can; buy.style.opacity = can ? '1' : '0.55'; buy.style.width = '100%'; buy.className += ' shipyard-buy'; card.querySelector('.shipyard-card-body')?.appendChild(buy); grid.appendChild(card);
             }
-            content.appendChild(grid);
+            content.appendChild(gridScroll);
         };
         update();
         dialog.appendChild(this.makeButton('Закрыть', '#475569', () => { onClose(); this.closeModal(); }));

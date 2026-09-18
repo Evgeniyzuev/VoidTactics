@@ -120,8 +120,6 @@ interface ObserverState {
     lastUpdateAt: number;
 }
 
-type FutureHullDefinition = Fleet['ships'][number]['definition'] & { scanResolution?: number };
-
 function clamp(value: number, minimum: number, maximum: number) {
     return Math.min(maximum, Math.max(minimum, value));
 }
@@ -219,12 +217,11 @@ export class SensorService {
             const sensorDamageMultiplier = ship.damagedSystems.includes('sensors')
                 ? this.config.damagedSensorMultiplier
                 : 1;
-            const shipSensorRange = (ship.definition.sensorRange + moduleSensorBonus) * sensorDamageMultiplier;
+            const shipSensorRange = (ship.sensorRange + moduleSensorBonus) * sensorDamageMultiplier;
             sensorRange = Math.max(sensorRange, shipSensorRange);
 
-            const definition = ship.definition as FutureHullDefinition;
-            const baseResolution = definition.scanResolution
-                ?? shipSensorRange / this.config.scanResolutionRangeDivisor;
+            const baseResolution = ship.scanResolution
+                || shipSensorRange / this.config.scanResolutionRangeDivisor;
             const commandMultiplier = ship.damagedSystems.includes('command')
                 ? this.config.damagedCommandScanMultiplier
                 : 1;
@@ -252,7 +249,7 @@ export class SensorService {
             1 - this.config.sensorSkillSignaturePerLevel * skillLevel
         );
         const signature = activeShips.reduce((sum, ship) => (
-            sum + ship.definition.signature * Math.sqrt(Math.max(0.02, ship.statScale))
+            sum + ship.signature
         ), 0) * signatureSkillMultiplier * signatureMultiplier;
 
         return {

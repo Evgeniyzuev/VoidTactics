@@ -9,6 +9,7 @@ import { SensorService } from '../src/tactical/SensorService';
 import { RepairService } from '../src/tactical/RepairService';
 import { Ship } from '../src/tactical/Ship';
 import { TACTICAL_BALANCE, WEAPONS } from '../src/tactical/ShipDefinitions';
+import { getShopRequirements, getShopShipStats, SHOP_SHIPS } from '../src/tactical/FleetGenerator';
 import { getFleetLootProfile, rollFleetLoot } from '../src/tactical/LootBalance';
 import { Vector2 } from '../src/utils/Vector2';
 
@@ -36,6 +37,38 @@ function createGameStub(player: Fleet) {
 }
 
 describe('ship progression and fleet stances', () => {
+    it('builds the complete 10 by 10 shipyard progression matrix', () => {
+        expect(SHOP_SHIPS).toHaveLength(100);
+        expect(new Set(SHOP_SHIPS.map(ship => ship.id)).size).toBe(100);
+
+        const first = SHOP_SHIPS.find(ship => ship.id === 'ship-s1-t1')!;
+        const sameSizeTech10 = SHOP_SHIPS.find(ship => ship.id === 'ship-s1-t10')!;
+        const size10Tech1 = SHOP_SHIPS.find(ship => ship.id === 'ship-s10-t1')!;
+        const last = SHOP_SHIPS.find(ship => ship.id === 'ship-s10-t10')!;
+
+        expect(getShopShipStats(first).commandCost).toBe(1);
+        expect(getShopShipStats(last).commandCost).toBe(10);
+        expect(getShopShipStats(sameSizeTech10).dps).toBeGreaterThan(getShopShipStats(first).dps);
+        expect(getShopShipStats(size10Tech1).hull).toBeGreaterThan(getShopShipStats(first).hull);
+        expect(getShopShipStats(last).energy).toBeGreaterThan(getShopShipStats(size10Tech1).energy);
+        expect(getShopShipStats(size10Tech1).hull).toBeGreaterThan(getShopShipStats(SHOP_SHIPS.find(ship => ship.id === 'ship-s9-t1')!).hull);
+        expect(getShopShipStats(last).hull).toBeGreaterThan(getShopShipStats(SHOP_SHIPS.find(ship => ship.id === 'ship-s9-t10')!).hull);
+        expect(last.price).toBeGreaterThan(first.price);
+        expect(getShopRequirements(first)).toEqual({ size: 1, tech: 1 });
+        expect(getShopRequirements(last)).toEqual({ size: 10, tech: 10 });
+    });
+
+    it('accepts Size and Tech ten without changing the progression product', () => {
+        const ship = new Ship({ hullId: 'lance', weaponIds: ['pulse'], moduleIds: [] });
+        ship.setProgression(10, 10);
+
+        expect(ship.sizeLevel).toBe(10);
+        expect(ship.techLevel).toBe(10);
+        expect(ship.progressionMultiplier).toBe(100);
+        expect(ship.commandCost).toBe(10);
+        expect(ship.maxSpeed).toBeGreaterThan(500 / 2);
+    });
+
     it('scales ship output by Size x Tech while command cost follows Size', () => {
         const ship = new Ship({ hullId: 'lance', weaponIds: ['pulse'], moduleIds: [] });
         const baseHull = ship.maxHull;

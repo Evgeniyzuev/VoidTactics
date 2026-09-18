@@ -183,6 +183,28 @@ button {
 .order-bar button:hover,.doctrine-bar button:hover,.doctrine-bar button.active { background:#183449; color:white; border-color:#76d5ff; }
 .entity-tooltip { max-width:calc(100vw - 16px); box-sizing:border-box; }
 .entity-action-btn { min-width:44px; min-height:44px; touch-action:manipulation; user-select:none; -webkit-user-select:none; }
+.shipyard-grid-scroll { width:100%; overflow-x:auto; overflow-y:visible; padding-bottom:6px; }
+.shipyard-grid { display:grid; grid-template-columns:repeat(10,minmax(104px,1fr)); gap:6px; min-width:1060px; }
+.shipyard-card { display:flex; flex-direction:column; min-width:0; min-height:300px; padding:6px; border:1px solid rgba(98,216,255,.28); border-radius:8px; background:linear-gradient(145deg,rgba(20,52,76,.92),rgba(8,18,31,.98)); box-shadow:0 5px 14px rgba(0,0,0,.22); color:#dcecff; }
+.shipyard-card:hover { border-color:rgba(118,235,255,.78); background:linear-gradient(145deg,rgba(28,73,99,.96),rgba(8,20,34,.98)); }
+.shipyard-card-visual { display:flex; flex-direction:column; align-items:center; min-height:118px; color:#89dff4; }
+.shipyard-card-visual canvas { display:block; width:88px; height:96px; image-rendering:auto; }
+.shipyard-role { color:#8daabd; font-size:8px; letter-spacing:.08em; text-transform:uppercase; }
+.shipyard-card-body { display:flex; flex:1; flex-direction:column; min-width:0; }
+.shipyard-card-heading,.shipyard-price { display:flex; justify-content:space-between; align-items:baseline; gap:4px; min-width:0; }
+.shipyard-card-heading { color:#f5fbff; font-size:10px; }
+.shipyard-card-heading b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.shipyard-card-heading span { color:#62d8ff; font-size:9px; }
+.shipyard-price { margin:5px 0; color:#ffd166; font-size:12px; }
+.shipyard-price span { color:#c4d7e3; font-size:9px; }
+.shipyard-stat-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:2px 4px; color:#8faabd; font-size:8px; line-height:1.15; }
+.shipyard-stat-grid span { display:flex; justify-content:space-between; gap:2px; white-space:nowrap; }
+.shipyard-stat-grid b { color:#e8f7ff; font-weight:700; }
+.shipyard-requirements { min-height:18px; margin-top:5px; overflow:hidden; color:#c8d5e2; font-size:8px; line-height:1.2; }
+.shipyard-requirements span { font-size:8px !important; }
+.shipyard-ready { color:#74c69d; }
+.shipyard-scale,.shipyard-progression { display:block; margin-top:4px; color:#9edfff; font-size:8px; line-height:1.2; }
+.shipyard-buy { width:100% !important; min-height:38px !important; margin-top:6px; padding:5px 3px !important; font-size:9px !important; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 @media(max-width:700px) {
   #fleet-panel { width:calc(100vw - 24px); bottom:64px; padding:6px; max-height:min(42vh, 330px); box-sizing:border-box; }
   #fleet-panel.collapsed { width:48px; height:48px; padding:0; }
@@ -253,6 +275,13 @@ button {
   color: #d8f6ff;
   font: 10px ui-monospace, monospace;
   pointer-events: auto;
+}
+@media(max-width:900px) {
+  .shipyard-grid { grid-template-columns:repeat(4,minmax(140px,1fr)); min-width:0; }
+}
+@media(max-width:600px) {
+  .shipyard-grid { grid-template-columns:repeat(2,minmax(135px,1fr)); gap:5px; }
+  .shipyard-card { min-height:294px; }
 }
 #resource-strip #strength-display {
   min-width: 0;

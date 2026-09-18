@@ -22,7 +22,7 @@ import { MilitaryStation } from '../entities/MilitaryStation';
 import { Ship } from '../tactical/Ship';
 import { RepairService, type StationServiceMode } from '../tactical/RepairService';
 import { WorldEvent } from '../entities/WorldEvent';
-import { FleetGenerator, getShopMultiplier, getShopRequirements, getShopSizeLevel, getShopTechLevel, SHOP_SHIPS } from '../tactical/FleetGenerator';
+import { FleetGenerator, getShopRequirements, getShopSizeLevel, getShopStatScale, getShopTechLevel, SHOP_SHIPS } from '../tactical/FleetGenerator';
 import { CombatEffects } from '../renderer/CombatEffects';
 import { COMBAT_BALANCE, TACTICAL_BALANCE, type DamageType } from '../tactical/ShipDefinitions';
 import { bindButtonAction } from '../utils/TouchButton';
@@ -1987,7 +1987,7 @@ export class Game {
                 shipCount: fleet.ships.length,
                 commandCost: fleet.ships.reduce((sum, ship) => sum + ship.commandCost, 0),
                 fuelCapacity: fleet.ships.reduce((sum, ship) => sum + ship.maxFuelCapacity, 0),
-                cargoCapacity: fleet.ships.reduce((sum, ship) => sum + ship.definition.cargo * ship.statScale, 0)
+            cargoCapacity: fleet.ships.reduce((sum, ship) => sum + ship.cargoCapacity, 0)
             });
             if (loot.fuel > 0) {
                 this.spawnResourceCrate(fleet.position.x + 18, fleet.position.y, loot.fuel, 0);
@@ -2650,7 +2650,7 @@ export class Game {
                 if (Object.entries(requirements).some(([skill, level]) => this.playerFleet.getSkillLevel(skill as FleetSkillId) < (level || 0))) return false;
                 const ship = new Ship({ ...offer.loadout, weaponIds: [...offer.loadout.weaponIds], moduleIds: [...offer.loadout.moduleIds] });
                 ship.setProgression(getShopSizeLevel(offer), getShopTechLevel(offer));
-                ship.setStatScale(getShopMultiplier(offer));
+                ship.setStatScale(getShopStatScale(offer));
                 ship.variantName = offer.name;
                 ship.purchasePrice = offer.price;
                 if (this.playerFleet.money < offer.price || this.playerFleet.commandUsed + ship.commandCost > this.playerFleet.commandCapacity) return false;
@@ -2903,7 +2903,6 @@ export class Game {
         }
         this.combatEffects.draw(ctx, this.camera);
         this.drawTacticalRadar(ctx);
-        this.drawPlayerReticle(ctx);
 
         // Threat rings are deliberately separate from the ship silhouette:
         // hull shape communicates role, ring color communicates danger.
@@ -3223,28 +3222,6 @@ export class Game {
         ctx.font = '9px ui-monospace, monospace';
         ctx.textAlign = 'right';
         ctx.fillText(`SCOPE ${Math.round(profile.sensorRange)}`, cx + radius, cy + radius + 17);
-        ctx.restore();
-    }
-
-    private drawPlayerReticle(ctx: CanvasRenderingContext2D) {
-        const screen = this.camera.worldToScreen(this.playerFleet.position);
-        const { width, height } = this.renderer.getDimensions();
-        if (screen.x < -40 || screen.x > width + 40 || screen.y < -40 || screen.y > height + 40) return;
-        const pulse = 0.5 + Math.sin(this.gameClock * 2.4) * 0.15;
-        const radius = 18 + Math.sin(this.gameClock * 1.7) * 2;
-        ctx.save();
-        ctx.translate(screen.x, screen.y);
-        ctx.strokeStyle = `rgba(151, 240, 255, ${pulse})`;
-        ctx.lineWidth = 1.2;
-        ctx.lineCap = 'square';
-        for (let i = 0; i < 4; i++) {
-            ctx.rotate(Math.PI / 2);
-            ctx.beginPath();
-            ctx.moveTo(-radius, -radius * 0.45); ctx.lineTo(-radius, -radius); ctx.lineTo(-radius * 0.45, -radius);
-            ctx.stroke();
-        }
-        ctx.fillStyle = 'rgba(216, 250, 255, .95)';
-        ctx.beginPath(); ctx.arc(0, 0, 1.5, 0, Math.PI * 2); ctx.fill();
         ctx.restore();
     }
 

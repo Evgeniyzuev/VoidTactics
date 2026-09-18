@@ -163,6 +163,20 @@ export class Fleet extends Entity {
     public get maximumThreatRating() { return this.ships.reduce((sum, ship) => sum + ship.maxCombatRating, 0); }
     public get threatRating() { return this.baseThreatRating * this.readinessEfficiency; }
     public get commandUsed() { return this.ships.filter(ship => ship.state !== 'destroyed').reduce((sum, ship) => sum + ship.commandCost, 0); }
+    public get accelerationMultiplier() {
+        const active = this.ships.filter(ship => ship.alive);
+        return active.length > 0
+            ? active.reduce((sum, ship) => sum + ship.acceleration * ship.commandCost, 0)
+                / Math.max(1, active.reduce((sum, ship) => sum + ship.commandCost, 0))
+            : 1;
+    }
+    public get turnRateMultiplier() {
+        const active = this.ships.filter(ship => ship.alive);
+        return active.length > 0
+            ? active.reduce((sum, ship) => sum + ship.turnRate * ship.commandCost, 0)
+                / Math.max(1, active.reduce((sum, ship) => sum + ship.commandCost, 0))
+            : 1;
+    }
     /** One shared pool for afterburner, bubble, cloak, mine and all other systems. */
     public get abilityChargeCapacity() {
         return ABILITY_CHARGE_BALANCE.baseCapacity
@@ -215,7 +229,7 @@ export class Fleet extends Entity {
     private get baseSupplyCapacity() {
         const cargo = this.ships
             .filter(ship => ship.state !== 'destroyed')
-            .reduce((sum, ship) => sum + ship.definition.cargo * ship.statScale, 0);
+            .reduce((sum, ship) => sum + ship.cargoCapacity, 0);
         // Ten units of ship cargo form one shared supply unit. A new fleet
         // always starts with at least five supplies and scales with cargo.
         return Math.max(5, Math.ceil(cargo / 10) + this.skills.logistics * 10);
@@ -244,7 +258,7 @@ export class Fleet extends Entity {
     }
     public get signature() {
         let signature = this.ships.filter(ship => ship.alive)
-            .reduce((sum, ship) => sum + ship.definition.signature * Math.sqrt(Math.max(0.02, ship.statScale)), 0);
+            .reduce((sum, ship) => sum + ship.signature, 0);
         signature *= Math.max(0.6, 1 - this.skills.sensors * 0.08);
         if (this.isCloaked) signature *= 0.25;
         if (this.abilities.afterburner.active) signature *= TACTICAL_BALANCE.afterburnerSignatureMultiplier;
@@ -366,6 +380,15 @@ export class Fleet extends Entity {
     public get flagship() { return this.ships.find(ship => ship.role === 'flagship' && ship.alive) || this.ships.find(ship => ship.alive); }
 
     private refreshFleetState(dt = 0) {
+        if (!this.isStation) {
+            const active = this.ships.filter(ship => ship.alive);
+            if (active.length > 0) {
+                const command = Math.max(1, active.reduce((sum, ship) => sum + ship.commandCost, 0));
+                this.maxSpeed = active.reduce((sum, ship) => sum + ship.maxSpeed * ship.commandCost, 0) / command;
+            } else {
+                this.maxSpeed = 0;
+            }
+        }
         const defenders = this.ships.filter(ship => ship.alive && ship.role === 'defender' && ship.order.type === 'protect').length;
         const cap = defenders * (3 + this.skills.tactics);
         this.interceptCharges = Math.min(cap, this.interceptCharges + defenders * (0.75 + this.skills.tactics * 0.15) * dt);
@@ -659,7 +682,7 @@ export class Fleet extends Entity {
 
                 // Lower steering response makes acceleration, braking and
                 // direction changes take roughly twice as long as before.
-                let responsiveness = TACTICAL_BALANCE.fleetSteeringResponse;
+                let responsiveness = TACTICAL_BALANCE.fleetSteeringResponse * this.accelerationMultiplier;
                 if (this.abilities.afterburner.active) responsiveness *= 1.25;
                 // Critically damped steering: frame-rate independent and
                 // visually smooth when a fleet changes course or speed.
@@ -701,7 +724,7 @@ export class Fleet extends Entity {
         if (this.velocity.mag() > 1) {
             const desiredAngle = Math.atan2(this.velocity.y, this.velocity.x);
             const delta = Math.atan2(Math.sin(desiredAngle - this.rotation), Math.cos(desiredAngle - this.rotation));
-            const turnResponse = 1 - Math.exp(-9 * Math.max(0, dt));
+            const turnResponse = 1 - Math.exp(-9 * this.turnRateMultiplier * Math.max(0, dt));
             this.rotation += delta * turnResponse;
         }
     }

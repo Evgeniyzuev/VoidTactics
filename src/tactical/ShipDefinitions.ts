@@ -90,6 +90,76 @@ export const TACTICAL_BALANCE = {
     salvageExperienceMultiplier: 0.05
 } as const;
 
+/**
+ * Shared progression math for the shipyard and live ships. Size is physical
+ * scale/command burden; Tech is efficiency and systems maturity. Heavy
+ * attributes use the Size x Tech product, while mobility and signature use
+ * deliberately softer curves so a large hull does not become an absurdly
+ * fast scout.
+ */
+export const SHIP_PROGRESSION_BALANCE = {
+    maxLevel: 10,
+    baseFleetSpeed: 500,
+    techSpeedPerLevel: 0.035,
+    sizeSpeedPenaltyPerLevel: 0.045,
+    techAccelerationPerLevel: 0.04,
+    sizeAccelerationPenaltyPerLevel: 0.06,
+    techTurnRatePerLevel: 0.03,
+    sizeTurnRatePenaltyPerLevel: 0.05,
+    techSensorPerLevel: 0.05,
+    sizeSensorPerLevel: 0.012,
+    sizeSignaturePerLevel: 0.04,
+    techSignatureReductionPerLevel: 0.02,
+    sizeMassPerLevel: 0.18
+} as const;
+
+export function clampShipProgressionLevel(level: number): number {
+    return Math.max(1, Math.min(SHIP_PROGRESSION_BALANCE.maxLevel, Math.floor(level)));
+}
+
+export function getShipProgressionScale(sizeLevel: number, techLevel: number): number {
+    return clampShipProgressionLevel(sizeLevel) * clampShipProgressionLevel(techLevel);
+}
+
+export function getShipSpeedMultiplier(sizeLevel: number, techLevel: number): number {
+    const size = clampShipProgressionLevel(sizeLevel);
+    const tech = clampShipProgressionLevel(techLevel);
+    return (1 + (tech - 1) * SHIP_PROGRESSION_BALANCE.techSpeedPerLevel)
+        / (1 + (size - 1) * SHIP_PROGRESSION_BALANCE.sizeSpeedPenaltyPerLevel);
+}
+
+export function getShipAccelerationMultiplier(sizeLevel: number, techLevel: number): number {
+    const size = clampShipProgressionLevel(sizeLevel);
+    const tech = clampShipProgressionLevel(techLevel);
+    return (1 + (tech - 1) * SHIP_PROGRESSION_BALANCE.techAccelerationPerLevel)
+        / (1 + (size - 1) * SHIP_PROGRESSION_BALANCE.sizeAccelerationPenaltyPerLevel);
+}
+
+export function getShipTurnRateMultiplier(sizeLevel: number, techLevel: number): number {
+    const size = clampShipProgressionLevel(sizeLevel);
+    const tech = clampShipProgressionLevel(techLevel);
+    return (1 + (tech - 1) * SHIP_PROGRESSION_BALANCE.techTurnRatePerLevel)
+        / (1 + (size - 1) * SHIP_PROGRESSION_BALANCE.sizeTurnRatePenaltyPerLevel);
+}
+
+export function getShipSensorMultiplier(sizeLevel: number, techLevel: number): number {
+    const size = clampShipProgressionLevel(sizeLevel);
+    const tech = clampShipProgressionLevel(techLevel);
+    return (1 + (tech - 1) * SHIP_PROGRESSION_BALANCE.techSensorPerLevel)
+        * (1 + (size - 1) * SHIP_PROGRESSION_BALANCE.sizeSensorPerLevel);
+}
+
+export function getShipSignatureMultiplier(sizeLevel: number, techLevel: number): number {
+    const size = clampShipProgressionLevel(sizeLevel);
+    const tech = clampShipProgressionLevel(techLevel);
+    return (1 + (size - 1) * SHIP_PROGRESSION_BALANCE.sizeSignaturePerLevel)
+        / (1 + (tech - 1) * SHIP_PROGRESSION_BALANCE.techSignatureReductionPerLevel);
+}
+
+export function getShipMassMultiplier(sizeLevel: number): number {
+    return 1 + (clampShipProgressionLevel(sizeLevel) - 1) * SHIP_PROGRESSION_BALANCE.sizeMassPerLevel;
+}
+
 export interface FleetDoctrine {
     targetPriority: TargetPriority;
     preferredRange: 'close' | 'balanced' | 'long';
