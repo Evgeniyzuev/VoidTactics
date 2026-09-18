@@ -121,7 +121,7 @@ export class Attack {
                     * (overcharged ? TACTICAL_BALANCE.overchargeEnergyMultiplier : 1)
                     * (this.attacker.assaultMode ? TACTICAL_BALANCE.assaultEnergyCostMultiplier : 1);
                 if (!ship.spendEnergy(energyPerSecond * dt)) continue;
-                let damage = weapon.damage * ship.statScale / Math.max(0.1, weapon.cooldown) * COMBAT_BALANCE.damageScale * dt * weaponsPenalty * this.attacker.readinessEfficiency * volleyEnergyEfficiency;
+                let damage = weapon.damage * ship.statScale / Math.max(0.1, weapon.cooldown) * COMBAT_BALANCE.damageScale * (this.attacker.isStation ? 1 : COMBAT_BALANCE.fleetDamageMultiplier) * dt * weaponsPenalty * this.attacker.readinessEfficiency * volleyEnergyEfficiency;
                 if (overcharged) damage *= TACTICAL_BALANCE.overchargeDamageMultiplier;
                 if (this.attacker.assaultMode) damage *= TACTICAL_BALANCE.assaultDamageMultiplier;
                 if (usesAmmo) ship.ammunition = Math.max(0, ship.ammunition - dt / Math.max(0.1, weapon.cooldown) * 0.05);

@@ -6,6 +6,8 @@ export type ShipState = 'active' | 'disabled' | 'destroyed';
 
 export const COMBAT_BALANCE = {
     damageScale: 0.55,
+    /** Extra damage dealt by mobile fleets; stations keep the base scale. */
+    fleetDamageMultiplier: 1.0,
     hullRewardMultiplier: 3,
     hullThreatWeight: 0.24,
     offenseThreatWeight: 0.35,
@@ -67,6 +69,7 @@ export const TACTICAL_BALANCE = {
     netSpeedMultiplier: 0.5,
     netDuration: 5,
     netCooldown: 10,
+    warpMineDamageMultiplier: 1,
     fieldHullPerSupply: 5,
     fieldArmorPerSupply: 4,
     ammunitionPerSupply: 20,

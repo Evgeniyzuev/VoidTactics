@@ -2049,7 +2049,8 @@ export class Game {
                 // and was granted a one-use response against the aggressor.
                 const targetAlreadyInFight = target.activeBattle !== null || target.currentTarget !== null;
                 const witnessResponse = attacker.witnessedAggressors.has(target);
-                if (targetAlreadyInFight && !witnessResponse) continue;
+                const explicitPlayerEngagement = attacker.isPlayer && attacker.followTarget === target;
+                if (targetAlreadyInFight && !witnessResponse && !explicitPlayerEngagement) continue;
 
                 const baseTriggerDist = attacker.attackRadius;
 
@@ -2058,7 +2059,13 @@ export class Game {
                 // Start NEW attack if hostile and not attacking
                 if (target.isCloaked) continue;
                 if (this.aiController.isHostile(attacker, target)) {
-                    const hasSensorSolution = this.sensors.canAttack(attacker, target) || target.currentTarget === attacker;
+                    // At weapon distance the fleet has a direct tactical
+                    // solution even if the strategic sensor contact is still
+                    // only a blip. This prevents fast passes from disabling
+                    // automatic attacks; sensors still gate long-range pursuit.
+                    const hasSensorSolution = this.sensors.canAttack(attacker, target)
+                        || dist <= baseTriggerDist
+                        || target.currentTarget === attacker;
                     if (!hasSensorSolution) continue;
                     let triggerDist = baseTriggerDist;
                     if (attacker.followTarget === target) triggerDist = baseTriggerDist * 2; // Double for following
@@ -2360,7 +2367,7 @@ export class Game {
                 }), { shield: 0, maxShield: 0, armor: 0, maxArmor: 0, hull: 0, maxHull: 0 });
                 const damage = fleet.ships
                     .filter(ship => ship.alive && ship.order.type !== 'repair')
-                    .reduce((sum, ship) => sum + ship.weaponDps * (ship.overchargeTimer > 0 ? TACTICAL_BALANCE.overchargeDamageMultiplier : 1), 0) * fleet.readinessEfficiency * fleet.energyEfficiency * (fleet.assaultMode ? TACTICAL_BALANCE.assaultDamageMultiplier : 1) * COMBAT_BALANCE.damageScale;
+                    .reduce((sum, ship) => sum + ship.weaponDps * (ship.overchargeTimer > 0 ? TACTICAL_BALANCE.overchargeDamageMultiplier : 1), 0) * fleet.readinessEfficiency * fleet.energyEfficiency * (fleet.assaultMode ? TACTICAL_BALANCE.assaultDamageMultiplier : 1) * COMBAT_BALANCE.damageScale * (fleet.isStation ? 1 : COMBAT_BALANCE.fleetDamageMultiplier);
                 info += `<span style="color:#ffb86b">Damage: ${formatNumber(Math.round(damage))} DPS</span><br/>`;
                 info += `<span style="color:#66ccff">Shield: ${formatNumber(Math.ceil(defenses.shield))} / ${formatNumber(Math.ceil(defenses.maxShield))}</span><br/>`;
                 info += `<span style="color:#d6b26e">Armor: ${formatNumber(Math.ceil(defenses.armor))} / ${formatNumber(Math.ceil(defenses.maxArmor))}</span><br/>`;

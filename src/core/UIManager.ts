@@ -395,7 +395,7 @@ export class UIManager {
     private updateFleetSummary(fleet: Fleet, active = fleet.ships.filter(ship => ship.state === 'active').length, disabled = fleet.ships.filter(ship => ship.state === 'disabled').length) {
         const summary = this.fleetPanel.querySelector('.fleet-summary');
         if (!summary) return;
-        const dps = fleet.ships.filter(ship => ship.alive && ship.order.type !== 'repair').reduce((sum, ship) => sum + ship.weaponDps * fleet.readinessEfficiency * fleet.energyEfficiency * COMBAT_BALANCE.damageScale * (fleet.assaultMode ? TACTICAL_BALANCE.assaultDamageMultiplier : 1) * (ship.overchargeTimer > 0 ? TACTICAL_BALANCE.overchargeDamageMultiplier : 1), 0);
+        const dps = fleet.ships.filter(ship => ship.alive && ship.order.type !== 'repair').reduce((sum, ship) => sum + ship.weaponDps * fleet.readinessEfficiency * fleet.energyEfficiency * COMBAT_BALANCE.damageScale * (fleet.isStation ? 1 : COMBAT_BALANCE.fleetDamageMultiplier) * (fleet.assaultMode ? TACTICAL_BALANCE.assaultDamageMultiplier : 1) * (ship.overchargeTimer > 0 ? TACTICAL_BALANCE.overchargeDamageMultiplier : 1), 0);
         const energy = Math.ceil(fleet.totalEnergy);
         const maxEnergy = Math.ceil(fleet.maxEnergy);
         const selected = fleet.ships.find(ship => ship.id === fleet.selectedShipId);
