@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AIController } from '../src/core/AIController';
-import type { Game } from '../src/core/Game';
+import { Game } from '../src/core/Game';
 import { Fleet } from '../src/entities/Fleet';
+import { SensorService } from '../src/tactical/SensorService';
 
 function createGame(player: Fleet, npcs: Fleet[]) {
     return {
@@ -60,5 +61,27 @@ describe('lawful combat witnesses', () => {
 
         expect(witness.witnessedAggressors.has(attacker)).toBe(false);
         expect(controller.isHostile(witness, attacker)).toBe(false);
+    });
+
+    it('lets the player fire at a hostile fleet in attack radius even if that fleet is already fighting', () => {
+        const player = new Fleet(0, 0, '#fff', true);
+        const pirate = new Fleet(100, 0, '#f55');
+        pirate.faction = 'pirate';
+        const civilian = new Fleet(300, 0, '#fff');
+        civilian.faction = 'civilian';
+        pirate.currentTarget = civilian;
+
+        const game = Object.create(Game.prototype) as Game & Record<string, any>;
+        game.playerFleet = player;
+        game.npcFleets = [pirate, civilian];
+        game.attacks = [];
+        game.sensors = new SensorService();
+        game.aiController = new AIController(game);
+
+        (game as any).processCombat(0.016);
+
+        expect(game.attacks).toHaveLength(1);
+        expect(game.attacks[0].attacker).toBe(player);
+        expect(game.attacks[0].target).toBe(pirate);
     });
 });

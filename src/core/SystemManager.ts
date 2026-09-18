@@ -7,6 +7,11 @@ import { FleetGenerator } from '../tactical/FleetGenerator';
 import { SECTOR_NODES, getSectorSeed, type SectorNode } from './Expedition';
 import { MilitaryStation } from '../entities/MilitaryStation';
 
+/** Shared world-space scale for the local system map. */
+export const SYSTEM_SPACE_SCALE = 0.5;
+
+const scaleSpace = (value: number) => value * SYSTEM_SPACE_SCALE;
+
 export interface SpawnRules {
     targetFleetCount: number;
     factionWeights: { type: Faction, weight: number }[];
@@ -133,7 +138,7 @@ export class SystemManager {
         const planetCount = 2 + (node.systemId % 3);
         for (let index = 0; index < planetCount; index++) {
             const angle = random() * Math.PI * 2;
-            const distance = 500 + index * 520 + random() * 180;
+            const distance = scaleSpace(500 + index * 520 + random() * 180);
             const radius = 20 + random() * 28;
             const colors = ['#38BDF8', '#F59E0B', '#A78BFA', '#34D399', '#F87171'];
             entities.push(new CelestialBody(
@@ -147,7 +152,7 @@ export class SystemManager {
 
         for (let index = 0; index < 18 + node.dangerTier * 2; index++) {
             const angle = random() * Math.PI * 2;
-            const distance = 1900 + random() * 2600;
+            const distance = scaleSpace(1900 + random() * 2600);
             entities.push(new CelestialBody(
                 Math.cos(angle) * distance,
                 Math.sin(angle) * distance,
@@ -157,14 +162,14 @@ export class SystemManager {
             ));
         }
 
-        entities.push(new CelestialBody(-650, 700, 18, node.safeHarbor ? '#32CD32' : '#EF4444', `${node.name} Outpost`));
+        entities.push(new CelestialBody(scaleSpace(-650), scaleSpace(700), 18, node.safeHarbor ? '#32CD32' : '#EF4444', `${node.name} Outpost`));
         node.connections.forEach((neighborId, index) => {
             const neighbor = SECTOR_NODES.find(candidate => candidate.id === neighborId);
             if (!neighbor) return;
             const angle = (index / Math.max(1, node.connections.length)) * Math.PI * 2 - Math.PI / 2;
             entities.push(new WarpGate(
-                Math.cos(angle) * 3500,
-                Math.sin(angle) * 3500,
+                Math.cos(angle) * scaleSpace(3500),
+                Math.sin(angle) * scaleSpace(3500),
                 neighbor.systemId,
                 `Gate to ${neighbor.name}`
             ));
@@ -180,7 +185,7 @@ export class SystemManager {
         entities.push(star);
 
         // Planets
-        const terra = new CelestialBody(800, 0, 40, '#00CED1', 'Terra');
+        const terra = new CelestialBody(scaleSpace(800), 0, 40, '#00CED1', 'Terra');
         entities.push(terra);
         // Terra's home fleet is stationary, civilian and indestructible. It
         // protects the respawn approach without adding a moving escort fleet.
@@ -190,22 +195,22 @@ export class SystemManager {
         }));
 
 
-        const luna = new CelestialBody(860, 0, 10, '#AAAAAA', 'Luna');
+        const luna = new CelestialBody(scaleSpace(860), 0, 10, '#AAAAAA', 'Luna');
         luna.orbitParent = terra;
-        luna.orbitRadius = 60;
+        luna.orbitRadius = scaleSpace(60);
         luna.orbitSpeed = 0.125;
         entities.push(luna);
 
-        entities.push(new CelestialBody(-1200, 400, 60, '#FF4500', 'Marsish'));
+        entities.push(new CelestialBody(scaleSpace(-1200), scaleSpace(400), 60, '#FF4500', 'Marsish'));
 
-        const jupiter = new CelestialBody(400, -1500, 110, '#DEB887', 'Jupiter');
+        const jupiter = new CelestialBody(scaleSpace(400), scaleSpace(-1500), 110, '#DEB887', 'Jupiter');
         entities.push(jupiter);
 
         // Jupiter satellites
         const moons = [
-            { name: 'Io', radius: 8, color: '#F0E68C', orbitRadius: 160, orbitSpeed: 0.2 },
-            { name: 'Europa', radius: 7, color: '#E0FFFF', orbitRadius: 220, orbitSpeed: 0.15 },
-            { name: 'Ganymede', radius: 12, color: '#D2B48C', orbitRadius: 300, orbitSpeed: 0.1 }
+            { name: 'Io', radius: 8, color: '#F0E68C', orbitRadius: scaleSpace(160), orbitSpeed: 0.2 },
+            { name: 'Europa', radius: 7, color: '#E0FFFF', orbitRadius: scaleSpace(220), orbitSpeed: 0.15 },
+            { name: 'Ganymede', radius: 12, color: '#D2B48C', orbitRadius: scaleSpace(300), orbitSpeed: 0.1 }
         ];
 
         moons.forEach(m => {
@@ -218,7 +223,7 @@ export class SystemManager {
         });
 
         // Saturn
-        const saturn = new CelestialBody(-3000, -2000, 95, '#F4A460', 'Saturn');
+        const saturn = new CelestialBody(scaleSpace(-3000), scaleSpace(-2000), 95, '#F4A460', 'Saturn');
         saturn.rings = {
             bands: [
                 { innerRadius: 110, outerRadius: 130, color: 'rgba(210, 180, 140, 0.4)' },
@@ -233,20 +238,20 @@ export class SystemManager {
         // Asteroid Belt
         for (let i = 0; i < 20; i++) {
             const angle = Math.random() * Math.PI * 2;
-            const dist = 2000 + Math.random() * 500;
+            const dist = scaleSpace(2000 + Math.random() * 500);
             const x = Math.cos(angle) * dist;
             const y = Math.sin(angle) * dist;
             const size = 5 + Math.random() * 15;
             entities.push(new CelestialBody(x, y, size, '#888888', 'Asteroid'));
         }
 
-        entities.push(new CelestialBody(-600, -600, 20, '#FF00FF', 'Outpost Alpha'));
+        entities.push(new CelestialBody(scaleSpace(-600), scaleSpace(-600), 20, '#FF00FF', 'Outpost Alpha'));
 
         // Warp Gate to Alpha Centauri
-        const warpGate = new WarpGate(3500, 2500, 2, 'Gate to Alpha Centauri');
+        const warpGate = new WarpGate(scaleSpace(3500), scaleSpace(2500), 2, 'Gate to Alpha Centauri');
         entities.push(warpGate);
-        entities.push(new WarpGate(-3500, 2500, 3, 'Gate to Frontier Reach'));
-        entities.push(new WarpGate(3500, -2500, 4, 'Gate to Relay Expanse'));
+        entities.push(new WarpGate(scaleSpace(-3500), scaleSpace(2500), 3, 'Gate to Frontier Reach'));
+        entities.push(new WarpGate(scaleSpace(3500), scaleSpace(-2500), 4, 'Gate to Relay Expanse'));
 
         return entities;
     }
@@ -259,31 +264,31 @@ export class SystemManager {
         entities.push(starA);
 
         // Companion star (Alpha Centauri B)
-        const starB = new CelestialBody(300, 200, 120, '#FF8C00', 'Alpha Centauri B', true);
+        const starB = new CelestialBody(scaleSpace(300), scaleSpace(200), 120, '#FF8C00', 'Alpha Centauri B', true);
         entities.push(starB);
 
         // Planets
-        const proximaB = new CelestialBody(600, 100, 35, '#8B4513', 'Proxima b');
+        const proximaB = new CelestialBody(scaleSpace(600), scaleSpace(100), 35, '#8B4513', 'Proxima b');
         entities.push(proximaB);
 
-        const centauriPrime = new CelestialBody(-800, -300, 45, '#4169E1', 'Centauri Prime');
+        const centauriPrime = new CelestialBody(scaleSpace(-800), scaleSpace(-300), 45, '#4169E1', 'Centauri Prime');
         entities.push(centauriPrime);
 
         // Moons for Centauri Prime
-        const lunaPrime = new CelestialBody(-820, -280, 12, '#C0C0C0', 'Luna Prime');
+        const lunaPrime = new CelestialBody(scaleSpace(-820), scaleSpace(-280), 12, '#C0C0C0', 'Luna Prime');
         lunaPrime.orbitParent = centauriPrime;
-        lunaPrime.orbitRadius = 40;
+        lunaPrime.orbitRadius = scaleSpace(40);
         lunaPrime.orbitSpeed = 0.15;
         entities.push(lunaPrime);
 
         // Gas giant
-        const centauriGas = new CelestialBody(1200, -800, 100, '#9370DB', 'Centauri Gas');
+        const centauriGas = new CelestialBody(scaleSpace(1200), scaleSpace(-800), 100, '#9370DB', 'Centauri Gas');
         entities.push(centauriGas);
 
         // Asteroid field
         for (let i = 0; i < 25; i++) {
             const angle = Math.random() * Math.PI * 2;
-            const dist = 1800 + Math.random() * 600;
+            const dist = scaleSpace(1800 + Math.random() * 600);
             const x = Math.cos(angle) * dist;
             const y = Math.sin(angle) * dist;
             const size = 4 + Math.random() * 12;
@@ -291,14 +296,14 @@ export class SystemManager {
         }
 
         // Mining outposts
-        entities.push(new CelestialBody(-400, 800, 18, '#FF1493', 'Mining Outpost Zeta'));
-        entities.push(new CelestialBody(1500, 600, 22, '#32CD32', 'Research Station Beta'));
+        entities.push(new CelestialBody(scaleSpace(-400), scaleSpace(800), 18, '#FF1493', 'Mining Outpost Zeta'));
+        entities.push(new CelestialBody(scaleSpace(1500), scaleSpace(600), 22, '#32CD32', 'Research Station Beta'));
 
         // Warp Gate back to Sol
-        const warpGate = new WarpGate(-3500, -2500, 1, 'Gate to Sol System');
+        const warpGate = new WarpGate(scaleSpace(-3500), scaleSpace(-2500), 1, 'Gate to Sol System');
         entities.push(warpGate);
-        entities.push(new WarpGate(3500, -2500, 3, 'Gate to Frontier Reach'));
-        entities.push(new WarpGate(-3500, 2500, 5, 'Gate to Anomaly Verge'));
+        entities.push(new WarpGate(scaleSpace(3500), scaleSpace(-2500), 3, 'Gate to Frontier Reach'));
+        entities.push(new WarpGate(scaleSpace(-3500), scaleSpace(2500), 5, 'Gate to Anomaly Verge'));
 
         return entities;
     }
@@ -460,12 +465,12 @@ export class SystemManager {
         let distance: number;
         if (systemId === 1) {
             if (selectedFaction === 'civilian' || selectedFaction === 'military' || selectedFaction === 'mercenary') {
-                distance = 900 + Math.random() * 7600; // Inner region: 900-8500
+                distance = scaleSpace(900 + Math.random() * 7600); // Inner region: 450-4250
             } else {
-                distance = 8500 + Math.random() * 7500; // Outer region: 8500-16000
+                distance = scaleSpace(8500 + Math.random() * 7500); // Outer region: 4250-8000
             }
         } else {
-            distance = 1200 + Math.random() * 12000;
+            distance = scaleSpace(1200 + Math.random() * 12000);
         }
         const startX = Math.cos(angle) * distance;
         const startY = Math.sin(angle) * distance;

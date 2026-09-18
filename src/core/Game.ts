@@ -12,7 +12,7 @@ import { UIManager } from './UIManager';
 import { ModalManager } from './ModalManager';
 import { Attack } from './Attack';
 import { AIController } from './AIController';
-import { SystemManager } from './SystemManager';
+import { SYSTEM_SPACE_SCALE, SystemManager } from './SystemManager';
 import { formatNumber } from '../utils/NumberFormatter';
 import { WarpMine } from '../entities/WarpMine';
 import { Debris } from '../entities/Debris';
@@ -304,59 +304,23 @@ export class Game {
         ctx.fillStyle = base;
         ctx.fillRect(0, 0, width, height);
 
-        // Broad nebulas establish depth. Screen-space rendering is intentional:
-        // the background should feel like a distant skybox while ships move.
+        // Broad nebulas establish only a restrained sense of depth. Keep their
+        // contrast low so the tactical silhouettes and the star points remain
+        // readable instead of being washed out by the background.
         ctx.save();
         ctx.globalCompositeOperation = 'screen';
-        for (let i = 0; i < 9; i++) {
+        for (let i = 0; i < 6; i++) {
             const x = (0.04 + random() * 0.92) * width;
             const y = (0.02 + random() * 0.96) * height;
             const radius = Math.max(width, height) * (0.2 + random() * 0.34);
             const color = i % 3 === 0 ? palette.nebulaWarm : i % 2 === 0 ? palette.nebulaSecondary : palette.nebulaPrimary;
             const cloud = ctx.createRadialGradient(x, y, 0, x, y, radius);
-            cloud.addColorStop(0, rgba(color, 0.18 + random() * 0.1));
-            cloud.addColorStop(0.35, rgba(color, 0.08));
+            cloud.addColorStop(0, rgba(color, 0.09 + random() * 0.05));
+            cloud.addColorStop(0.35, rgba(color, 0.04));
             cloud.addColorStop(1, rgba(color, 0));
             ctx.fillStyle = cloud;
             ctx.fillRect(0, 0, width, height);
         }
-
-        // Long blurred wisps give the background the photographed, cinematic
-        // quality of the reference without a particle simulation.
-        ctx.filter = 'blur(18px)';
-        ctx.lineCap = 'round';
-        for (let i = 0; i < 7; i++) {
-            const startX = -width * 0.15 + random() * width * 0.35;
-            const startY = random() * height;
-            const endX = width * (0.7 + random() * 0.45);
-            const endY = startY + (random() - 0.5) * height * 0.9;
-            const bendX = width * (0.25 + random() * 0.45);
-            const bendY = startY + (random() - 0.5) * height;
-            ctx.strokeStyle = rgba(i % 2 ? palette.nebulaPrimary : palette.nebulaSecondary, 0.12);
-            ctx.lineWidth = height * (0.035 + random() * 0.045);
-            ctx.beginPath();
-            ctx.moveTo(startX, startY);
-            ctx.quadraticCurveTo(bendX, bendY, endX, endY);
-            ctx.stroke();
-        }
-        ctx.filter = 'none';
-        ctx.lineWidth = 1;
-        ctx.filter = 'blur(3px)';
-        for (let i = 0; i < 18; i++) {
-            const startX = -width * 0.1 + random() * width * 0.15;
-            const startY = random() * height;
-            const endX = width * (0.82 + random() * 0.3);
-            const endY = startY + (random() - 0.5) * height * 0.65;
-            const bendX = width * (0.2 + random() * 0.55);
-            const bendY = startY + (random() - 0.5) * height * 0.7;
-            ctx.strokeStyle = rgba(i % 3 === 0 ? palette.nebulaWarm : palette.nebulaPrimary, 0.055 + random() * 0.035);
-            ctx.lineWidth = 2 + random() * 7;
-            ctx.beginPath();
-            ctx.moveTo(startX, startY);
-            ctx.quadraticCurveTo(bendX, bendY, endX, endY);
-            ctx.stroke();
-        }
-        ctx.filter = 'none';
         ctx.restore();
 
         // Dark dust lanes break up the smooth gradients and make bright ships
@@ -377,31 +341,20 @@ export class Game {
 
         // Lower the nebula contrast while keeping the star field crisp. The
         // stars are drawn after this veil so they remain visible as points.
-        ctx.fillStyle = 'rgba(0, 5, 12, 0.16)';
+        ctx.fillStyle = 'rgba(0, 5, 12, 0.34)';
         ctx.fillRect(0, 0, width, height);
 
-        // Two star fields: small quiet stars and a few soft, readable beacons.
+        // Small, quiet stars are the only bright points in the background.
         const starCount = Math.min(360, Math.max(150, Math.floor((width * height) / 4500)));
         for (let i = 0; i < starCount; i++) {
             const x = random() * width;
             const y = random() * height;
-            const size = 0.45 + random() * 1.2;
-            const alpha = 0.22 + random() * 0.58;
+            const size = 0.35 + random() * 0.85;
+            const alpha = 0.18 + random() * 0.5;
             ctx.fillStyle = i % 9 === 0 ? rgba(palette.starTint, alpha) : `rgba(205, 232, 245, ${alpha})`;
             ctx.beginPath();
             ctx.arc(x, y, size, 0, Math.PI * 2);
             ctx.fill();
-        }
-        for (let i = 0; i < 13; i++) {
-            const x = random() * width;
-            const y = random() * height;
-            const radius = 1.2 + random() * 2.4;
-            const glow = ctx.createRadialGradient(x, y, 0, x, y, radius * 8);
-            glow.addColorStop(0, 'rgba(255,255,255,.95)');
-            glow.addColorStop(0.15, rgba(palette.starTint, 0.65));
-            glow.addColorStop(1, rgba(palette.starTint, 0));
-            ctx.fillStyle = glow;
-            ctx.fillRect(x - radius * 8, y - radius * 8, radius * 16, radius * 16);
         }
     }
 
@@ -624,10 +577,10 @@ export class Game {
         requestAnimationFrame((t) => this.loop(t));
     }
 
-    // A broad system gives the camera room to move between tactical and
-    // strategic views. Local encounters still happen in the inner region.
-    private SYSTEM_RADIUS: number = 18000;
-    private ASTEROID_BELT_WIDTH: number = 1600;
+    // Keep the local map compact enough for encounters to remain visible while
+    // preserving the same relative inner region / outer belt layout.
+    private SYSTEM_RADIUS: number = 18000 * SYSTEM_SPACE_SCALE;
+    private ASTEROID_BELT_WIDTH: number = 1600 * SYSTEM_SPACE_SCALE;
 
     public getAsteroidBeltInnerRadius() {
         return this.SYSTEM_RADIUS - this.ASTEROID_BELT_WIDTH;
@@ -2049,7 +2002,16 @@ export class Game {
                 // and was granted a one-use response against the aggressor.
                 const targetAlreadyInFight = target.activeBattle !== null || target.currentTarget !== null;
                 const witnessResponse = attacker.witnessedAggressors.has(target);
-                const explicitPlayerEngagement = attacker.isPlayer && attacker.followTarget === target;
+                // The player is allowed to join an already active fight when a
+                // hostile fleet is physically inside the player's interception
+                // radius. Without this exception, an enemy that was already
+                // fighting a civilian/military fleet was treated as a private
+                // incident and the player silently stopped firing at it.
+                const playerInAttackRadius = attacker.isPlayer &&
+                    this.aiController.isHostile(attacker, target) &&
+                    Vector2.distance(attacker.position, target.position) <= attacker.attackRadius;
+                const explicitPlayerEngagement = attacker.isPlayer &&
+                    (attacker.followTarget === target || playerInAttackRadius);
                 if (targetAlreadyInFight && !witnessResponse && !explicitPlayerEngagement) continue;
 
                 const baseTriggerDist = attacker.attackRadius;
@@ -2070,7 +2032,7 @@ export class Game {
                     let triggerDist = baseTriggerDist;
                     if (attacker.followTarget === target) triggerDist = baseTriggerDist * 2; // Double for following
 
-                    if (dist < triggerDist) {
+                    if (dist <= triggerDist) {
                         const attack = new Attack(attacker, target, this);
                         this.attacks.push(attack);
                         if (witnessResponse) {
