@@ -328,6 +328,8 @@ export class SystemManager {
         if (rules.spawnInterval) {
             const lastSpawn = this.spawnTimers.get(systemId) || 0;
             const interval = Math.max(0.1, rules.spawnInterval / Math.max(0.1, difficultyMultiplier));
+            const targetCount = Math.max(1, Math.round(rules.targetFleetCount * Math.max(1, difficultyMultiplier)));
+            if (currentFleets.length >= targetCount) return false;
             if (lastSpawn < interval) {
                 return false; // Not time to spawn yet
             }

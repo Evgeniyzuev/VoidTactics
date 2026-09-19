@@ -2,13 +2,23 @@ import { Entity } from './Entity';
 import { Camera } from '../renderer/Camera';
 import { Vector2 } from '../utils/Vector2';
 import { Ship, createStarterShips } from '../tactical/Ship';
-import { DEFAULT_FORMATION, TACTICAL_BALANCE, type DamageType, type FleetDoctrine, type FleetOrderType } from '../tactical/ShipDefinitions';
+import { COMBAT_BALANCE, DEFAULT_FORMATION, TACTICAL_BALANCE, type DamageType, type FleetDoctrine, type FleetOrderType } from '../tactical/ShipDefinitions';
 import { FleetGenerator } from '../tactical/FleetGenerator';
 import { RepairService } from '../tactical/RepairService';
 import { ABILITY_CHARGE_BALANCE, ABILITY_DEFINITIONS, type FleetAbilityId } from '../tactical/AbilityService';
 
 export type Faction = 'civilian' | 'pirate' | 'orc' | 'military' | 'player' | 'raider' | 'trader' | 'mercenary';
 export interface FleetResources { fuel: number; maxFuel: number; supplies: number; maxSupplies: number; readiness: number }
+export interface FleetCombatProfile {
+    damageByType: Record<DamageType, number>;
+    ammunitionDamageByType: Record<DamageType, number>;
+    energyPerSecond: number;
+    ammunitionPerSecond: number;
+    weaponSlots: number;
+    usableWeaponSlots: number;
+    ammunitionWeaponSlots: number;
+    firingShips: number;
+}
 export type FleetSkillId = 'leadership' | 'logistics' | 'engineering' | 'sensors' | 'navigation' | 'tactics' | 'size' | 'tech';
 export const FLEET_SKILLS: Record<FleetSkillId, { name: string; description: string }> = {
     leadership: { name: 'Leadership', description: '+10 command capacity per level' },
@@ -247,6 +257,7 @@ export class Fleet extends Entity {
     }
     public get totalEnergy() { return this.ships.filter(ship => ship.alive).reduce((sum, ship) => sum + ship.energy, 0); }
     public get maxEnergy() { return this.ships.filter(ship => ship.alive).reduce((sum, ship) => sum + ship.maxEnergy, 0); }
+    public get totalAmmunition() { return this.ships.filter(ship => ship.alive).reduce((sum, ship) => sum + Math.max(0, ship.ammunition), 0); }
     public get maxShield() { return this.ships.filter(ship => ship.alive).reduce((sum, ship) => sum + ship.maxShield, 0); }
     public get fuelBurnPerDistance() {
         return TACTICAL_BALANCE.fuelPerDistance * this.ships.filter(ship => ship.alive)
@@ -330,6 +341,80 @@ export class Fleet extends Entity {
         if (totalAvailable + 1e-6 < cost) return false;
         if (cost <= 0) return true;
         return this.consumePooledEnergy(cost) + 1e-6 >= cost;
+    }
+
+    /** Consume a concrete pooled ammunition amount, preserving the existing per-ship reserves. */
+    public consumePooledAmmunition(amount: number) {
+        const active = this.ships.filter(ship => ship.alive && ship.ammunition > 0);
+        const requested = Math.max(0, amount);
+        const available = active.reduce((sum, ship) => sum + Math.max(0, ship.ammunition), 0);
+        const consumed = Math.min(requested, available);
+        if (consumed <= 0 || available <= 0) return 0;
+        for (const ship of active) {
+            ship.ammunition = Math.max(0, ship.ammunition - consumed * ship.ammunition / available);
+        }
+        return consumed;
+    }
+
+    /**
+     * Collapse all ship weapons into one fleet-level tactical profile.
+     * The profile is intentionally calculated once per salvo; Attack then
+     * applies at most one packet per damage type instead of one packet per
+     * weapon and one target sort per ship.
+     */
+    public getCombatProfile(): FleetCombatProfile {
+        const damageByType: Record<DamageType, number> = { kinetic: 0, energy: 0, explosive: 0 };
+        const ammunitionDamageByType: Record<DamageType, number> = { kinetic: 0, energy: 0, explosive: 0 };
+        let energyPerSecond = 0;
+        let ammunitionPerSecond = 0;
+        let weaponSlots = 0;
+        let usableWeaponSlots = 0;
+        let ammunitionWeaponSlots = 0;
+        let firingShips = 0;
+        const fleetEfficiency = this.readinessEfficiency * this.energyEfficiency;
+        const damageMultiplier = COMBAT_BALANCE.damageScale
+            * (this.isStation ? 1 : COMBAT_BALANCE.fleetDamageMultiplier)
+            * fleetEfficiency
+            * (this.assaultMode ? TACTICAL_BALANCE.assaultDamageMultiplier : 1);
+        const energyMultiplier = (this.assaultMode ? TACTICAL_BALANCE.assaultEnergyCostMultiplier : 1);
+
+        for (const ship of this.ships) {
+            if (!ship.alive || ship.order.type === 'retreat' || ship.order.type === 'repair') continue;
+            firingShips++;
+            const weaponsPenalty = ship.damagedSystems.includes('weapons') ? 0.55 : 1;
+            for (const weapon of ship.weapons) {
+                weaponSlots++;
+                const usesAmmo = weapon.damageType !== 'energy';
+                if (usesAmmo) ammunitionWeaponSlots++;
+                if (usesAmmo && ship.ammunition <= 0) continue;
+                usableWeaponSlots++;
+
+                const overcharged = ship.overchargeTimer > 0;
+                const cooldown = Math.max(0.1, weapon.cooldown);
+                energyPerSecond += weapon.energyCost / cooldown
+                    * (overcharged ? TACTICAL_BALANCE.overchargeEnergyMultiplier : 1)
+                    * energyMultiplier;
+
+                let damagePerSecond = weapon.damage * ship.statScale / cooldown * damageMultiplier * weaponsPenalty;
+                if (overcharged) damagePerSecond *= TACTICAL_BALANCE.overchargeDamageMultiplier;
+                damageByType[weapon.damageType] += damagePerSecond;
+                if (usesAmmo) {
+                    ammunitionPerSecond += 0.05 / cooldown;
+                    ammunitionDamageByType[weapon.damageType] += damagePerSecond;
+                }
+            }
+        }
+
+        return {
+            damageByType,
+            ammunitionDamageByType,
+            energyPerSecond,
+            ammunitionPerSecond,
+            weaponSlots,
+            usableWeaponSlots,
+            ammunitionWeaponSlots,
+            firingShips,
+        };
     }
 
     public clampSuppliesToCapacity() {

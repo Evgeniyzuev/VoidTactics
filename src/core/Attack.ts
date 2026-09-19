@@ -2,8 +2,8 @@ import { Fleet } from '../entities/Fleet';
 import { Vector2 } from '../utils/Vector2';
 import { Game } from './Game';
 import { CelestialBody } from '../entities/CelestialBody';
-import { TargetResolver } from '../tactical/TargetResolver';
-import { COMBAT_BALANCE, TACTICAL_BALANCE } from '../tactical/ShipDefinitions';
+import { COMBAT_BALANCE, TACTICAL_BALANCE, type DamageType } from '../tactical/ShipDefinitions';
+import type { Ship } from '../tactical/Ship';
 import { AbilityService } from '../tactical/AbilityService';
 
 export class Attack {
@@ -12,6 +12,8 @@ export class Attack {
     public finished: boolean = false;
     private game: Game;
     private simulationAccumulator = 0;
+    private noFireSeconds = 0;
+    private reportedNoFireReason: string | null = null;
     constructor(attacker: Fleet, target: Fleet, game: Game) {
         this.attacker = attacker;
         this.target = target;
@@ -45,6 +47,7 @@ export class Attack {
         // New attacks are also blocked by Game.processCombat and SensorService.
         if (this.target.isCloaked) {
             this.finished = true;
+            if (this.attacker.isPlayer) this.game.reportCombatStop?.('target cloaked', this);
             return;
         }
 
@@ -53,6 +56,7 @@ export class Attack {
         const maxDist = 200; // 2 * 100 (interception radius)
         if (dist > maxDist) {
             this.finished = true;
+            if (this.attacker.isPlayer) this.game.reportCombatStop?.('target left interception range', this);
             // Reset states
             this.attacker.state = 'normal';
             this.attacker.currentTarget = null;
@@ -94,8 +98,9 @@ export class Attack {
         dt = this.simulationAccumulator;
         this.simulationAccumulator = 0;
 
-        // Tactical damage is produced by the surviving ships and resolved through
-        // shields, armor and hull instead of subtracting an abstract fleet number.
+        // Tactical damage is resolved at fleet level. Ships still retain their
+        // own hull, shields, armor, energy and repair state, but a volley no
+        // longer loops over every weapon and sorts targets for every ship.
         this.attacker.ensureComposition();
         this.target.ensureComposition();
         if (!this.attacker.isPlayer &&
@@ -103,33 +108,77 @@ export class Attack {
             this.attacker.abilities.net.cooldown <= 0) {
             AbilityService.activate(this.attacker, 'net');
         }
-        const firingShips = this.attacker.ships
-            .filter(ship => ship.alive && ship.order.type !== 'retreat' && ship.order.type !== 'repair');
+        const profile = this.attacker.getCombatProfile();
+        const targetShip = this.selectTargetShip();
         let totalDamage = 0;
         let totalHullDamage = 0;
         let totalAppliedDamage = 0;
-        const volleyEnergyEfficiency = this.attacker.energyEfficiency;
-        for (const ship of firingShips) {
-            const targetShip = TargetResolver.resolve(ship, this.target.ships, this.attacker.doctrine, firingShips);
-            if (!targetShip) continue;
-            const weaponsPenalty = ship.damagedSystems.includes('weapons') ? 0.55 : 1;
-            for (const weapon of ship.weapons) {
-                const usesAmmo = weapon.damageType !== 'energy';
-                if (usesAmmo && ship.ammunition <= 0) continue;
-                const overcharged = ship.overchargeTimer > 0;
-                const energyPerSecond = weapon.energyCost / Math.max(0.1, weapon.cooldown)
-                    * (overcharged ? TACTICAL_BALANCE.overchargeEnergyMultiplier : 1)
-                    * (this.attacker.assaultMode ? TACTICAL_BALANCE.assaultEnergyCostMultiplier : 1);
-                if (!ship.spendEnergy(energyPerSecond * dt)) continue;
-                let damage = weapon.damage * ship.statScale / Math.max(0.1, weapon.cooldown) * COMBAT_BALANCE.damageScale * (this.attacker.isStation ? 1 : COMBAT_BALANCE.fleetDamageMultiplier) * dt * weaponsPenalty * this.attacker.readinessEfficiency * volleyEnergyEfficiency;
-                if (overcharged) damage *= TACTICAL_BALANCE.overchargeDamageMultiplier;
-                if (this.attacker.assaultMode) damage *= TACTICAL_BALANCE.assaultDamageMultiplier;
-                if (usesAmmo) ship.ammunition = Math.max(0, ship.ammunition - dt / Math.max(0.1, weapon.cooldown) * 0.05);
+        let shots = 0;
+        let energyBlocked = 0;
+        let ammoBlocked = 0;
+        const requiredEnergy = profile.energyPerSecond * dt;
+        const availableEnergy = this.attacker.totalEnergy;
+        const energyRatio = requiredEnergy > 0
+            ? Math.min(1, availableEnergy / requiredEnergy)
+            : 1;
+        if (requiredEnergy > 0) {
+            this.attacker.consumePooledEnergy(requiredEnergy * energyRatio);
+            if (energyRatio < 1) energyBlocked = 1;
+        }
+
+        const requiredAmmo = profile.ammunitionPerSecond * dt;
+        const availableAmmo = this.attacker.totalAmmunition;
+        const ammoRatio = requiredAmmo > 0
+            ? Math.min(1, availableAmmo / requiredAmmo)
+            : 1;
+        if (requiredAmmo > 0) {
+            this.attacker.consumePooledAmmunition(requiredAmmo * ammoRatio);
+            if (ammoRatio < 1) ammoBlocked = 1;
+        } else if (profile.ammunitionWeaponSlots > 0 && profile.usableWeaponSlots < profile.weaponSlots) {
+            ammoBlocked = 1;
+        }
+
+        const damageTypes: DamageType[] = ['kinetic', 'energy', 'explosive'];
+        let visualDamageType: DamageType = 'energy';
+        let visualDamage = 0;
+        if (targetShip) {
+            for (const damageType of damageTypes) {
+                const ammunitionDamage = profile.ammunitionDamageByType[damageType];
+                const energyDamage = profile.damageByType[damageType] - ammunitionDamage;
+                const damage = (energyDamage + ammunitionDamage * ammoRatio) * energyRatio * dt;
+                if (damage <= 0) continue;
+                shots = 1;
                 totalDamage += damage;
-                const hullDamage = this.target.receiveTacticalDamage(damage, weapon.damageType, targetShip.id);
+                if (damage > visualDamage) {
+                    visualDamage = damage;
+                    visualDamageType = damageType;
+                }
+                const hullDamage = this.target.receiveTacticalDamage(damage, damageType, targetShip.id);
                 totalHullDamage += hullDamage;
                 totalAppliedDamage += this.target.lastTacticalDamage;
-                this.game.addCombatShot(this.attacker, this.target, weapon.damageType, this.target.lastTacticalDamage > 0);
+            }
+            if (shots > 0) {
+                this.game.addCombatShot(this.attacker, this.target, visualDamageType, totalAppliedDamage > 0);
+            }
+        }
+        if (this.attacker.isPlayer && this.target.ships.some(ship => ship.alive)) {
+            this.noFireSeconds = shots > 0 ? 0 : this.noFireSeconds + dt;
+            if (this.noFireSeconds >= 1 && shots === 0) {
+                const reason = profile.firingShips === 0
+                    ? 'all operational ships are ordered to retreat or repair'
+                    : profile.weaponSlots === 0 || !targetShip
+                        ? 'no usable weapons or target ships'
+                        : energyBlocked > 0 && ammoBlocked > 0
+                            ? 'insufficient Energy and ammunition'
+                            : energyBlocked > 0
+                                ? 'insufficient Energy'
+                                : ammoBlocked > 0
+                                    ? 'no ammunition'
+                                    : 'no valid firing solution';
+                if (reason !== this.reportedNoFireReason) {
+                    this.reportedNoFireReason = reason;
+                    this.game.reportCombatSilence?.(reason, this);
+                }
             }
         }
         this.target.accumulatedDamage += totalHullDamage;
@@ -201,6 +250,23 @@ export class Attack {
                 if (this.target.activeBattle === this) this.target.activeBattle = null;
             }
         }
+    }
+
+    /** Select one fleet target in a single pass; no per-ship sort or focus map. */
+    private selectTargetShip(): Ship | null {
+        let selected: Ship | null = null;
+        let selectedScore = -Infinity;
+        for (const ship of this.target.ships) {
+            if (!ship.alive) continue;
+            let score = (1 - ship.integrity) * 2;
+            if (this.attacker.doctrine.targetPriority === 'damaged') score += (1 - ship.integrity) * 8;
+            if (this.attacker.doctrine.targetPriority === ship.role) score += 8;
+            if (!selected || score > selectedScore || (score === selectedScore && ship.id < selected.id)) {
+                selected = ship;
+                selectedScore = score;
+            }
+        }
+        return selected;
     }
 
     get position(): Vector2 {

@@ -37,7 +37,6 @@ export class Ship {
     public shield: number;
     public energy: number;
     public order: FleetOrder = { type: 'escort', issuedAt: 0 };
-    public weaponCooldowns: number[];
     public shieldFlash = 0;
     public hitFlash = 0;
     public shieldRechargeDelay = 0;
@@ -67,7 +66,6 @@ export class Ship {
         this.armor = hull.armor;
         this.shield = hull.shield;
         this.energy = hull.energyCapacity + this.modules.reduce((sum, module) => sum + (module.energyCapacityModifier || 0), 0);
-        this.weaponCooldowns = loadout.weaponIds.map(() => 0);
         this.ammunition = hull.ammunition;
         this.crew = hull.crew;
     }
@@ -115,7 +113,6 @@ export class Ship {
         this.shieldRechargeDelay = Math.max(0, this.shieldRechargeDelay - dt);
         this.shieldFlash = Math.max(0, this.shieldFlash - dt * 3);
         this.hitFlash = Math.max(0, this.hitFlash - dt * 4);
-        this.weaponCooldowns = this.weaponCooldowns.map(value => Math.max(0, value - dt));
         this.overchargeTimer = Math.max(0, this.overchargeTimer - dt);
         if (!this.alive) return 0;
 

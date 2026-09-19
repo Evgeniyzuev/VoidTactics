@@ -1,5 +1,6 @@
 import { Entity } from './Entity';
 import { Camera } from '../renderer/Camera';
+import { LOOT_MARKER } from './LootMarker';
 
 export class AbilityCrate extends Entity {
     public abilityId: string;
@@ -7,7 +8,7 @@ export class AbilityCrate extends Entity {
     constructor(x: number, y: number, abilityId: string) {
         super(x, y);
         this.abilityId = abilityId;
-        this.radius = 3;
+        this.radius = LOOT_MARKER.radius;
     }
 
     update(_dt: number): void {}
@@ -22,11 +23,11 @@ export class AbilityCrate extends Entity {
         ctx.shadowColor = '#76ffc0';
         ctx.shadowBlur = 8;
         ctx.beginPath();
-        ctx.arc(0, 0, 4, 0, Math.PI * 2);
+        ctx.arc(0, 0, LOOT_MARKER.ringRadius, 0, Math.PI * 2);
         ctx.stroke();
         ctx.shadowBlur = 0;
         ctx.beginPath();
-        ctx.arc(0, 0, 1.35, 0, Math.PI * 2);
+        ctx.arc(0, 0, LOOT_MARKER.coreRadius, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
     }

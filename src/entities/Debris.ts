@@ -1,5 +1,6 @@
 import { Entity } from './Entity';
 import { Camera } from '../renderer/Camera';
+import { LOOT_MARKER } from './LootMarker';
 
 export class Debris extends Entity {
     public value: number; // Number of debris units
@@ -9,11 +10,7 @@ export class Debris extends Entity {
         super(x, y);
         this.value = value;
         this.kind = kind;
-        this.radius = Debris.markerRadius(value);
-    }
-
-    public static markerRadius(value: number): number {
-        return Math.max(4, Math.min(10, 3.5 + Math.sqrt(Math.max(1, value)) * 1.15));
+        this.radius = LOOT_MARKER.radius;
     }
 
     update(_dt: number): void {
@@ -36,14 +33,14 @@ export class Debris extends Entity {
         ctx.strokeStyle = color;
         ctx.lineWidth = 1.25;
         ctx.shadowColor = color;
-        ctx.shadowBlur = 7;
+        ctx.shadowBlur = 8;
         ctx.beginPath();
-        ctx.arc(0, 0, this.radius * 0.72, 0, Math.PI * 2);
+        ctx.arc(0, 0, LOOT_MARKER.ringRadius, 0, Math.PI * 2);
         ctx.stroke();
         ctx.shadowBlur = 0;
         ctx.fillStyle = highlight;
         ctx.beginPath();
-        ctx.arc(0, 0, Math.max(1.25, this.radius * 0.18), 0, Math.PI * 2);
+        ctx.arc(0, 0, LOOT_MARKER.coreRadius, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.restore();

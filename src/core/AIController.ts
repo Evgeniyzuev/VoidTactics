@@ -20,6 +20,7 @@ export class AIController {
         const allFleets = [player, ...npcs];
 
         for (const npc of npcs) {
+            if (!this.game.shouldRunFleetAI(npc)) continue;
             // Terra's guardian fleet is an anchored defensive actor. It is
             // still present in tactical combat, but must not roam to random
             // POIs like an ordinary civilian convoy.
@@ -50,7 +51,7 @@ export class AIController {
             const isChasing = !!followedFleet && this.isHostile(npc, followedFleet);
 
             const detectionRadius = Math.max(600, this.game.getFleetSensorRange(npc) * 2);
-            const knownFleets = allFleets.filter(fleet =>
+            const knownFleets = (this.game.getNearbyFleets?.(npc, detectionRadius) || allFleets).filter(fleet =>
                 fleet === npc || this.game.canFleetTarget(npc, fleet)
             );
             const hasNearbyAlly = knownFleets.some(f =>

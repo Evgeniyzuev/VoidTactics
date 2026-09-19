@@ -1,5 +1,6 @@
 import { Entity } from './Entity';
 import { Camera } from '../renderer/Camera';
+import { LOOT_MARKER } from './LootMarker';
 
 export class ResourceCrate extends Entity {
     public fuel: number;
@@ -14,7 +15,7 @@ export class ResourceCrate extends Entity {
         super(x, y);
         this.fuel = fuel;
         this.supplies = supplies;
-        this.radius = 6;
+        this.radius = LOOT_MARKER.radius;
     }
 
     update(_dt: number): void {}
@@ -33,11 +34,11 @@ export class ResourceCrate extends Entity {
         ctx.shadowColor = stroke;
         ctx.shadowBlur = 8;
         ctx.beginPath();
-        ctx.arc(0, 0, 4.5, 0, Math.PI * 2);
+        ctx.arc(0, 0, LOOT_MARKER.ringRadius, 0, Math.PI * 2);
         ctx.stroke();
         ctx.shadowBlur = 0;
         ctx.beginPath();
-        ctx.arc(0, 0, 1.5, 0, Math.PI * 2);
+        ctx.arc(0, 0, LOOT_MARKER.coreRadius, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
     }

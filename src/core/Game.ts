@@ -32,6 +32,8 @@ import { ABILITY_DEFINITIONS, ABILITY_EQUIPMENT_MARKET, AbilityService, type Fle
 import { rollFleetLoot } from '../tactical/LootBalance';
 import { SIGNAL_DEFINITIONS, SIGNAL_EVENT_BALANCE, SignalDirector, toWorldEventConstructorArgs, type SignalDirectorSnapshot, type SignalEventKind, type SignalSpawnDescriptor } from './SignalDirector';
 import { ARTIFACT_DEFINITIONS, ExpeditionManager, type ProgressionState } from './Expedition';
+import { SpatialHash } from '../utils/SpatialHash';
+import { CadenceScheduler, distanceSquaredBetweenFleets, getFleetSimulationInterval } from './SimulationScheduler';
 
 
 export class Game {
@@ -61,6 +63,10 @@ export class Game {
     private aiAccumulator = 0;
     private gameClock = 0;
     private combatEffects = new CombatEffects();
+    private fleetSimulationScheduler = new CadenceScheduler<Fleet>();
+    private fleetAiScheduler = new CadenceScheduler<Fleet>();
+    private fleetSensorScheduler = new CadenceScheduler<Fleet>();
+    private fleetPickupScheduler = new CadenceScheduler<Fleet>();
 
     // Getters for AIController
     public getEntities(): Entity[] { return this.entities; }
@@ -71,6 +77,47 @@ export class Game {
     public getDebris(): Debris[] { return this.debris; }
     public getCrates(): (AbilityCrate | ResourceCrate)[] { return this.crates; }
     public getSystemRadius(): number { return this.SYSTEM_RADIUS; }
+
+    /** Return the current LOD cadence for a fleet relative to the player. */
+    public getFleetSimulationInterval(fleet: Fleet): number {
+        if (fleet === this.playerFleet) return 0;
+        const player = this.playerFleet;
+        if (!player) return 0.5;
+        return getFleetSimulationInterval(
+            distanceSquaredBetweenFleets(fleet, player),
+            fleet.activeBattle !== null || fleet.currentTarget !== null
+        );
+    }
+
+    /** AI decisions run less often for remote fleets while preserving combat cadence. */
+    public shouldRunFleetAI(fleet: Fleet, dt = 0.1): boolean {
+        const interval = Math.max(0.1, this.getFleetSimulationInterval(fleet));
+        return this.fleetAiScheduler.consume(fleet, dt, interval) > 0;
+    }
+
+    private fleetSpatialIndex?: SpatialHash<Fleet>;
+    private combatScanAccumulator = 0.1;
+    private static readonly COMBAT_SCAN_INTERVAL = 0.1;
+    private static readonly FLEET_SPATIAL_CELL_SIZE = 400;
+
+    private rebuildFleetSpatialIndex() {
+        if (!this.fleetSpatialIndex) {
+            this.fleetSpatialIndex = new SpatialHash<Fleet>(Game.FLEET_SPATIAL_CELL_SIZE);
+        }
+        this.fleetSpatialIndex.rebuild([this.playerFleet, ...this.npcFleets]);
+    }
+
+    /** Broad-phase fleet candidates. Exact range and hostility remain caller checks. */
+    public getNearbyFleets(observer: Fleet, radius: number): Fleet[] {
+        if (!this.fleetSpatialIndex) this.rebuildFleetSpatialIndex();
+        return this.fleetSpatialIndex?.query(observer.position, radius) || [observer];
+    }
+
+    /** Render/query broad phase centered on an arbitrary world position. */
+    public getFleetsNearPosition(position: Vector2, radius: number): Fleet[] {
+        if (!this.fleetSpatialIndex) this.rebuildFleetSpatialIndex();
+        return this.fleetSpatialIndex?.query(position, radius) || [];
+    }
 
     public registerCombatStart(attacker: Fleet, target: Fleet) {
         this.aiController?.recordCombatStart(attacker, target);
@@ -86,13 +133,45 @@ export class Game {
         this.combatEffects.addShot(attacker.position, target.position, type, hit);
     }
 
+    public reportCombatSilence(reason: string, attack: Attack) {
+        this.ui?.addEvent(`Weapons idle: ${reason}.`);
+        if (import.meta.env.DEV) {
+            console.warn('[combat] Player fleet did not fire', {
+                reason,
+                distance: Vector2.distance(attack.attacker.position, attack.target.position),
+                fuel: attack.attacker.fuel,
+                readiness: attack.attacker.operationalReadiness,
+                targetShips: attack.target.ships.map(ship => ({ id: ship.id, state: ship.state })),
+                playerShips: attack.attacker.ships.map(ship => ({
+                    id: ship.id,
+                    state: ship.state,
+                    order: ship.order.type,
+                    energy: ship.energy,
+                    ammunition: ship.ammunition,
+                    weapons: ship.weapons.map(weapon => weapon.id)
+                }))
+            });
+        }
+    }
+
+    public reportCombatStop(reason: string, attack: Attack) {
+        if (import.meta.env.DEV) {
+            console.info('[combat] Player attack stopped', {
+                reason,
+                distance: Vector2.distance(attack.attacker.position, attack.target.position),
+                targetCloaked: attack.target.isCloaked,
+                playerState: attack.attacker.state,
+                targetState: attack.target.state
+            });
+        }
+    }
+
     public spawnDebris(x: number, y: number, value: number, kind: 'combat' | 'salvage' = 'combat') {
         // Check for nearby debris to combine
         for (const existing of this.debris) {
             const dist = Vector2.distance(new Vector2(x, y), existing.position);
             if (dist < 50 && existing.kind === kind) { // Combine if within 50 units
                 existing.value += value;
-                existing.radius = Debris.markerRadius(existing.value);
                 return;
             }
         }
@@ -104,6 +183,50 @@ export class Game {
 
     public spawnSalvage(x: number, y: number, value: number) {
         this.spawnDebris(x, y, value, 'salvage');
+    }
+
+    /** Collect nearby debris without allocating/sorting a temporary list. */
+    private collectNearestDebris(fleet: Fleet, pickupRate: number, awardPlayer: boolean) {
+        let remaining = Math.max(0, pickupRate);
+        let collectedAny = false;
+        const pickupRadiusSquared = 75 * 75;
+
+        while (remaining > 0) {
+            let nearestIndex = -1;
+            let nearestDistanceSquared = pickupRadiusSquared;
+            for (let index = 0; index < this.debris.length; index++) {
+                const debris = this.debris[index];
+                const dx = debris.position.x - fleet.position.x;
+                const dy = debris.position.y - fleet.position.y;
+                const distanceSquared = dx * dx + dy * dy;
+                if (distanceSquared <= nearestDistanceSquared) {
+                    nearestIndex = index;
+                    nearestDistanceSquared = distanceSquared;
+                }
+            }
+            if (nearestIndex < 0) break;
+
+            const debris = this.debris[nearestIndex];
+            const pickupAmount = Math.min(remaining, Math.max(0, debris.value));
+            debris.value -= pickupAmount;
+            remaining -= pickupAmount;
+            collectedAny = true;
+
+            if (awardPlayer) {
+                this.awardPlayerMoney(
+                    pickupAmount * 5 * (this.expedition.hasArtifact('artifact-salvage-matrix') ? 1.25 : 1),
+                    pickupAmount * TACTICAL_BALANCE.salvageExperienceMultiplier
+                );
+            }
+
+            if (debris.value <= 0) {
+                this.debris.splice(nearestIndex, 1);
+                const entityIndex = this.entities.indexOf(debris);
+                if (entityIndex !== -1) this.entities.splice(entityIndex, 1);
+            }
+        }
+
+        return collectedAny;
     }
 
     private spawnAbilityCrate(x: number, y: number, abilityId: string) {
@@ -401,6 +524,12 @@ export class Game {
         this.sensors = new SensorService();
         this.sensorAccumulator = 0;
         this.aiAccumulator = 0;
+        this.combatScanAccumulator = Game.COMBAT_SCAN_INTERVAL;
+        this.fleetSpatialIndex?.clear();
+        this.fleetSimulationScheduler.clear();
+        this.fleetAiScheduler.clear();
+        this.fleetSensorScheduler.clear();
+        this.fleetPickupScheduler.clear();
         this.gameClock = 0;
         this.combatEffects.clear();
         this.isGameOver = false;
@@ -587,10 +716,7 @@ export class Game {
     }
 
     private updateAsteroidBeltState() {
-        const fleets = [this.playerFleet, ...this.npcFleets];
-        for (const fleet of fleets) {
-            fleet.inAsteroidBelt = fleet.position.mag() >= this.getAsteroidBeltInnerRadius();
-        }
+        this.playerFleet.inAsteroidBelt = this.playerFleet.position.mag() >= this.getAsteroidBeltInnerRadius();
     }
 
     private keepFleetInsideSystem(fleet: Fleet) {
@@ -1513,11 +1639,26 @@ export class Game {
         if (this.sensorAccumulator < 0.1) return;
         const elapsed = this.sensorAccumulator;
         this.sensorAccumulator = 0;
-        const playerTargets = [...this.npcFleets, ...this.worldEvents.filter(event => event.active)];
+        const playerSensorRange = this.getFleetSensorRange(this.playerFleet);
+        const playerTargets = [
+            ...this.getNearbyFleets(this.playerFleet, playerSensorRange * 2).filter(fleet => fleet !== this.playerFleet),
+            ...this.worldEvents.filter(event => event.active)
+        ];
         this.sensors.update(this.playerFleet, playerTargets, elapsed, this.gameClock);
-        const allFleets = [this.playerFleet, ...this.npcFleets];
         for (const npc of this.npcFleets) {
-            this.sensors.update(npc, allFleets, elapsed, this.gameClock);
+            const sensorElapsed = this.fleetSensorScheduler.consume(
+                npc,
+                elapsed,
+                Math.max(0.1, this.getFleetSimulationInterval(npc))
+            );
+            if (sensorElapsed <= 0) continue;
+            const sensorRange = this.getFleetSensorRange(npc);
+            this.sensors.update(
+                npc,
+                this.getNearbyFleets(npc, sensorRange * 2).filter(fleet => fleet !== npc),
+                sensorElapsed,
+                this.gameClock
+            );
         }
         for (const event of this.worldEvents) {
             const contact = this.sensors.getContact(this.playerFleet, event);
@@ -1678,6 +1819,10 @@ export class Game {
             if (idx !== -1) this.npcFleets.splice(idx, 1);
             const eidx = this.entities.indexOf(f);
             if (eidx !== -1) this.entities.splice(eidx, 1);
+            this.fleetSimulationScheduler.clear(f);
+            this.fleetAiScheduler.clear(f);
+            this.fleetSensorScheduler.clear(f);
+            this.fleetPickupScheduler.clear(f);
         }
 
         // Update spawn timers for timed spawning systems
@@ -1696,6 +1841,7 @@ export class Game {
 
         this.keepFleetInsideSystem(this.playerFleet);
         this.updateAsteroidBeltState();
+        this.rebuildFleetSpatialIndex();
         this.updateSensors(dt);
 
         // Check for system liberation (Alpha Centauri)
@@ -1727,6 +1873,12 @@ export class Game {
         const allFleets = [this.playerFleet, ...this.npcFleets];
 
         // Update BubbleZones
+        if (this.bubbleZones.length > 0) {
+            // Fleet.update normally clears this flag at the end of its own
+            // tick. LOD can skip that tick, so clear it before reapplying the
+            // currently live bubble effects.
+            for (const fleet of allFleets) fleet.isBubbled = false;
+        }
         for (let i = this.bubbleZones.length - 1; i >= 0; i--) {
             const bubble = this.bubbleZones[i];
             if (bubble.update(dt)) {
@@ -1754,38 +1906,8 @@ export class Game {
         const playerFleet = this.playerFleet;
         let playerCollectedAny = false;
         if (playerFleet.state !== 'combat') { // Don't pick up during combat or when moving fast
-            const pickupRadius = 75; // Radius for debris pickup
             const pickupRate = dt * Math.max(1, playerFleet.ships.filter(ship => ship.alive).length);
-            let remainingPickup = pickupRate;
-
-            // Sort debris by distance for closest first
-            const nearbyDebris = this.debris
-                .map(d => ({ debris: d, dist: Vector2.distance(playerFleet.position, d.position) }))
-                .filter(d => d.dist <= pickupRadius)
-                .sort((a, b) => a.dist - b.dist);
-
-            for (const { debris } of nearbyDebris) {
-                if (remainingPickup <= 0) break;
-                const pickupAmount = Math.min(remainingPickup, debris.value);
-                debris.value -= pickupAmount;
-                remainingPickup -= pickupAmount;
-                playerCollectedAny = true;
-
-                // Award money to player
-                // Salvage remains profitable, but is only a small source of XP.
-                this.awardPlayerMoney(
-                    pickupAmount * 5 * (this.expedition.hasArtifact('artifact-salvage-matrix') ? 1.25 : 1),
-                    pickupAmount * TACTICAL_BALANCE.salvageExperienceMultiplier
-                );
-
-                // Remove empty debris
-                if (debris.value <= 0) {
-                    const idx = this.debris.indexOf(debris);
-                    if (idx !== -1) this.debris.splice(idx, 1);
-                    const eidx = this.entities.indexOf(debris);
-                    if (eidx !== -1) this.entities.splice(eidx, 1);
-                }
-            }
+            playerCollectedAny = this.collectNearestDebris(playerFleet, pickupRate, true);
         }
 
         // Update collection animation for player
@@ -1808,37 +1930,36 @@ export class Game {
         // NPC debris collection - all NPCs collect at any speed
         for (const npc of this.npcFleets) {
             if (npc.state !== 'combat') { // Only condition is not being in combat
-                const pickupRadius = 75; // Same radius as player
-                const pickupRate = dt * Math.max(1, npc.ships.filter(ship => ship.alive).length);
-                let remainingPickup = pickupRate;
-
-                // Sort debris by distance for closest first
-                const nearbyDebris = this.debris
-                    .map(d => ({ debris: d, dist: Vector2.distance(npc.position, d.position) }))
-                    .filter(d => d.dist <= pickupRadius)
-                    .sort((a, b) => a.dist - b.dist);
-
-                for (const { debris } of nearbyDebris) {
-                    if (remainingPickup <= 0) break;
-                    const pickupAmount = Math.min(remainingPickup, debris.value);
-                    debris.value -= pickupAmount;
-                    remainingPickup -= pickupAmount;
-
-                    // NPCs don't get money from debris (unlike player)
-
-                    // Remove empty debris
-                    if (debris.value <= 0) {
-                        const idx = this.debris.indexOf(debris);
-                        if (idx !== -1) this.debris.splice(idx, 1);
-                        const eidx = this.entities.indexOf(debris);
-                        if (eidx !== -1) this.entities.splice(eidx, 1);
-                    }
-                }
+                const pickupElapsed = this.fleetPickupScheduler.consume(
+                    npc,
+                    dt,
+                    Math.max(0.1, this.getFleetSimulationInterval(npc))
+                );
+                if (pickupElapsed <= 0) continue;
+                const pickupRate = pickupElapsed * Math.max(1, npc.ships.filter(ship => ship.alive).length);
+                this.collectNearestDebris(npc, pickupRate, false);
             }
         }
 
-        // 4. Update Entities
-        for (const e of this.entities) e.update(dt);
+        // 4. Update Entities. Fleets use distance-based LOD; static world
+        // entities keep their normal frame cadence. Accumulated time is passed
+        // into a remote fleet in one step so background simulation continues
+        // without running every fleet every render frame.
+        for (const e of this.entities) {
+            if (e instanceof Fleet) {
+                const elapsed = this.fleetSimulationScheduler.consume(
+                    e,
+                    dt,
+                    this.getFleetSimulationInterval(e)
+                );
+                if (elapsed > 0) {
+                    e.update(elapsed);
+                    e.inAsteroidBelt = e.position.mag() >= this.getAsteroidBeltInnerRadius();
+                }
+            } else {
+                e.update(dt);
+            }
+        }
 
         // Update Mines
         const fleets = [this.playerFleet, ...this.npcFleets];
@@ -1943,10 +2064,10 @@ export class Game {
             cargoCapacity: fleet.ships.reduce((sum, ship) => sum + ship.cargoCapacity, 0)
             });
             if (loot.fuel > 0) {
-                this.spawnResourceCrate(fleet.position.x + 18, fleet.position.y, loot.fuel, 0);
+                this.spawnResourceCrate(fleet.position.x + 24, fleet.position.y, loot.fuel, 0);
             }
             if (loot.supplies > 0) {
-                this.spawnResourceCrate(fleet.position.x - 18, fleet.position.y, 0, loot.supplies);
+                this.spawnResourceCrate(fleet.position.x - 24, fleet.position.y, 0, loot.supplies);
             }
         }
 
@@ -1956,8 +2077,8 @@ export class Game {
             const abilityIds: FleetAbilityId[] = ['afterburner', 'bubble', 'cloak', 'mine', 'medkit', 'fire', 'shield', 'net'];
             const abilityId = abilityIds[Math.floor(Math.random() * abilityIds.length)];
             this.spawnAbilityCrate(
-                fleet.position.x - 18,
-                fleet.position.y,
+                fleet.position.x,
+                fleet.position.y - 24,
                 abilityId
             );
         }
@@ -1967,7 +2088,6 @@ export class Game {
 
     private processCombat(dt: number) {
         const allFleets = [this.playerFleet, ...this.npcFleets];
-        const combatTargets = allFleets;
 
         // 1. Tick and Check for Resolution
         const toRemove: Fleet[] = [];
@@ -1985,13 +2105,26 @@ export class Game {
             }
         }
 
-        // 2. Interaction check for new attacks
+        // 2. Interaction check for new attacks. Active attacks remain smooth,
+        // while broad-phase acquisition runs at tactical cadence instead of
+        // repeating a full N x N scan on every rendered frame.
+        this.combatScanAccumulator = (this.combatScanAccumulator || Game.COMBAT_SCAN_INTERVAL) + Math.max(0, dt);
+        const scanDue = this.combatScanAccumulator >= Game.COMBAT_SCAN_INTERVAL;
+        if (scanDue) {
+            this.combatScanAccumulator %= Game.COMBAT_SCAN_INTERVAL;
+            this.rebuildFleetSpatialIndex();
+        }
+        if (!scanDue) {
+            this.removeResolvedCombatFleets(toRemove);
+            return;
+        }
+
         for (let i = 0; i < allFleets.length; i++) {
             const attacker = allFleets[i];
             if (toRemove.includes(attacker)) continue;
 
-            for (let j = 0; j < combatTargets.length; j++) {
-                const target = combatTargets[j];
+            const nearbyTargets = this.getNearbyFleets(attacker, attacker.attackRadius * 2);
+            for (const target of nearbyTargets) {
                 if (toRemove.includes(target) || attacker === target) continue;
 
                 // Skip if attacker is already attacking someone
@@ -2044,7 +2177,10 @@ export class Game {
             }
         }
 
-        // Handle dead fleets
+        this.removeResolvedCombatFleets(toRemove);
+    }
+
+    private removeResolvedCombatFleets(toRemove: Fleet[]) {
         for (const dead of toRemove) {
             if (dead === this.playerFleet) {
                 this.recoverPlayerFleet();
@@ -2054,6 +2190,10 @@ export class Game {
             if (idx !== -1) this.npcFleets.splice(idx, 1);
             const eidx = this.entities.indexOf(dead);
             if (eidx !== -1) this.entities.splice(eidx, 1);
+            this.fleetSimulationScheduler.clear(dead);
+            this.fleetAiScheduler.clear(dead);
+            this.fleetSensorScheduler.clear(dead);
+            this.fleetPickupScheduler.clear(dead);
 
         }
     }
@@ -2074,7 +2214,9 @@ export class Game {
             ship.shield = 0;
             ship.energy = Math.max(0, ship.maxEnergy * 0.15);
             ship.targetShipId = null;
-            ship.order = { type: 'retreat', issuedAt: this.gameClock };
+            // Recovery immediately moves the fleet to safety. Keep its ships
+            // ready to defend themselves instead of persisting a no-fire order.
+            ship.order = { type: 'escort', issuedAt: this.gameClock };
         }
         const flagship = this.playerFleet.ships.find(ship => ship.role === 'flagship') || this.playerFleet.ships[0];
         if (flagship) {
@@ -2833,6 +2975,10 @@ export class Game {
         this.drawBackground();
 
         const ctx = this.renderer.getContext();
+        const { width, height } = this.renderer.getDimensions();
+        const renderRadius = Math.hypot(width, height) / Math.max(0.01, this.camera.zoom) * 0.6 + 250;
+        const visibleFleets = new Set(this.getFleetsNearPosition(this.camera.position, renderRadius));
+        visibleFleets.add(this.playerFleet);
         this.drawRadarOverlay(ctx);
         for (const e of this.entities) {
             // Loot has no fleet signature, so it is not tracked as a normal
@@ -2841,6 +2987,7 @@ export class Game {
             if ((e instanceof Debris || e instanceof AbilityCrate || e instanceof ResourceCrate)
                 && !this.isInsidePlayerRadar(e.position)) continue;
             if (e instanceof Fleet && e !== this.playerFleet) {
+                if (!visibleFleets.has(e)) continue;
                 const contact = this.sensors.getContact(this.playerFleet, e);
                 if (!contact) continue;
                 if (contact.stale && !this.sensors.canRender(this.playerFleet, contact)) continue;
@@ -2869,7 +3016,7 @@ export class Game {
         // Threat rings are deliberately separate from the ship silhouette:
         // hull shape communicates role, ring color communicates danger.
         const threatReference = Math.max(1, this.playerFleet.threatRating);
-        for (const fleet of [this.playerFleet, ...this.npcFleets]) {
+        for (const fleet of visibleFleets) {
             if (fleet !== this.playerFleet) {
                 const contact = this.sensors.getContact(this.playerFleet, fleet);
                 if (!contact || contact.stale || contact.level !== 'identified') continue;
@@ -2931,8 +3078,7 @@ export class Game {
             mine.draw(ctx, this.camera);
         }
 
-        const allFleets = [this.playerFleet, ...this.npcFleets];
-        for (const fleet of allFleets) {
+        for (const fleet of visibleFleets) {
             if (fleet !== this.playerFleet && !this.sensors.canRender(this.playerFleet, fleet)) continue;
             if (fleet.followTarget instanceof Fleet && fleet.followTarget !== this.playerFleet &&
                 !this.sensors.canRender(this.playerFleet, fleet.followTarget)) continue;
@@ -3158,7 +3304,8 @@ export class Game {
         ctx.fillStyle = sweepGradient;
         ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, radius, sweep, sweep + Math.PI * 0.8); ctx.closePath(); ctx.fill();
 
-        for (const fleet of this.npcFleets) {
+        for (const fleet of this.getFleetsNearPosition(this.playerFleet.position, range)) {
+            if (fleet === this.playerFleet) continue;
             const contact = this.sensors.getContact(this.playerFleet, fleet);
             if (!contact || contact.stale || !this.sensors.canRender(this.playerFleet, fleet)) continue;
             const dx = fleet.position.x - this.playerFleet.position.x;

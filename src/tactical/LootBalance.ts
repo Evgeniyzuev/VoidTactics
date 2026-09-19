@@ -45,9 +45,9 @@ export function getFleetLootProfile(input: FleetLootInput): FleetLootProfile {
 
     const fuelChance = clamp(0.32 + sizeScore * 0.035, 0.32, 0.75);
     const suppliesChance = clamp(
-        0.18 + sizeScore * 0.025 + Math.min(0.12, cargoCapacity / 1200),
-        0.18,
-        0.62
+        0.30 + sizeScore * 0.025 + Math.min(0.12, cargoCapacity / 1200),
+        0.30,
+        0.75
     );
 
     const fuelMin = Math.max(6, Math.round(fuelCapacity * 0.06));
