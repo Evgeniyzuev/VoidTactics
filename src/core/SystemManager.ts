@@ -1,4 +1,5 @@
 import { CelestialBody } from '../entities/CelestialBody';
+import { rand } from '../utils/Rng';
 import { Fleet, type Faction } from '../entities/Fleet';
 import { WarpGate } from '../entities/WarpGate';
 import { Vector2 } from '../utils/Vector2';
@@ -109,7 +110,7 @@ export class SystemManager {
             moon.orbitParent = jupiter;
             moon.orbitRadius = m.orbitRadius;
             moon.orbitSpeed = m.orbitSpeed;
-            moon.orbitAngle = Math.random() * Math.PI * 2;
+            moon.orbitAngle = rand() * Math.PI * 2;
             entities.push(moon);
         });
 
@@ -128,11 +129,11 @@ export class SystemManager {
 
         // Asteroid Belt
         for (let i = 0; i < 20; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const dist = 2000 + Math.random() * 500;
+            const angle = rand() * Math.PI * 2;
+            const dist = 2000 + rand() * 500;
             const x = Math.cos(angle) * dist;
             const y = Math.sin(angle) * dist;
-            const size = 5 + Math.random() * 15;
+            const size = 5 + rand() * 15;
             entities.push(new CelestialBody(x, y, size, '#888888', 'Asteroid'));
         }
 
@@ -176,11 +177,11 @@ export class SystemManager {
 
         // Asteroid field
         for (let i = 0; i < 25; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const dist = 1800 + Math.random() * 600;
+            const angle = rand() * Math.PI * 2;
+            const dist = 1800 + rand() * 600;
             const x = Math.cos(angle) * dist;
             const y = Math.sin(angle) * dist;
-            const size = 4 + Math.random() * 12;
+            const size = 4 + rand() * 12;
             entities.push(new CelestialBody(x, y, size, '#696969', 'Asteroid'));
         }
 
@@ -277,7 +278,7 @@ export class SystemManager {
         return true;
     }
 
-    public spawnFleetsForSystem(systemId: number, playerStrength: number, fleets: Fleet[], difficultyMultiplier: number, forcedFaction?: Faction, playerLevel: number = 1, systemDanger: number = 0): Fleet[] {
+    public spawnFleetsForSystem(systemId: number, playerStrength: number, fleets: Fleet[], difficultyMultiplier: number, forcedFaction?: Faction, playerLevel: number = 1, systemDanger: number = 0, playerPosition?: Vector2): Fleet[] {
         void difficultyMultiplier;
         const system = this.systems.get(systemId);
         if (!system) return [];
@@ -305,15 +306,15 @@ export class SystemManager {
             // Try to find a faction that can spawn within percentage limits
             while (attempts < maxAttempts) {
                 const totalWeight = levelAdjustedWeights.reduce((sum, w) => sum + w.weight, 0);
-                let rand = Math.random() * Math.max(0.0001, totalWeight);
+                let roll = rand() * Math.max(0.0001, totalWeight);
                 selectedFaction = 'civilian'; // default fallback
 
                 for (const factionWeight of levelAdjustedWeights) {
-                    if (rand < factionWeight.weight) {
+                    if (roll < factionWeight.weight) {
                         selectedFaction = factionWeight.type;
                         break;
                     }
-                    rand -= factionWeight.weight;
+                    roll -= factionWeight.weight;
                 }
 
                 // Check if this faction can spawn within percentage limits
@@ -348,16 +349,16 @@ export class SystemManager {
         };
 
         // Generate random position
-        const angle = Math.random() * Math.PI * 2;
+        const angle = rand() * Math.PI * 2;
         let distance: number;
         if (systemId === 1) {
             if (selectedFaction === 'civilian' || selectedFaction === 'military' || selectedFaction === 'mercenary') {
-                distance = 500 + Math.random() * 3500; // Inner region: 500-4000
+                distance = 500 + rand() * 3500; // Inner region: 500-4000
             } else {
-                distance = 4000 + Math.random() * 4000; // Outer region: 4000-8000
+                distance = 4000 + rand() * 4000; // Outer region: 4000-8000
             }
         } else {
-            distance = 1000 + Math.random() * 3000;
+            distance = 1000 + rand() * 3000;
         }
         const startX = Math.cos(angle) * distance;
         const startY = Math.sin(angle) * distance;
@@ -370,14 +371,23 @@ export class SystemManager {
         const cursor = this.threatCoefficientCursor.get(systemId) || 0;
         const coefficient = this.threatCoefficients[cursor % this.threatCoefficients.length];
         this.threatCoefficientCursor.set(systemId, cursor + 1);
-        const variance = 0.7 + Math.random() * 0.6;
+        // Big predators never spawn on top of the player: the stronger, the farther.
+        if (playerPosition) {
+            const safeDistance = coefficient >= 4 ? 6000 : coefficient >= 2 ? 3500 : 0;
+            const offset = npc.position.sub(playerPosition);
+            if (safeDistance > 0 && offset.mag() < safeDistance) {
+                const dir = offset.mag() > 1 ? offset.normalize() : new Vector2(Math.cos(angle), Math.sin(angle));
+                npc.position = playerPosition.add(dir.scale(safeDistance));
+            }
+        }
+        const variance = 0.7 + rand() * 0.6;
         const fleetBudget = Math.max(0, playerStrength * coefficient * variance);
         npc.ships = FleetGenerator.generate(fleetBudget, selectedFaction);
         npc.supplies = npc.maxSupplies;
         npc.fuel = npc.maxFuel;
         npc.commandCapacity = Math.max(12, npc.commandUsed);
         npc.selectedShipId = npc.ships[0]?.id || null;
-        npc.abilities.net.charges = Math.floor(Math.random() * 4);
+        npc.abilities.net.charges = Math.floor(rand() * 4);
         npc.clampAbilityChargesToCapacity();
         if (selectedFaction === 'military' || selectedFaction === 'mercenary') npc.doctrine.targetPriority = 'artillery';
         if (selectedFaction === 'pirate') npc.doctrine.targetPriority = 'damaged';
@@ -386,15 +396,46 @@ export class SystemManager {
         // Give initial target to roam
         const celestialBodies = system.entities.filter(e => e instanceof CelestialBody) as CelestialBody[];
         if (celestialBodies.length > 0) {
-            const poi = celestialBodies[Math.floor(Math.random() * celestialBodies.length)];
-            const offset = new Vector2((Math.random() - 0.5) * 400, (Math.random() - 0.5) * 400);
+            const poi = celestialBodies[Math.floor(rand() * celestialBodies.length)];
+            const offset = new Vector2((rand() - 0.5) * 400, (rand() - 0.5) * 400);
             npc.setTarget(poi.position.add(offset));
         } else {
-            npc.setTarget(new Vector2((Math.random() - 0.5) * 1000, (Math.random() - 0.5) * 1000));
+            npc.setTarget(new Vector2((rand() - 0.5) * 1000, (rand() - 0.5) * 1000));
         }
 
         console.log(`System ${systemId}: Spawning ${selectedFaction} fleet (×${coefficient}, variance ${variance.toFixed(2)}, threat ${npc.threatRating.toFixed(0)})`);
         return [npc];
+    }
+
+    /**
+     * A named hunter much stronger than the player. NPC fleets only fight when
+     * the odds look good, so beating it takes tricks (decoys, mines, belts).
+     */
+    public spawnWantedTarget(systemId: number, playerStrength: number): Fleet | null {
+        const system = this.systems.get(systemId);
+        if (!system) return null;
+        const factions: Faction[] = systemId === 2 ? ['raider'] : ['pirate', 'orc', 'raider'];
+        const faction = factions[Math.floor(rand() * factions.length)];
+        const firstNames = ['Grim', 'Vex', 'Karn', 'Ash', 'Dread', 'Morrow', 'Sable', 'Rook'];
+        const lastNames = ['the Gutter', 'Ironjaw', 'Blacksun', 'Hollow', 'Redhand', 'the Silent', 'Halcyon', 'Cinder'];
+        const name = `${firstNames[Math.floor(rand() * firstNames.length)]} ${lastNames[Math.floor(rand() * lastNames.length)]}`;
+
+        const angle = rand() * Math.PI * 2;
+        const distance = 3500 + rand() * 2500;
+        const npc = new Fleet(Math.cos(angle) * distance, Math.sin(angle) * distance, '#FFB000', false);
+        npc.faction = faction;
+        const budget = Math.max(20, playerStrength * (1.8 + rand() * 1.2));
+        npc.ships = FleetGenerator.generate(budget, faction);
+        npc.supplies = npc.maxSupplies;
+        npc.fuel = npc.maxFuel;
+        npc.commandCapacity = Math.max(12, npc.commandUsed);
+        npc.selectedShipId = npc.ships[0]?.id || null;
+        npc.abilities.net.charges = 1;
+        npc.clampAbilityChargesToCapacity();
+        npc.bounty = { name, reward: Math.round(npc.maximumThreatRating * 20) };
+        const poi = (system.entities.filter(e => e instanceof CelestialBody) as CelestialBody[]);
+        if (poi.length > 0) npc.setTarget(poi[Math.floor(rand() * poi.length)].position.clone());
+        return npc;
     }
 
     private getLevelAdjustedWeights(baseWeights: { type: Faction, weight: number }[], playerLevel: number): { type: Faction, weight: number }[] {

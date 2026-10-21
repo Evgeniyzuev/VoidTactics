@@ -158,7 +158,7 @@ describe('SaveSystem v4', () => {
             fuel: 143.25,
             maxFuel: player.maxFuel,
             supplies: 18.5,
-            maxSupplies: 80,
+            maxSupplies: player.maxSupplies,
             readiness: 63.5
         });
         expect(loaded!.skills).toEqual(player.skills);
@@ -171,7 +171,7 @@ describe('SaveSystem v4', () => {
         });
         expect(loaded!.abilityCharges).toEqual({
             afterburner: 2, cloak: 3, bubble: 4, mine: 5,
-            medkit: 6, fire: 7, shield: 8, net: 0
+            medkit: 6, fire: 7, shield: 8, net: 0, decoy: 0
         });
         expect(loaded!.signalDirector).toEqual(expectedSignals);
 

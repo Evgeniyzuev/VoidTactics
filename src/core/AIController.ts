@@ -1,8 +1,10 @@
 import { Vector2 } from '../utils/Vector2';
+import { rand } from '../utils/Rng';
 import { CelestialBody } from '../entities/CelestialBody';
 import { Fleet } from '../entities/Fleet';
 import { Game } from './Game';
-import { assessRelativeThreat, requiredAttackAdvantage } from '../tactical/Ecosystem';
+import { assessRelativeThreat, evaluateEngagement, getFactionProfile, type EngagementAssessment } from '../tactical/Ecosystem';
+import type { DecoyBeacon } from '../entities/DecoyBeacon';
 
 export class AIController {
     private game: Game;
@@ -11,9 +13,80 @@ export class AIController {
         this.game = game;
     }
 
+    /** Threat the NPC believes the target has, limited by its sensor contact. */
+    private perceivedPower(npc: Fleet, target: Fleet): number {
+        const contact = this.game.getSensorContact(npc, target);
+        if (contact && contact.level !== 'identified' && contact.intel.threat != null) return contact.intel.threat;
+        return target.threatRating;
+    }
+
+    private woundedFraction(fleet: Fleet): number {
+        let current = 0;
+        let maximum = 0;
+        for (const ship of fleet.ships) {
+            if (ship.state === 'destroyed') continue;
+            current += ship.hull + ship.armor + ship.shield;
+            maximum += ship.maxHull + ship.maxArmor + ship.maxShield;
+        }
+        return maximum > 0 ? 1 - current / maximum : 0;
+    }
+
+    private assess(npc: Fleet, target: Fleet, allyPower: number, committed: boolean): EngagementAssessment {
+        return evaluateEngagement({
+            faction: npc.faction,
+            ownPower: npc.threatRating,
+            allyPower,
+            perceivedEnemyPower: this.perceivedPower(npc, target),
+            enemyFaction: target.faction,
+            enemyWounded: this.woundedFraction(target),
+            committed
+        });
+    }
+
+    /** Where a fleeing NPC runs: toward a stronger friendly escort, else straight away. */
+    private retreatPoint(npc: Fleet, threat: Fleet, knownFleets: Fleet[]): Vector2 {
+        let haven: Fleet | null = null;
+        let best = Infinity;
+        for (const f of knownFleets) {
+            if (f === npc || f.isPlayer || !this.isAlly(npc, f) || f.state === 'flee') continue;
+            if (f.threatRating < threat.threatRating * 0.8) continue;
+            const d = Vector2.distance(npc.position, f.position);
+            if (d < 3500 && d < best) { best = d; haven = f; }
+        }
+        if (haven) return haven.position;
+        const runDir = npc.position.sub(threat.position).normalize();
+        return npc.position.add(runDir.scale(900));
+    }
+
+    private pickBeacon(npc: Fleet, beacons: readonly DecoyBeacon[], committed: boolean): DecoyBeacon | null {
+        if (committed) return null;
+        const profile = getFactionProfile(npc.faction);
+        if (!profile.opportunist && !profile.responder) return null;
+        let best: DecoyBeacon | null = null;
+        let bestDist = Infinity;
+        for (const beacon of beacons) {
+            if (beacon.expired) continue;
+            const dist = Vector2.distance(npc.position, beacon.position);
+            if (dist > beacon.attractionRadius || dist >= bestDist) continue;
+            if (profile.opportunist) {
+                // The beacon reads as a wounded, weak fleet: only tempting if the NPC thinks it can win.
+                const read = evaluateEngagement({
+                    faction: npc.faction, ownPower: npc.threatRating, allyPower: 0,
+                    perceivedEnemyPower: beacon.apparentPower, enemyFaction: 'player', enemyWounded: 0.8
+                });
+                if (!read.attack) continue;
+            }
+            best = beacon;
+            bestDist = dist;
+        }
+        return best;
+    }
+
     processAI() {
         const giveUpRadius = 2500;
         const backupRadius = 4000;
+        const clock = this.game.getGameClock();
+        const beacons = this.game.getDecoys();
         const celestialBodies = this.game.getEntities().filter(e => e instanceof CelestialBody) as CelestialBody[];
         const player = this.game.getPlayerFleet();
         const npcs = this.game.getNpcFleets();
@@ -21,9 +94,8 @@ export class AIController {
 
         for (const npc of npcs) {
             const isMilitaryLike = npc.faction === 'military' || npc.faction === 'mercenary';
-            const orcAttackWhenOutmatched = npc.faction === 'orc' && Math.random() < 0.5;
+            const profile = getFactionProfile(npc.faction);
             let followedFleet = npc.followTarget instanceof Fleet ? npc.followTarget : null;
-
 
             // Never retain the live Entity position or threat after the sensor
             // solution is lost. The next decision pass may reacquire the contact.
@@ -36,38 +108,50 @@ export class AIController {
             // Ability Usage Logic
             this.handleAbilities(npc);
 
+            // A fleet that just reached a decoy beacon sits still, fooled.
+            if (clock < npc.dazedUntil) { npc.intent = 'lured'; continue; }
+
             // Avoid O(N) tactical assessment on every rendered frame. Sensor loss
             // above is still handled immediately; normal decisions use reaction time.
             if (npc.decisionTimer > 0) continue;
+            const committed = clock < npc.committedUntil;
             const isChasing = !!followedFleet && this.isHostile(npc, followedFleet);
 
             const detectionRadius = Math.max(600, this.game.getFleetSensorRange(npc) * 2);
             const knownFleets = allFleets.filter(fleet =>
                 fleet === npc || this.game.canFleetTarget(npc, fleet)
             );
-            const hasNearbyAlly = knownFleets.some(f =>
-                f !== npc &&
-                this.isAlly(npc, f) &&
-                Vector2.distance(npc.position, f.position) < 800
+            const nearbyAllies = knownFleets.filter(f =>
+                f !== npc && !f.isPlayer && this.isAlly(npc, f) && Vector2.distance(npc.position, f.position) < 900
             );
-            const localPower = npc.threatRating + knownFleets
-                .filter(f => f !== npc && !f.isPlayer && this.isAlly(npc, f) && Vector2.distance(npc.position, f.position) < 900)
-                .reduce((sum, ally) => sum + ally.threatRating * 0.55, 0);
+            const hasNearbyAlly = nearbyAllies.length > 0;
+            const allyPower = nearbyAllies.reduce((sum, ally) => sum + ally.threatRating, 0);
 
             // Give up chase/flee if too far or futile.
             if (followedFleet && isChasing) {
                 if (followedFleet.inAsteroidBelt && !npc.inAsteroidBelt) {
                     npc.stopFollowing();
+                    npc.intent = 'roam';
+                    npc.committedUntil = 0;
                     npc.decisionTimer = 2.0;
                     continue;
                 }
                 const dist = Vector2.distance(npc.position, followedFleet.position);
-                if (!isMilitaryLike && followedFleet.threatRating > localPower * 1.15) {
-                    const runDir = npc.position.sub(followedFleet.position).normalize();
+                const chase = this.assess(npc, followedFleet, allyPower, committed);
+                if (!isMilitaryLike && chase.flee) {
                     npc.stopFollowing();
-                    npc.setTarget(npc.position.add(runDir.scale(900)));
+                    npc.setTarget(this.retreatPoint(npc, followedFleet, knownFleets));
                     npc.state = 'flee';
+                    npc.intent = 'flee';
+                    npc.committedUntil = 0;
                     npc.decisionTimer = 0.8;
+                    continue;
+                }
+                if (!chase.attack && !(isMilitaryLike && hasNearbyAlly)) {
+                    npc.stopFollowing();
+                    npc.intent = 'roam';
+                    npc.committedUntil = 0;
+                    npc.decisionTimer = 1.5;
                     continue;
                 }
 
@@ -77,7 +161,9 @@ export class AIController {
                     const targetVelDir = followedFleet.velocity.normalize();
                     if (dirToTarget.dot(targetVelDir) > 0.5) {
                         npc.stopFollowing();
-                        npc.setTarget(new Vector2((Math.random() - 0.5) * 1000, (Math.random() - 0.5) * 1000));
+                        npc.setTarget(new Vector2((rand() - 0.5) * 1000, (rand() - 0.5) * 1000));
+                        npc.intent = 'roam';
+                        npc.committedUntil = 0;
                         npc.decisionTimer = 2.0;
                         continue;
                     }
@@ -88,11 +174,13 @@ export class AIController {
                     ? giveUpRadius * 1.45
                     : relativeToTarget.band === 'prey' ? giveUpRadius * 0.72 : giveUpRadius;
                 if (dist > pursuitRange || (dist > 1200 && npc.faction === 'pirate' &&
-                    localPower < followedFleet.threatRating && !hasNearbyAlly)) {
+                    chase.winChance < 0.5 && !hasNearbyAlly)) {
                     npc.stopFollowing();
+                    npc.committedUntil = 0;
+                    npc.intent = 'roam';
                     if (celestialBodies.length > 0) {
-                        const poi = celestialBodies[Math.floor(Math.random() * celestialBodies.length)];
-                        npc.setTarget(poi.position.add(new Vector2((Math.random() - 0.5) * 200, (Math.random() - 0.5) * 200)));
+                        const poi = celestialBodies[Math.floor(rand() * celestialBodies.length)];
+                        npc.setTarget(poi.position.add(new Vector2((rand() - 0.5) * 200, (rand() - 0.5) * 200)));
                     }
                     npc.decisionTimer = 1.0;
                     continue;
@@ -100,11 +188,12 @@ export class AIController {
             }
 
             let bestTarget: Fleet | null = null;
-            let bestTargetScore = -1;
+            let bestTargetScore = -Infinity;
             let closestThreat: Fleet | null = null;
-            let minDistThreat = detectionRadius;
+            let threatUrgency = -Infinity;
             let closestHostile: Fleet | null = null;
             let minDistHostile = detectionRadius;
+            let backupCall = false;
 
             // 1. Guardian Instinct / Backup Logic for Military
             if (isMilitaryLike) {
@@ -124,6 +213,7 @@ export class AIController {
                                 this.game.canFleetTarget(npc, threat)) {
                                 bestTarget = threat;
                                 bestTargetScore = 999; // Maximum priority
+                                backupCall = true;
                                 break;
                             }
                         }
@@ -131,7 +221,7 @@ export class AIController {
                 }
             }
 
-            if (bestTargetScore < 999) {
+            if (!backupCall) {
                 for (const other of knownFleets) {
                     if (npc === other) continue;
 
@@ -140,65 +230,40 @@ export class AIController {
 
                     const hostileAtoB = this.isHostile(npc, other);
                     const hostileBtoA = this.isHostile(other, npc);
+                    if (!hostileAtoB && !hostileBtoA) continue;
 
-                    // Threat Evaluation
-                    if (hostileBtoA) {
-                        // Civilians are easily spooked, Traders only flee from stronger opponents
-                        const fearFactor = ['pirate', 'orc', 'raider'].includes(npc.faction) ? 1.15 : npc.faction === 'civilian' ? 0.5 : (npc.faction === 'trader' ? 1.0 : 1.2);
-                        if (other.threatRating > localPower * fearFactor) {
-                            if (dist < minDistThreat) {
-                                minDistThreat = dist;
-                                closestThreat = other;
-                            }
+                    // Judge the fight from what the NPC can perceive, not the truth.
+                    const read = this.assess(npc, other, allyPower, committed);
+
+                    // Danger: a hostile we would likely lose to. Committed hunters
+                    // keep tunnel vision and only react to their own quarry or a hopeless fight.
+                    if (hostileBtoA && read.flee) {
+                        const ignored = committed && followedFleet !== null && other !== followedFleet && read.winChance > 0.08;
+                        const urgency = (1 - read.winChance) * 1000 - dist;
+                        if (!ignored && urgency > threatUrgency) {
+                            threatUrgency = urgency;
+                            closestThreat = other;
                         }
                     }
 
-                    if (hostileAtoB) {
-                        let canTarget = false;
-                        if (isMilitaryLike) {
-                            canTarget = true;
-                        } else {
-                            const isOutmatched = other.threatRating > localPower * requiredAttackAdvantage(npc.faction);
-                            canTarget = localPower >= other.threatRating * requiredAttackAdvantage(npc.faction)
-                                || (npc.faction === 'orc' && orcAttackWhenOutmatched && isOutmatched);
+                    if (hostileAtoB && read.attack) {
+                        if (dist < minDistHostile) {
+                            minDistHostile = dist;
+                            closestHostile = other;
                         }
-
-                        if (canTarget) {
-                            if (dist < minDistHostile) {
-                                minDistHostile = dist;
-                                closestHostile = other;
-                            }
-                            // Calculate scores
-                            let strengthRatio = localPower / Math.max(0.1, other.threatRating);
-                            if (isMilitaryLike || npc.faction === 'pirate') {
-                                strengthRatio = 0.5 + strengthRatio * 0.25;
-                            }
-                            strengthRatio = Math.min(2.5, strengthRatio);
-                            const proximityFactor = 1 - (dist / detectionRadius);
-                            const proximityWeight = npc.faction === 'pirate' ? Math.pow(proximityFactor, 2) : proximityFactor;
-                            const cargoBonus = (other.faction === 'trader') ? 2.0 : 0;
-                            const combatBonus = (other.state === 'combat') ? 0.65 : 0;
-                            const preyBonus = Math.min(2, Math.max(0, strengthRatio - 1));
-
-                            let targetScore = proximityWeight * (strengthRatio + preyBonus + cargoBonus + combatBonus);
-
-                            // Raiders ignore strength mostly
-                            if ((npc.faction as string) === 'raider') targetScore += 5;
-                            if (isMilitaryLike) {
-                                targetScore = 10000 - dist; // Always prioritize the closest hostile
-                            }
-
-                            if (targetScore > bestTargetScore) {
-                                bestTargetScore = targetScore;
-                                bestTarget = other;
-                            }
+                        const proximityFactor = Math.max(0.05, 1 - dist / detectionRadius);
+                        const targetScore = read.expectedValue * (0.4 + proximityFactor)
+                            + (other.state === 'combat' ? 0.3 : 0);
+                        if (targetScore > bestTargetScore) {
+                            bestTargetScore = targetScore;
+                            bestTarget = other;
                         }
                     }
                 }
             }
 
-            if (bestTarget && closestHostile) {
-                const bestDist = Vector2.distance(npc.position, bestTarget.position);
+            if (bestTarget && closestHostile && !backupCall) {
+                const bestDist = Vector2.distance(npc.position, (bestTarget as Fleet).position);
                 if (bestDist > minDistHostile * 1.35) {
                     bestTarget = closestHostile;
                 }
@@ -206,24 +271,51 @@ export class AIController {
 
             // Decide action
             const isMilitaryWithAllies = isMilitaryLike && knownFleets.some(f => f !== npc && this.isAlly(npc, f) && Vector2.distance(npc.position, f.position) < 1000);
+            // A beacon wins over idling, and over a target that is farther away than the beacon.
+            const lure = this.pickBeacon(npc, beacons, committed);
+            const beaconBeatsTarget = lure !== null && (bestTarget === null ||
+                Vector2.distance(npc.position, lure.position) < Vector2.distance(npc.position, (bestTarget as Fleet).position) * 0.9);
 
-            if (closestThreat && !isMilitaryLike && !isMilitaryWithAllies && !orcAttackWhenOutmatched) {
-                // Aggressive factions still disengage when they are outmatched and alone.
-                const runDir = npc.position.sub(closestThreat.position).normalize();
-                npc.setTarget(npc.position.add(runDir.scale(800)));
-                if (closestThreat && minDistThreat <= 800 && npc.abilities.mine.cooldown <= 0 && Math.random() < 0.1) {
+            if (closestThreat && !isMilitaryWithAllies) {
+                // Outmatched and alone: break contact toward friends, mines behind.
+                const threat = closestThreat as Fleet;
+                npc.stopFollowing();
+                npc.setTarget(this.retreatPoint(npc, threat, knownFleets));
+                if (Vector2.distance(npc.position, threat.position) <= 800 && npc.abilities.mine.cooldown <= 0 && rand() < 0.1) {
                     this.game.dropWarpMine(npc);
                 }
                 npc.state = 'flee';
-                npc.decisionTimer = 1.0 + Math.random();
+                npc.intent = 'flee';
+                npc.committedUntil = 0;
+                npc.decisionTimer = 1.0 + rand();
+            } else if (lure && beaconBeatsTarget) {
+                const dist = Vector2.distance(npc.position, lure.position);
+                npc.stopFollowing();
+                npc.state = 'normal';
+                if (dist < 140) {
+                    npc.dazedUntil = clock + lure.investigate();
+                    npc.setTarget(npc.position);
+                    npc.intent = 'lured';
+                    npc.decisionTimer = 1.0;
+                } else {
+                    npc.setTarget(lure.position);
+                    npc.intent = isMilitaryLike ? 'respond' : 'lured';
+                    npc.decisionTimer = 1.0;
+                }
             } else if (bestTarget) {
                 // Attack!
-                npc.setFollowTarget(bestTarget, 'contact');
+                const target = bestTarget as Fleet;
+                if (npc.followTarget !== target || !committed) {
+                    npc.committedUntil = clock + profile.commitSeconds;
+                }
+                npc.setFollowTarget(target, 'contact');
                 npc.state = 'normal';
-                npc.decisionTimer = 0.5 + Math.random();
+                npc.intent = 'hunt';
+                npc.decisionTimer = 0.5 + rand();
             } else if (!npc.target && !npc.followTarget || npc.velocity.mag() < 5) {
                 // Roaming - check for debris first
                 npc.state = 'normal';
+                npc.intent = 'roam';
 
                 // Traders always seek debris, pirates and civilians seek when safe
                 let foundDebris = false;
@@ -233,7 +325,7 @@ export class AIController {
                     foundDebris = true;
                 }
                 if (npc.faction === 'trader' ||
-                    (['pirate', 'civilian'].includes(npc.faction) && minDistThreat > 1000)) { // Traders always, others when safe
+                    (['pirate', 'civilian'].includes(npc.faction) && !closestThreat)) { // Traders always, others when safe
                     const nearbyCrates = this.game.getCrates()
                         .filter((c: any) => Vector2.distance(npc.position, c.position) < (npc.faction === 'trader' ? 1500 : 1200))
                         .sort((a: any, b: any) => Vector2.distance(npc.position, a.position) - Vector2.distance(npc.position, b.position));
@@ -244,18 +336,20 @@ export class AIController {
                     if (nearbyCrates.length > 0) {
                         const targetCrate = nearbyCrates[0];
                         npc.setFollowTarget(targetCrate, 'approach');
+                        npc.intent = 'scavenge';
                         foundDebris = true;
                         npc.decisionTimer = npc.faction === 'trader' ? 6.0 : 4.0;
                     } else if (nearbyDebris.length > 0) {
                         const targetDebris = nearbyDebris[0];
                         npc.setFollowTarget(targetDebris, 'approach');
+                        npc.intent = 'scavenge';
                         foundDebris = true;
                         npc.decisionTimer = npc.faction === 'trader' ? 6.0 : 4.0; // Traders stay longer
                     }
                 }
 
                 // If no debris found, roam normally
-                if (!foundDebris && Math.random() < 0.01 && celestialBodies.length > 0) {
+                if (!foundDebris && rand() < 0.01 && celestialBodies.length > 0) {
                     let filteredPOIs = celestialBodies;
                     if (['civilian', 'military', 'mercenary'].includes(npc.faction)) {
                         filteredPOIs = celestialBodies
@@ -274,13 +368,13 @@ export class AIController {
 
                     if (filteredPOIs.length === 0) filteredPOIs = celestialBodies;
 
-                    const poi = filteredPOIs[Math.floor(Math.random() * filteredPOIs.length)];
-                    const offset = new Vector2((Math.random() - 0.5) * 400, (Math.random() - 0.5) * 400);
+                    const poi = filteredPOIs[Math.floor(rand() * filteredPOIs.length)];
+                    const offset = new Vector2((rand() - 0.5) * 400, (rand() - 0.5) * 400);
                     npc.setTarget(poi.position.add(offset));
                     if (npc.faction === 'civilian') {
-                        npc.civilianStopTimer = 2 + Math.random() * 4;
+                        npc.civilianStopTimer = 2 + rand() * 4;
                     } else if (npc.faction === 'trader') {
-                        npc.civilianStopTimer = 10 + Math.random() * 10;
+                        npc.civilianStopTimer = 10 + rand() * 10;
                     }
                     npc.decisionTimer = 5.0;
                 }

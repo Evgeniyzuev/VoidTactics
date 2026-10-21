@@ -467,6 +467,12 @@ export class UIManager {
         ];
 
         abilities.push({
+            id: 'decoy',
+            icon: '📡',
+            color: '#FFBE3C',
+            title: 'Decoy Beacon (fake distress call: lures pirates, orcs, raiders and patrols for 30s)'
+        });
+        abilities.push({
             id: 'net',
             icon: '🕸',
             color: '#D58CFF',

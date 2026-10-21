@@ -1,4 +1,7 @@
 import { Entity } from './Entity';
+import { rand } from '../utils/Rng';
+import { RELIC_EFFECTS, type RelicId } from '../tactical/Relics';
+import type { NpcIntent } from '../tactical/Ecosystem';
 import { Camera } from '../renderer/Camera';
 import { Vector2 } from '../utils/Vector2';
 import { Ship, createStarterShips } from '../tactical/Ship';
@@ -68,6 +71,17 @@ export class Fleet extends Entity {
     public currentTarget: Fleet | null = null; // Current attack target
     public hostileTo: Set<Fleet> = new Set(); // Persistent hostility to other fleets
     public lootDropped: boolean = false;
+    /** Rule-bending upgrades owned by the player (see Relics.ts). */
+    public relics: RelicId[] = [];
+    public hasRelic(id: RelicId) { return this.relics.includes(id); }
+    /** What the NPC is currently trying to do; shown to the player on identified contacts. */
+    public intent: NpcIntent = 'roam';
+    /** Tunnel vision: until this game time the NPC ignores third-party threats. */
+    public committedUntil = 0;
+    /** Named, high-value hunter. Killing it pays a bounty and a guaranteed relic draft. */
+    public bounty: { name: string; reward: number } | null = null;
+    /** Time (game clock) before which a beacon-dazed NPC makes no decisions. */
+    public dazedUntil = 0;
     public worldEventId: string | null = null;
     public worldEventRole: 'transport' | 'raider' | 'responder' | null = null;
 
@@ -86,7 +100,8 @@ export class Fleet extends Entity {
         medkit: { active: false, timer: 0, cooldown: 0, duration: ABILITY_DEFINITIONS.medkit.duration, cdMax: ABILITY_DEFINITIONS.medkit.cooldown, charges: 0 },
         fire: { active: false, timer: 0, cooldown: 0, duration: ABILITY_DEFINITIONS.fire.duration, cdMax: ABILITY_DEFINITIONS.fire.cooldown, charges: 0 },
         shield: { active: false, timer: 0, cooldown: 0, duration: ABILITY_DEFINITIONS.shield.duration, cdMax: ABILITY_DEFINITIONS.shield.cooldown, charges: 0 },
-        net: { active: false, timer: 0, cooldown: 0, duration: ABILITY_DEFINITIONS.net.duration, cdMax: ABILITY_DEFINITIONS.net.cooldown, charges: 0 }
+        net: { active: false, timer: 0, cooldown: 0, duration: ABILITY_DEFINITIONS.net.duration, cdMax: ABILITY_DEFINITIONS.net.cooldown, charges: 0 },
+        decoy: { active: false, timer: 0, cooldown: 0, duration: ABILITY_DEFINITIONS.decoy.duration, cdMax: ABILITY_DEFINITIONS.decoy.cooldown, charges: 0 }
     };
     public isCloaked: boolean = false;
     public isBubbled: boolean = false; // Set by external bubbles
@@ -198,7 +213,8 @@ export class Fleet extends Entity {
     public get maxEnergy() { return this.ships.filter(ship => ship.alive).reduce((sum, ship) => sum + ship.maxEnergy, 0); }
     public get maxShield() { return this.ships.filter(ship => ship.alive).reduce((sum, ship) => sum + ship.maxShield, 0); }
     public get fuelBurnPerDistance() {
-        return TACTICAL_BALANCE.fuelPerDistance * this.ships.filter(ship => ship.alive)
+        return TACTICAL_BALANCE.fuelPerDistance * (this.hasRelic('thrifty-drive') ? RELIC_EFFECTS.fuelBurnMultiplier : 1)
+            * this.ships.filter(ship => ship.alive)
             .reduce((sum, ship) => sum + Math.sqrt(Math.max(0.02, ship.statScale)), 0);
     }
     public get estimatedFuelRange() {
@@ -210,6 +226,7 @@ export class Fleet extends Entity {
             .reduce((sum, ship) => sum + ship.definition.signature * Math.sqrt(Math.max(0.02, ship.statScale)), 0);
         signature *= Math.max(0.6, 1 - this.skills.sensors * 0.08);
         if (this.isCloaked) signature *= 0.25;
+        if (this.hasRelic('ghost-hull')) signature *= RELIC_EFFECTS.signatureMultiplier;
         if (this.abilities.afterburner.active) signature *= TACTICAL_BALANCE.afterburnerSignatureMultiplier;
         if (this.fuel <= 0) signature *= TACTICAL_BALANCE.emptyFuelSignatureMultiplier;
         return Math.max(0.01, signature);
@@ -239,7 +256,7 @@ export class Fleet extends Entity {
         if (!this.isPlayer) {
             this.abilities.afterburner.charges = 1;
            this.abilities.mine.charges = 1;
-            this.abilities.net.charges = Math.floor(Math.random() * 4);
+            this.abilities.net.charges = Math.floor(rand() * 4);
            if (this.faction === 'military' || this.faction === 'mercenary') this.abilities.bubble.charges = 1;
             if (this.faction === 'raider') this.abilities.cloak.charges = 1;
         }

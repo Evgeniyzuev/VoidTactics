@@ -1,6 +1,7 @@
 import type { Fleet, Faction } from '../entities/Fleet';
 import type { WorldEvent, WorldEventKind } from '../entities/WorldEvent';
 import { TACTICAL_BALANCE } from './ShipDefinitions';
+import { RELIC_EFFECTS } from './Relics';
 
 export type ContactLevel = 'blip' | 'classified' | 'identified';
 export type SensorTarget = Fleet | WorldEvent;
@@ -246,16 +247,18 @@ export class SensorService {
             signatureMultiplier *= this.config.emptyFuelSignatureMultiplier;
         }
 
+        const relicSignature = fleet.hasRelic('ghost-hull') ? RELIC_EFFECTS.signatureMultiplier : 1;
+        const relicRange = fleet.hasRelic('long-lens') ? RELIC_EFFECTS.sensorMultiplier : 1;
         const signatureSkillMultiplier = Math.max(
             this.config.sensorSkillSignatureFloor,
             1 - this.config.sensorSkillSignaturePerLevel * skillLevel
         );
         const signature = activeShips.reduce((sum, ship) => (
             sum + ship.definition.signature * Math.sqrt(Math.max(0.02, ship.statScale))
-        ), 0) * signatureSkillMultiplier * signatureMultiplier;
+        ), 0) * signatureSkillMultiplier * signatureMultiplier * relicSignature;
 
         return {
-            sensorRange: sensorRange * this.config.baseSensorRangeMultiplier * skillRangeMultiplier * rangeMultiplier
+            sensorRange: sensorRange * this.config.baseSensorRangeMultiplier * skillRangeMultiplier * rangeMultiplier * relicRange
                 * (fleet.inAsteroidBelt ? 0.2 : 1),
             scanResolution: Math.max(this.config.minimumScanResolution, scanResolution),
             signature: Math.max(0.01, signature),

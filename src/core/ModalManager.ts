@@ -1,4 +1,5 @@
 import { formatNumber } from '../utils/NumberFormatter';
+import type { RelicDefinition } from '../tactical/Relics';
 import { SaveSystem } from './SaveSystem';
 import type { FleetSkillId } from '../entities/Fleet';
 import { FLEET_SKILLS } from '../entities/Fleet';
@@ -401,6 +402,38 @@ export class ModalManager {
         document.body.appendChild(this.modalContainer);
     }
 
+    /** Pick one of up to three relics. The game stays paused until a choice is made. */
+    showRelicDraft(options: RelicDefinition[], onPick: (relic: RelicDefinition) => void) {
+        this.closeModal();
+
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;z-index:10000;padding:12px;box-sizing:border-box;';
+        const dialog = document.createElement('div');
+        dialog.style.cssText = 'background:linear-gradient(135deg,#1a1a2e,#16213e);padding:22px;border-radius:12px;border:2px solid rgba(255,204,102,.6);box-shadow:0 8px 32px rgba(255,204,102,.25);color:#fff;font-family:monospace;text-align:center;max-width:720px;width:100%;max-height:100%;overflow:auto;box-sizing:border-box;';
+        const title = document.createElement('h2');
+        title.textContent = 'Choose a relic';
+        title.style.cssText = 'margin:0 0 6px;font-size:22px;color:#ffcc66;';
+        const hint = document.createElement('p');
+        hint.textContent = 'Relics bend the rules. Pick one; the others are lost.';
+        hint.style.cssText = 'margin:0 0 16px;font-size:13px;color:#9fb5c7;';
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;justify-content:center;';
+        for (const relic of options) {
+            const card = document.createElement('button');
+            card.style.cssText = `flex:1 1 180px;min-width:170px;max-width:220px;padding:14px 12px;border-radius:10px;background:rgba(20,24,40,.9);color:#fff;font-family:monospace;cursor:pointer;border:2px solid ${relic.rarity === 'rare' ? '#ffcc66' : 'rgba(140,200,255,.5)'};touch-action:manipulation;`;
+            card.innerHTML = `<div style="font-size:34px">${relic.icon}</div>` +
+                `<div style="font-weight:bold;margin:6px 0 2px">${relic.name}</div>` +
+                `<div style="font-size:11px;color:${relic.rarity === 'rare' ? '#ffcc66' : '#9fb5c7'};text-transform:uppercase;margin-bottom:8px">${relic.rarity}</div>` +
+                `<div style="font-size:12px;line-height:1.4">${relic.description}</div>`;
+            card.addEventListener('click', () => onPick(relic));
+            row.appendChild(card);
+        }
+        dialog.append(title, hint, row);
+        overlay.appendChild(dialog);
+        this.modalContainer = overlay;
+        document.body.appendChild(overlay);
+    }
+
     /**
      * Show liberation reward dialog
      */
@@ -695,7 +728,8 @@ export class ModalManager {
             { id: 'medkit', name: '✚ Emergency Repair' },
             { id: 'fire', name: '🔥 Weapon Overcharge' },
             { id: 'shield', name: '🛡 Shield Cell' },
-            { id: 'net', name: '🕸 Stasis Net' }
+            { id: 'net', name: '🕸 Stasis Net' },
+            { id: 'decoy', name: '📡 Decoy Beacon' }
         ];
         const abilityRows: { id: FleetAbilityId; count: HTMLElement; buy: HTMLButtonElement; sell: HTMLButtonElement }[] = [];
         abilities.forEach(ability => {

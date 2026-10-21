@@ -1,4 +1,5 @@
 import { Fleet, type Faction, type FleetSkillId } from '../entities/Fleet';
+import { RELICS, type RelicId } from '../tactical/Relics';
 import type { WorldEventPendingChoice, WorldEventPhase } from '../entities/WorldEvent';
 import { Ship, type ShipSnapshot } from '../tactical/Ship';
 import { HULLS, MODULES, type FleetDoctrine } from '../tactical/ShipDefinitions';
@@ -34,6 +35,7 @@ export interface AbilityChargesSave {
     shield: number;
     /** Added in v4 after older saves were already in the wild. */
     net?: number;
+    decoy?: number;
 }
 
 export interface FleetResourcesSave {
@@ -93,6 +95,8 @@ export interface GameSaveDataV4 {
     skills: Record<FleetSkillId, number>;
     progress?: PlayerProgressSave;
     abilityCharges?: AbilityChargesSave;
+    /** Added after v4 shipped; absent in older saves. */
+    relics?: string[];
     currentSystemId: string;
     systemId: string;
     worldSeed: number;
@@ -155,8 +159,10 @@ export class SaveSystem {
                 medkit: player.abilities.medkit.charges,
                 fire: player.abilities.fire.charges,
                 shield: player.abilities.shield.charges,
-                net: player.abilities.net.charges
+                net: player.abilities.net.charges,
+                decoy: player.abilities.decoy.charges
             },
+            relics: [...player.relics],
             currentSystemId: systemId,
             systemId,
             worldSeed: signalSnapshot?.seed ?? 0,
@@ -239,6 +245,7 @@ export class SaveSystem {
             fleet.levelThreshold = data.progress.levelThreshold;
             fleet.nextLevelThreshold = data.progress.nextLevelThreshold;
         }
+        fleet.relics = (data.relics ?? []).filter((id): id is RelicId => id in RELICS);
         if (data.abilityCharges) {
             fleet.abilities.afterburner.charges = data.abilityCharges.afterburner;
             fleet.abilities.cloak.charges = data.abilityCharges.cloak;
@@ -248,6 +255,7 @@ export class SaveSystem {
             fleet.abilities.fire.charges = data.abilityCharges.fire;
             fleet.abilities.shield.charges = data.abilityCharges.shield;
             fleet.abilities.net.charges = data.abilityCharges.net ?? 0;
+            fleet.abilities.decoy.charges = data.abilityCharges.decoy ?? 0;
         }
     }
 

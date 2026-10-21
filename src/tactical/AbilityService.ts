@@ -1,8 +1,10 @@
 import type { Fleet } from '../entities/Fleet';
 import type { SensorService } from './SensorService';
 import { TACTICAL_BALANCE } from './ShipDefinitions';
+import { RELIC_EFFECTS } from './Relics';
+import { rand } from '../utils/Rng';
 
-export type FleetAbilityId = 'afterburner' | 'cloak' | 'bubble' | 'mine' | 'medkit' | 'fire' | 'shield' | 'net';
+export type FleetAbilityId = 'afterburner' | 'cloak' | 'bubble' | 'mine' | 'medkit' | 'fire' | 'shield' | 'net' | 'decoy';
 export type TacticalAbilityId = FleetAbilityId | 'scan';
 
 /**
@@ -40,6 +42,7 @@ export const ABILITY_DEFINITIONS: Readonly<Record<TacticalAbilityId, AbilityDefi
     fire: { id: 'fire', name: 'Weapon Overcharge', duration: 5, cooldown: 10, energyFraction: 0, readinessCost: 5, requiresSelectedShip: true },
     shield: { id: 'shield', name: 'Shield Cell', duration: TACTICAL_BALANCE.shieldCellDuration, cooldown: TACTICAL_BALANCE.shieldCellCooldown, energyFraction: 0, readinessCost: 0, requiresSelectedShip: false },
     net: { id: 'net', name: 'Stasis Net', duration: TACTICAL_BALANCE.netDuration, cooldown: TACTICAL_BALANCE.netCooldown, energyFraction: 0, readinessCost: 0, requiresSelectedShip: false },
+    decoy: { id: 'decoy', name: 'Decoy Beacon', duration: 0, cooldown: 8, energyFraction: 0.08, readinessCost: 0, requiresSelectedShip: false },
     scan: { id: 'scan', name: 'Active Scan Pulse', duration: 4, cooldown: 0, energyFraction: TACTICAL_BALANCE.scanPulseEnergyFraction, readinessCost: 0, requiresSelectedShip: false }
 };
 
@@ -101,12 +104,13 @@ export class AbilityService {
             }
         }
 
-        if (!unlimitedStationNet) ability.charges--;
+        const recycled = !fleet.isStation && fleet.hasRelic('recycler') && rand() < RELIC_EFFECTS.recycleChance;
+        if (!unlimitedStationNet && !recycled) ability.charges--;
         ability.active = ability.duration > 0;
         ability.timer = ability.duration;
         ability.cooldown = ability.cdMax;
         if (id === 'cloak') fleet.isCloaked = true;
-        return { ok: true, targetShipId: selected?.id, chargeConsumed: true };
+        return { ok: true, targetShipId: selected?.id, chargeConsumed: !recycled };
     }
 
     static activateScanPulse(fleet: Fleet, sensors: SensorService, now: number): AbilityActivationResult {

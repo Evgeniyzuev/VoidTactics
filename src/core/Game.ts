@@ -1,4 +1,9 @@
 import { InputManager } from './InputManager';
+import { rand } from '../utils/Rng';
+import { DecoyBeacon } from '../entities/DecoyBeacon';
+import { rollLoot } from '../tactical/LootTables';
+import { RELICS, RELIC_EFFECTS, draftRelics, type RelicDefinition } from '../tactical/Relics';
+import type { NpcIntent } from '../tactical/Ecosystem';
 import { Renderer } from '../renderer/Renderer';
 import { Camera } from '../renderer/Camera';
 import { Vector2 } from '../utils/Vector2';
@@ -47,6 +52,11 @@ export class Game {
     private attacks: Attack[] = [];
     private bubbleZones: BubbleZone[] = [];
     private mines: WarpMine[] = [];
+    private decoys: DecoyBeacon[] = [];
+    private nextWantedAt = 100;
+    private pendingRelicDrafts = 0;
+    private relicDraftOpen = false;
+    private relicBar: HTMLDivElement | null = null;
     private debris: Debris[] = [];
     private crates: (AbilityCrate | ResourceCrate)[] = [];
     private worldEvents: WorldEvent[] = [];
@@ -67,6 +77,9 @@ export class Game {
     public getDebris(): Debris[] { return this.debris; }
     public getCrates(): (AbilityCrate | ResourceCrate)[] { return this.crates; }
     public getSystemRadius(): number { return this.SYSTEM_RADIUS; }
+    public getGameClock(): number { return this.gameClock; }
+    public getDecoys(): readonly DecoyBeacon[] { return this.decoys; }
+    public getSensorContact(observer: Fleet, target: Fleet) { return this.sensors.getContact(observer, target); }
 
     public addCombatShot(attacker: Fleet, target: Fleet, type: DamageType, hit: boolean) {
         const isVisible = (fleet: Fleet) => {
@@ -239,6 +252,7 @@ export class Game {
                 this.initWorld(savedCommandCapacity, systemId, undefined, savedProgress, savedCharges);
                 if (tacticalSave) {
                     SaveSystem.restoreFleet(this.playerFleet, tacticalSave);
+                    this.updateRelicBar();
                     this.applyProgress(this.captureProgress());
                     this.playerFleet.clampAbilityChargesToCapacity();
                     this.ui.updateAbilities(this.playerFleet);
@@ -255,6 +269,7 @@ export class Game {
                 this.initWorld(savedCommandCapacity, systemId, undefined, autosaveProgress, autosaveCharges);
                 if (tacticalSave) {
                     SaveSystem.restoreFleet(this.playerFleet, tacticalSave);
+                    this.updateRelicBar();
                     this.applyProgress(this.captureProgress());
                     this.playerFleet.clampAbilityChargesToCapacity();
                     this.ui.updateAbilities(this.playerFleet);
@@ -312,7 +327,7 @@ export class Game {
         systemId?: number,
         spawnNearGate?: Vector2,
         progress?: { totalMoneyEarned: number; level: number; levelThreshold: number; nextLevelThreshold: number },
-        abilityCharges?: { afterburner: number; cloak: number; bubble: number; mine: number; medkit: number; fire: number; shield: number; net?: number }
+        abilityCharges?: { afterburner: number; cloak: number; bubble: number; mine: number; medkit: number; fire: number; shield: number; net?: number; decoy?: number }
     ) {
         // Set current system
         this.currentSystemId = systemId || 1;
@@ -323,6 +338,8 @@ export class Game {
         this.attacks = [];
         this.bubbleZones = [];
         this.mines = [];
+        this.decoys = [];
+        this.nextWantedAt = 100;
         this.debris = [];
         this.crates = [];
         this.worldEvents = [];
@@ -359,7 +376,7 @@ export class Game {
         if (spawnNearGate) {
             // Spawn near the arrival gate with some offset
             const offsetDistance = 150; // Distance from gate
-            const angle = Math.random() * Math.PI * 2; // Random direction
+            const angle = rand() * Math.PI * 2; // Random direction
             spawnX = spawnNearGate.x + Math.cos(angle) * offsetDistance;
             spawnY = spawnNearGate.y + Math.sin(angle) * offsetDistance;
             console.log(`Spawning player near gate at (${spawnX.toFixed(0)}, ${spawnY.toFixed(0)})`);
@@ -382,16 +399,21 @@ export class Game {
             for (const key in this.playerFleet.abilities) {
                 (this.playerFleet.abilities as any)[key].charges = 0;
             }
+            // Starter kit: enough to try an escape and a trick before the first fight.
+            this.playerFleet.abilities.afterburner.charges = 2;
+            this.playerFleet.abilities.decoy.charges = 1;
+            this.playerFleet.abilities.mine.charges = 1;
         }
 
         this.entities.push(this.playerFleet);
+        this.updateRelicBar();
         this.initializeWorldEvents();
 
         // Spawn initial fleets using system-specific rules
         const initialFleets: Fleet[] = [];
         for (let i = 0; i < 30; i++) {
             const forcedFaction = this.currentSystemId === 2 ? 'raider' : undefined;
-            const fleets = this.systemManager.spawnFleetsForSystem(this.currentSystemId, this.playerFleet.threatRating, this.npcFleets, this.difficultyMultiplier, forcedFaction, this.playerFleet.level, this.signalDirector.systemDanger);
+            const fleets = this.systemManager.spawnFleetsForSystem(this.currentSystemId, this.playerFleet.threatRating, this.npcFleets, this.difficultyMultiplier, forcedFaction, this.playerFleet.level, this.signalDirector.systemDanger, this.playerFleet.position);
             initialFleets.push(...fleets);
         }
         this.entities.push(...initialFleets);
@@ -562,15 +584,16 @@ export class Game {
             medkit: this.playerFleet.abilities.medkit.charges,
             fire: this.playerFleet.abilities.fire.charges,
             shield: this.playerFleet.abilities.shield.charges,
-            net: this.playerFleet.abilities.net.charges
+            net: this.playerFleet.abilities.net.charges,
+            decoy: this.playerFleet.abilities.decoy.charges
         };
     }
 
     private getDefaultAbilityCharges() {
-        return { afterburner: 0, cloak: 0, bubble: 0, mine: 0, medkit: 0, fire: 0, shield: 0, net: 0 };
+        return { afterburner: 0, cloak: 0, bubble: 0, mine: 0, medkit: 0, fire: 0, shield: 0, net: 0, decoy: 0 };
     }
 
-    private applyAbilityCharges(charges: { afterburner: number; cloak: number; bubble: number; mine: number; medkit: number; fire: number; shield: number; net?: number }) {
+    private applyAbilityCharges(charges: { afterburner: number; cloak: number; bubble: number; mine: number; medkit: number; fire: number; shield: number; net?: number; decoy?: number }) {
         this.playerFleet.abilities.afterburner.charges = Math.max(0, charges.afterburner || 0);
         this.playerFleet.abilities.cloak.charges = Math.max(0, charges.cloak || 0);
         this.playerFleet.abilities.bubble.charges = Math.max(0, charges.bubble || 0);
@@ -579,6 +602,7 @@ export class Game {
         this.playerFleet.abilities.fire.charges = Math.max(0, charges.fire || 0);
         this.playerFleet.abilities.shield.charges = Math.max(0, charges.shield || 0);
         this.playerFleet.abilities.net.charges = Math.max(0, charges.net || 0);
+        this.playerFleet.abilities.decoy.charges = Math.max(0, charges.decoy || 0);
         this.playerFleet.clampAbilityChargesToCapacity();
         if (this.ui) this.ui.updateAbilities(this.playerFleet);
     }
@@ -609,6 +633,7 @@ export class Game {
             const nextLevelCost = Math.max(1, Math.round(previousLevelCost * 1.5));
             this.playerFleet.nextLevelThreshold = this.playerFleet.levelThreshold + nextLevelCost;
             this.playerFleet.skillPoints += 3;
+            if (this.playerFleet.level % 3 === 0 && this.ui) this.queueRelicDraft(`level ${this.playerFleet.level}`);
             console.log(`Level ${this.playerFleet.level} reached (earned ${formatNumber(this.playerFleet.totalMoneyEarned)})`);
         }
         this.refreshDifficultyMultiplier();
@@ -667,24 +692,31 @@ export class Game {
 
     public awardPlayerExperience(amount: number) {
         if (!this.playerFleet || amount <= 0) return;
-        this.playerFleet.totalMoneyEarned += amount;
+        this.playerFleet.totalMoneyEarned += amount * (this.playerFleet.hasRelic('veteran') ? RELIC_EFFECTS.experienceMultiplier : 1);
         this.checkLevelUp();
     }
 
     public awardPlayerMoney(amount: number, experience = amount) {
         if (!this.playerFleet || amount <= 0) return;
-        this.playerFleet.money += amount;
+        const earned = this.playerFleet.hasRelic('bounty-chip') ? amount * RELIC_EFFECTS.moneyMultiplier : amount;
+        this.playerFleet.money += earned;
         this.awardPlayerExperience(experience);
         this.ui.updateMoney(this.playerFleet.money);
     }
 
     /** One XP is awarded for every actual point removed from shield, armor or hull. */
-    public getCombatDamageExperience(_target: Fleet, damage: number) {
-        return Math.max(0, damage);
+    public getCombatDamageExperience(target: Fleet, damage: number) {
+        return Math.max(0, damage) * this.getKillExperienceFactor(target);
+    }
+
+    /** Hunting far below your weight pays little; punching up pays more. */
+    private getKillExperienceFactor(target: Fleet) {
+        const ratio = target.maximumThreatRating / Math.max(1, this.playerFleet.threatRating);
+        return Math.max(0.15, Math.min(2, Math.sqrt(ratio) * 1.2));
     }
 
     public getFleetKillExperience(target: Fleet) {
-        return target.maximumThreatRating * TACTICAL_BALANCE.killExperienceThreatMultiplier;
+        return target.maximumThreatRating * TACTICAL_BALANCE.killExperienceThreatMultiplier * this.getKillExperienceFactor(target);
     }
     private saveGame(slot: SaveSlot = 'manual') {
         SaveSystem.save(this.playerFleet, this.npcFleets, {
@@ -715,7 +747,8 @@ export class Game {
                 medkit: fleet.abilities.medkit.charges,
                 fire: fleet.abilities.fire.charges,
                 shield: fleet.abilities.shield.charges,
-                net: fleet.abilities.net.charges
+                net: fleet.abilities.net.charges,
+                decoy: fleet.abilities.decoy.charges
             }
         };
     }
@@ -812,7 +845,7 @@ export class Game {
         fleet.fuel = fleet.maxFuel;
         fleet.commandCapacity = Math.max(12, fleet.commandUsed);
         fleet.selectedShipId = fleet.ships[0]?.id || null;
-        fleet.abilities.net.charges = Math.floor(Math.random() * 4);
+        fleet.abilities.net.charges = Math.floor(rand() * 4);
         fleet.clampAbilityChargesToCapacity();
         fleet.worldEventId = event.id;
         fleet.worldEventRole = role;
@@ -847,6 +880,7 @@ export class Game {
         fleet.abilities.fire.charges = snapshot.abilityCharges.fire;
         fleet.abilities.shield.charges = snapshot.abilityCharges.shield;
         fleet.abilities.net.charges = snapshot.abilityCharges.net || 0;
+        fleet.abilities.decoy.charges = snapshot.abilityCharges.decoy || 0;
         fleet.clampAbilityChargesToCapacity();
         if (fleet.faction === 'pirate') fleet.doctrine.targetPriority = 'damaged';
         if (fleet.faction === 'military') fleet.doctrine.targetPriority = 'artillery';
@@ -1363,6 +1397,7 @@ export class Game {
     }
 
     private update(dt: number) {
+        if (this.pendingRelicDrafts > 0 && !this.relicDraftOpen && !this.isGameOver) this.openNextRelicDraft();
         if (this.isPaused) return;
 
         // loop() already applies timeScale before calling update().
@@ -1390,7 +1425,7 @@ export class Game {
 
         // Check if we should spawn more fleets
         if (this.systemManager.shouldSpawnMoreFleets(this.currentSystemId, this.npcFleets, this.difficultyMultiplier)) {
-            const newFleets = this.systemManager.spawnFleetsForSystem(this.currentSystemId, this.playerFleet.threatRating, this.npcFleets, this.difficultyMultiplier, undefined, this.playerFleet.level, this.signalDirector.systemDanger);
+            const newFleets = this.systemManager.spawnFleetsForSystem(this.currentSystemId, this.playerFleet.threatRating, this.npcFleets, this.difficultyMultiplier, undefined, this.playerFleet.level, this.signalDirector.systemDanger, this.playerFleet.position);
             // Add new fleets to entities and npcFleets
             for (const fleet of newFleets) {
                 this.entities.push(fleet);
@@ -1545,6 +1580,12 @@ export class Game {
         // 4. Update Entities
         for (const e of this.entities) e.update(dt);
 
+        for (let i = this.decoys.length - 1; i >= 0; i--) {
+            this.decoys[i].update(dt);
+            if (this.decoys[i].expired) this.decoys.splice(i, 1);
+        }
+        this.updateWantedTargets();
+
         // Update Mines
         const fleets = [this.playerFleet, ...this.npcFleets];
         for (let i = this.mines.length - 1; i >= 0; i--) {
@@ -1623,30 +1664,113 @@ export class Game {
 
 
 
-    private spawnFleetLoot(fleet: Fleet) {
+    private spawnFleetLoot(fleet: Fleet, killedByPlayer = false) {
         if (fleet.lootDropped) return false;
         fleet.lootDropped = true;
 
-        const debrisValue = Math.max(1, Math.floor(
-            fleet.ships.reduce((sum, ship) => sum + ship.definition.tacticalValue, 0) / 20
-        ));
+        const player = this.playerFleet;
+        const loot = rollLoot(fleet.faction, fleet.maximumThreatRating, player.threatRating, !!fleet.bounty);
+        const salvager = player.hasRelic('salvager');
+
+        const baseValue = fleet.ships.reduce((sum, ship) => sum + ship.definition.tacticalValue, 0) / 20;
+        const debrisValue = Math.max(1, Math.floor(baseValue * loot.salvageMultiplier * (salvager ? RELIC_EFFECTS.salvageMultiplier : 1)));
         this.spawnDebris(fleet.position.x, fleet.position.y, debrisValue);
 
-        const dropCount = Math.random() < 0.5 ? 1 : 2;
-        const abilityIds = ['afterburner', 'bubble', 'cloak', 'mine', 'medkit', 'fire', 'shield', 'net'];
-        for (let i = 0; i < dropCount; i++) {
-            const abilityId = abilityIds[Math.floor(Math.random() * abilityIds.length)];
-            const angle = Math.random() * Math.PI * 2;
-            const dist = 15 + Math.random() * 25;
-            this.spawnAbilityCrate(
-                fleet.position.x + Math.cos(angle) * dist,
-                fleet.position.y + Math.sin(angle) * dist,
-                abilityId
-            );
+        const scatter = () => ({ angle: rand() * Math.PI * 2, dist: 15 + rand() * 25 });
+        const abilityIds = [...loot.abilityIds];
+        if (salvager && abilityIds.length > 0) abilityIds.push(abilityIds[Math.floor(rand() * abilityIds.length)]);
+        for (const abilityId of abilityIds) {
+            const { angle, dist } = scatter();
+            this.spawnAbilityCrate(fleet.position.x + Math.cos(angle) * dist, fleet.position.y + Math.sin(angle) * dist, abilityId);
+        }
+        if (loot.resources) {
+            const { angle, dist } = scatter();
+            this.spawnResourceCrate(fleet.position.x + Math.cos(angle) * dist, fleet.position.y + Math.sin(angle) * dist,
+                Math.round(loot.resources.fuel), loot.resources.supplies);
+        }
+
+        if (killedByPlayer) {
+            if (fleet.bounty) {
+                this.awardPlayerMoney(fleet.bounty.reward);
+                this.ui.addEvent(`★ ${fleet.bounty.name} destroyed: bounty +$${formatNumber(Math.round(fleet.bounty.reward))}.`);
+            }
+            if (rand() < loot.relicChance) this.queueRelicDraft(fleet.bounty ? `${fleet.bounty.name}'s wreck` : 'a wreck');
         }
         return true;
     }
 
+    // --- Relics -----------------------------------------------------------
+
+    private queueRelicDraft(source: string) {
+        this.pendingRelicDrafts++;
+        this.ui.addEvent(`Rare find in ${source}: choose a relic.`);
+        this.openNextRelicDraft();
+    }
+
+    private openNextRelicDraft() {
+        if (this.relicDraftOpen || this.pendingRelicDrafts <= 0 || this.isGameOver || this.modal.isModalOpen()) return;
+        const options = draftRelics(this.playerFleet.relics);
+        if (options.length === 0) {
+            this.pendingRelicDrafts = 0;
+            return;
+        }
+        this.pendingRelicDrafts--;
+        this.relicDraftOpen = true;
+        const wasPaused = this.isPaused;
+        if (!wasPaused) this.togglePause();
+        this.modal.showRelicDraft(options, (relic: RelicDefinition) => {
+            this.playerFleet.relics.push(relic.id);
+            this.ui.addEvent(`Relic acquired: ${relic.name} — ${relic.description}`);
+            this.relicDraftOpen = false;
+            this.modal.closeModal();
+            this.updateRelicBar();
+            this.ui.updateFleet(this.playerFleet);
+            if (!wasPaused && this.isPaused) this.togglePause();
+            this.saveGame();
+        });
+    }
+
+    private updateRelicBar() {
+        if (!this.relicBar) {
+            const bar = document.createElement('div');
+            bar.id = 'relic-bar';
+            bar.style.cssText = 'position:fixed;left:12px;top:52px;display:flex;gap:4px;z-index:50;pointer-events:auto;';
+            document.body.appendChild(bar);
+            this.relicBar = bar;
+        }
+        this.relicBar.innerHTML = '';
+        for (const id of this.playerFleet?.relics ?? []) {
+            const relic = RELICS[id];
+            if (!relic) continue;
+            const chip = document.createElement('div');
+            chip.textContent = relic.icon;
+            chip.title = `${relic.name}: ${relic.description}`;
+            chip.style.cssText = `width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:6px;font-size:15px;background:rgba(20,20,25,.8);border:1px solid ${relic.rarity === 'rare' ? '#ffcc66' : 'rgba(140,200,255,.45)'};`;
+            this.relicBar.appendChild(chip);
+        }
+    }
+
+    // --- Wanted targets ---------------------------------------------------
+
+    /** A named, stronger-than-you hunter appears now and then: beatable only with tricks. */
+    private updateWantedTargets() {
+        if (this.gameClock < this.nextWantedAt) return;
+        this.nextWantedAt = this.gameClock + 150 + rand() * 90;
+        if (this.npcFleets.some(fleet => fleet.bounty && fleet.ships.some(ship => ship.alive))) return;
+        const wanted = this.systemManager.spawnWantedTarget(this.currentSystemId, this.playerFleet.threatRating);
+        if (!wanted) return;
+        this.entities.push(wanted);
+        this.npcFleets.push(wanted);
+        this.ui.addEvent(`★ WANTED: ${wanted.bounty!.name} (${wanted.faction}) is hunting in this system. Bounty $${formatNumber(Math.round(wanted.bounty!.reward))} and a guaranteed relic.`);
+    }
+
+    public static describeIntent(intent: NpcIntent): string {
+        const labels: Record<NpcIntent, string> = {
+            roam: 'Patrolling', hunt: 'Hunting', flee: 'Fleeing', lured: 'Investigating a signal',
+            scavenge: 'Salvaging', respond: 'Answering a distress call'
+        };
+        return labels[intent] ?? 'Unknown';
+    }
 
     private processCombat(dt: number) {
         const allFleets = [this.playerFleet, ...this.npcFleets];
@@ -1766,8 +1890,9 @@ export class Game {
         if (!attack.attacker.ships.some(ship => ship.alive)) dead.push(attack.attacker);
         if (!attack.target.ships.some(ship => ship.alive)) dead.push(attack.target);
         for (const fleet of dead) {
-            const firstLootResolution = this.spawnFleetLoot(fleet);
-            if (firstLootResolution && attack.attacker === this.playerFleet && fleet === attack.target) {
+            const killedByPlayer = attack.attacker === this.playerFleet && fleet === attack.target;
+            const firstLootResolution = this.spawnFleetLoot(fleet, killedByPlayer);
+            if (firstLootResolution && killedByPlayer) {
                 this.awardPlayerExperience(this.getFleetKillExperience(fleet));
             }
             toRemove.push(fleet);
@@ -1933,6 +2058,8 @@ export class Game {
                 const status = isHostile ? '<span style="color: red;">Hostile</span>' : '<span style="color: green;">Friendly</span>';
                 info += `${status}<br/>`;
                 const assessment = assessRelativeThreat(fleet.threatRating, this.playerFleet.threatRating);
+                if (fleet.bounty) info = `<span style="color:#ffcc66">★ WANTED: ${fleet.bounty.name} · bounty $${formatNumber(Math.round(fleet.bounty.reward))}</span><br/>` + info;
+                if (!isPlayer) info += `Intent: <b>${Game.describeIntent(fleet.intent)}</b><br/>`;
                 info += `Relative threat: <b>${assessment.ratio.toFixed(2)}× · ${assessment.label}</b><br/>`;
                 info += `<span style="color:#9fb5c7">${assessment.risk}</span><br/>`;
                 const activeShips = fleet.ships.filter(ship => ship.state === 'active').length;
@@ -2546,6 +2673,8 @@ export class Game {
             bubble.draw(ctx, this.camera);
         }
 
+        for (const decoy of this.decoys) decoy.draw(ctx, this.camera);
+
         // Draw Mines
         for (const mine of this.mines) {
             if (mine.owner !== this.playerFleet) {
@@ -2872,6 +3001,7 @@ export class Game {
         const skillPoints = this.playerFleet.skillPoints;
         const skills = { ...this.playerFleet.skills };
         const playerMoney = this.playerFleet.money;
+        const relics = [...this.playerFleet.relics];
         const playerProgress = this.captureProgress();
         const playerCharges = this.captureAbilityCharges();
 
@@ -2903,6 +3033,8 @@ export class Game {
         this.playerFleet.skillPoints = skillPoints;
         this.playerFleet.skills = skills;
         this.playerFleet.money = playerMoney;
+        this.playerFleet.relics = relics;
+        this.updateRelicBar();
 
         // Update UI
         this.ui.updateMoney(this.playerFleet.money);
@@ -2928,6 +3060,14 @@ export class Game {
             this.mines.push(new WarpMine(this.playerFleet.position.x, this.playerFleet.position.y, this.playerFleet));
         } else if (abilityId === 'bubble') {
             this.bubbleZones.push(new BubbleZone(this.playerFleet.position.x, this.playerFleet.position.y, 200, 8, 0.2, this.playerFleet));
+        } else if (abilityId === 'decoy') {
+            const siren = this.playerFleet.hasRelic('siren');
+            this.decoys.push(new DecoyBeacon(
+                this.playerFleet.position.x, this.playerFleet.position.y, this.playerFleet,
+                siren ? RELIC_EFFECTS.decoyDurationMultiplier : 1,
+                siren ? RELIC_EFFECTS.decoyAttractionMultiplier : 1
+            ));
+            this.ui.addEvent('Decoy Beacon deployed: a fake distress call draws opportunists and patrols. Slip away.');
         }
         this.ui.updateAbilities(this.playerFleet);
         this.ui.updateFleet(this.playerFleet);
