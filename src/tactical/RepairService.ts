@@ -87,9 +87,9 @@ export class RepairService {
             return;
         }
 
-        const ammoTarget = fleet.ships.filter(ship => ship.alive && ship.ammunition < ship.definition.ammunition * ship.statScale)[0];
+        const ammoTarget = fleet.ships.filter(ship => ship.alive && ship.ammunition < ship.maxAmmunition)[0];
         if (ammoTarget) {
-            const maximum = ammoTarget.definition.ammunition * ammoTarget.statScale;
+            const maximum = ammoTarget.maxAmmunition;
             const restored = Math.min(TACTICAL_BALANCE.fieldAmmoRestorePerSecond * engineeringBonus * repairSpeedMultiplier * dt, maximum - ammoTarget.ammunition, fleet.supplies * TACTICAL_BALANCE.ammunitionPerSupply);
             ammoTarget.ammunition += restored;
             fleet.supplies = Math.max(0, fleet.supplies - restored / TACTICAL_BALANCE.ammunitionPerSupply);
@@ -110,7 +110,7 @@ export class RepairService {
         const supplies = Math.max(0, fleet.maxSupplies - fleet.supplies) * TACTICAL_BALANCE.stationSupplyPrice;
         const serviceable = fleet.ships.filter(ship => ship.state !== 'destroyed');
         const ammunition = serviceable.reduce((sum, ship) => (
-            sum + Math.max(0, ship.definition.ammunition * ship.statScale - ship.ammunition)
+            sum + Math.max(0, ship.maxAmmunition - ship.ammunition)
         ), 0) * TACTICAL_BALANCE.stationAmmoPrice;
         const hull = serviceable.reduce((sum, ship) => sum + Math.max(0, ship.maxHull - ship.hull), 0) * TACTICAL_BALANCE.stationHullPrice;
         const armor = serviceable.reduce((sum, ship) => sum + Math.max(0, ship.maxArmor - ship.armor), 0) * TACTICAL_BALANCE.stationArmorPrice;
@@ -162,7 +162,7 @@ export class RepairService {
             }
             for (const ship of serviceable) {
                 const ammunition = buy(
-                    Math.max(0, ship.definition.ammunition * ship.statScale - ship.ammunition),
+                    Math.max(0, ship.maxAmmunition - ship.ammunition),
                     TACTICAL_BALANCE.stationAmmoPrice
                 );
                 ship.ammunition += ammunition;

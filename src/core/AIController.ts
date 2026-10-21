@@ -93,6 +93,15 @@ export class AIController {
         const allFleets = [player, ...npcs];
 
         for (const npc of npcs) {
+            if (!this.game.shouldRunFleetAI(npc)) continue;
+            // Terra's guardian fleet is an anchored defensive actor. It is
+            // still present in tactical combat, but must not roam to random
+            // POIs like an ordinary civilian convoy.
+            if (npc.isStation) {
+                npc.stopFollowing();
+                npc.decisionTimer = 1;
+                continue;
+            }
             const isMilitaryLike = npc.faction === 'military' || npc.faction === 'mercenary';
             const profile = getFactionProfile(npc.faction);
             let followedFleet = npc.followTarget instanceof Fleet ? npc.followTarget : null;
@@ -118,7 +127,7 @@ export class AIController {
             const isChasing = !!followedFleet && this.isHostile(npc, followedFleet);
 
             const detectionRadius = Math.max(600, this.game.getFleetSensorRange(npc) * 2);
-            const knownFleets = allFleets.filter(fleet =>
+            const knownFleets = (this.game.getNearbyFleets?.(npc, detectionRadius) || allFleets).filter(fleet =>
                 fleet === npc || this.game.canFleetTarget(npc, fleet)
             );
             const nearbyAllies = knownFleets.filter(f =>
@@ -419,11 +428,39 @@ export class AIController {
         }
     }
 
+    /**
+     * Records the first aggressor of a newly started fight. Only nearby,
+     * law-abiding NPCs that have a proper sensor solution receive a one-use
+     * response permission. Fleets that discover the fight later do not.
+     */
+    public recordCombatStart(attacker: Fleet, target: Fleet) {
+        const witnesses = [this.game.getPlayerFleet(), ...this.game.getNpcFleets()];
+        for (const witness of witnesses) {
+            if (witness === attacker || witness === target || witness.isStation) continue;
+            if (!['civilian', 'military', 'mercenary'].includes(witness.faction)) continue;
+            // Lawful witnesses only intervene when the opening attack harmed
+            // one of their own side. A lawful fleet engaging pirates, orcs or
+            // raiders must not turn every nearby civilian into a responder.
+            if (!this.isAlly(witness, target)) continue;
+            if (witness.activeBattle || witness.currentTarget) continue;
+            if (!this.game.canFleetTarget(witness, attacker)) continue;
+
+            witness.witnessHostility.add(attacker);
+            witness.witnessedAggressors.add(attacker);
+        }
+    }
+
     public isHostile(a: Fleet, b: Fleet): boolean {
         if (a === b) return false;
         if (a.hostileTo.has(b)) return true;
+        if (a.witnessHostility.has(b)) return true;
         const f1 = a.faction;
         const f2 = b.faction;
+
+        // The Terra guardian is technically civilian so it is shown and
+        // treated as a home fleet, but it answers fire from hostile factions.
+        if (a.isStation) return ['pirate', 'orc', 'raider'].includes(f2);
+        if (b.isStation) return ['pirate', 'orc', 'raider'].includes(f1);
 
         // Player relations
         if (f1 === 'player') {
@@ -448,7 +485,6 @@ export class AIController {
         // Military/Mercenary protect peace
         if (f1 === 'military' || f1 === 'mercenary') {
             if (['pirate', 'orc', 'raider'].includes(f2)) return true;
-            if (b.currentTarget && this.isAlly(a, b.currentTarget)) return true;
             return false;
         }
 
@@ -456,7 +492,6 @@ export class AIController {
 
         // Civilians and Traders only fight back if attacked
         if (f1 === 'civilian' || f1 === 'trader') {
-            if (b.currentTarget && this.isAlly(a, b.currentTarget)) return true;
             return false;
         }
 

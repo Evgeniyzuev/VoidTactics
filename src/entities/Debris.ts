@@ -1,5 +1,6 @@
 import { Entity } from './Entity';
 import { Camera } from '../renderer/Camera';
+import { LOOT_MARKER } from './LootMarker';
 
 export class Debris extends Entity {
     public value: number; // Number of debris units
@@ -9,7 +10,7 @@ export class Debris extends Entity {
         super(x, y);
         this.value = value;
         this.kind = kind;
-        this.radius = Math.max(4, Math.min(12, Math.sqrt(value) * 2)); // Size scales with value, clamped, made larger
+        this.radius = LOOT_MARKER.radius;
     }
 
     update(_dt: number): void {
@@ -22,25 +23,25 @@ export class Debris extends Entity {
         ctx.save();
         ctx.translate(screenPos.x, screenPos.y);
 
-        // Draw as small gray circles/piles
-        const numPiles = Math.min(5, Math.max(1, Math.floor(this.value / 10) + 1));
-        for (let i = 0; i < numPiles; i++) {
-            const offsetX = (i - (numPiles - 1) / 2) * 3;
-            const offsetY = (i % 2 === 0 ? -2 : 2);
-            // Use deterministic size based on position and index to avoid flickering
-            const pileRadius = this.radius * (0.5 + (Math.sin(this.position.x * 0.01 + i * 0.5) * 0.25 + 0.25));
+        const color = this.kind === 'salvage' ? '#6DE2B2' : '#82D9F5';
+        const highlight = this.kind === 'salvage' ? '#E5FFF5' : '#E7FBFF';
+        const pulse = 0.82 + Math.sin(this.position.x * 0.01 + this.position.y * 0.013) * 0.08;
 
-            ctx.beginPath();
-            ctx.arc(offsetX, offsetY, pileRadius, 0, Math.PI * 2);
-            ctx.fillStyle = this.kind === 'salvage' ? '#6DE2B2' : '#CCCCCC';
-            ctx.fill();
-
-            // Small highlight
-            ctx.beginPath();
-            ctx.arc(offsetX - pileRadius * 0.3, offsetY - pileRadius * 0.3, pileRadius * 0.3, 0, Math.PI * 2);
-            ctx.fillStyle = this.kind === 'salvage' ? '#E5FFF5' : '#FFFFFF';
-            ctx.fill();
-        }
+        // One restrained marker reads better than a pile of particles and
+        // stays recognizable when the camera is zoomed out.
+        ctx.globalAlpha = pulse;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.25;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(0, 0, LOOT_MARKER.ringRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = highlight;
+        ctx.beginPath();
+        ctx.arc(0, 0, LOOT_MARKER.coreRadius, 0, Math.PI * 2);
+        ctx.fill();
 
         ctx.restore();
     }

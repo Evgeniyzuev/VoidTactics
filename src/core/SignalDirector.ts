@@ -5,7 +5,10 @@ export type SignalEventKind =
     | 'derelict-trap'
     | 'unstable-anomaly'
     | 'stranded-tanker'
-    | 'salvage-race';
+    | 'salvage-race'
+    | 'border-patrol'
+    | 'wandering-trader'
+    | 'hunter-ambush';
 
 export type SignalWorldEventKind = 'anomaly' | 'distress' | 'salvage';
 export type SignalEventPhase = 'hidden' | 'discovered' | 'engaged' | 'resolved' | 'expired';
@@ -169,6 +172,27 @@ export const SIGNAL_EVENT_BALANCE = {
         claimedCrateFuel: 7,
         claimedCrateSupplies: 5,
         defeatDangerDelta: 0.25
+    },
+    patrol: {
+        passCredits: 80,
+        evadeFuel: 8,
+        challengeCredits: 420,
+        challengeThreatMultiplier: 0.8,
+        defeatDangerDelta: 1.5
+    },
+    trader: {
+        supplyCost: 3,
+        fuelFraction: 0.2,
+        intelFuelCost: 4,
+        intelRouteSafety: 8
+    },
+    hunter: {
+        breakContactFuel: 12,
+        counterattackCredits: 520,
+        counterattackSupplies: 3,
+        counterattackThreatMultiplier: 0.95,
+        defeatDangerDelta: 1.5,
+        hideSupplyCost: 2
     }
 } as const;
 
@@ -247,6 +271,51 @@ export const SIGNAL_DEFINITIONS: readonly SignalDefinition[] = [
             { id: 'withdraw', label: 'Withdraw', dangerDelta: 0 }
         ],
         missedDangerDelta: 0.5
+    },
+    {
+        id: 'border-patrol',
+        title: 'Border patrol',
+        worldEventKind: 'distress',
+        weight: 0.8,
+        dangerWeight: 0.35,
+        threatScale: [0.55, 1.25],
+        phases: ['long-range contact', 'inspection', 'passage or pursuit'],
+        choices: [
+            { id: 'pass', label: 'Submit to inspection', dangerDelta: -0.5 },
+            { id: 'evade', label: 'Evade patrol', dangerDelta: 1 },
+            { id: 'challenge', label: 'Challenge patrol', dangerDelta: 2 }
+        ],
+        missedDangerDelta: 0.5
+    },
+    {
+        id: 'wandering-trader',
+        title: 'Wandering trader',
+        worldEventKind: 'distress',
+        weight: 0.85,
+        dangerWeight: -0.2,
+        threatScale: [0.25, 0.65],
+        phases: ['merchant signal', 'exchange', 'departure'],
+        choices: [
+            { id: 'trade', label: 'Trade supplies for fuel', dangerDelta: -0.5 },
+            { id: 'buy-intel', label: 'Buy route intelligence', dangerDelta: -1 },
+            { id: 'pass', label: 'Pass by', dangerDelta: 0 }
+        ],
+        missedDangerDelta: 0.1
+    },
+    {
+        id: 'hunter-ambush',
+        title: 'Hunter ambush',
+        worldEventKind: 'salvage',
+        weight: 0.7,
+        dangerWeight: 0.55,
+        threatScale: [0.75, 1.5],
+        phases: ['quiet approach', 'intercept', 'escape or counterattack'],
+        choices: [
+            { id: 'break-contact', label: 'Break contact', dangerDelta: -0.5 },
+            { id: 'counterattack', label: 'Counterattack', dangerDelta: 1.5 },
+            { id: 'hide', label: 'Hide and wait', dangerDelta: 0 }
+        ],
+        missedDangerDelta: 0.75
     }
 ];
 

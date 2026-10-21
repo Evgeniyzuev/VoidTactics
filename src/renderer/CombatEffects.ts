@@ -46,26 +46,49 @@ export class CombatEffects {
             ctx.globalAlpha = alpha;
             if (effect.kind === 'beam') {
                 ctx.lineCap = 'round';
+                ctx.globalCompositeOperation = 'lighter';
+                // Three restrained passes read as emissive light without a
+                // particle-heavy effect and remain crisp at tactical zoom.
                 ctx.strokeStyle = effect.color;
+                ctx.globalAlpha = alpha * 0.2;
                 ctx.shadowColor = effect.color;
-                ctx.shadowBlur = 5;
-                ctx.lineWidth = Math.max(0.7, 1.15 * camera.zoom);
+                ctx.shadowBlur = 18;
+                ctx.lineWidth = Math.max(5, 7 * camera.zoom);
                 ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(to.x, to.y); ctx.stroke();
                 ctx.shadowBlur = 0;
-                ctx.globalAlpha = alpha * 0.9;
+                ctx.globalAlpha = alpha * 0.75;
                 ctx.strokeStyle = '#ffffff';
-                ctx.lineWidth = Math.max(0.35, 0.45 * camera.zoom);
+                ctx.lineWidth = Math.max(1.2, 2.2 * camera.zoom);
+                ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(to.x, to.y); ctx.stroke();
+                ctx.globalAlpha = alpha;
+                ctx.strokeStyle = effect.color;
+                ctx.lineWidth = Math.max(0.55, 0.85 * camera.zoom);
                 ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(to.x, to.y); ctx.stroke();
             } else {
                 const radius = Math.max(1.2, effect.radius * camera.zoom * (0.55 + progress * 0.7));
+                ctx.globalCompositeOperation = 'lighter';
+                const glowRadius = radius * (effect.radius > 3 ? 4.8 : 3.2);
+                const glow = ctx.createRadialGradient(to.x, to.y, 0, to.x, to.y, glowRadius);
+                glow.addColorStop(0, effect.color);
+                glow.addColorStop(0.18, effect.color + 'bb');
+                glow.addColorStop(1, effect.color + '00');
+                ctx.globalAlpha = alpha * 0.75;
+                ctx.fillStyle = glow;
+                ctx.beginPath(); ctx.arc(to.x, to.y, glowRadius, 0, Math.PI * 2); ctx.fill();
+                ctx.globalAlpha = alpha;
                 ctx.fillStyle = effect.color;
                 ctx.shadowColor = effect.color;
-                ctx.shadowBlur = 8;
+                ctx.shadowBlur = 12;
                 ctx.beginPath(); ctx.arc(to.x, to.y, radius * 0.45, 0, Math.PI * 2); ctx.fill();
                 ctx.shadowBlur = 0;
                 ctx.strokeStyle = effect.color;
                 ctx.lineWidth = Math.max(0.6, camera.zoom);
                 ctx.beginPath(); ctx.arc(to.x, to.y, radius, 0, Math.PI * 2); ctx.stroke();
+                if (effect.radius > 3) {
+                    ctx.globalAlpha = alpha * 0.65;
+                    ctx.lineWidth = Math.max(0.4, camera.zoom * 0.55);
+                    ctx.beginPath(); ctx.arc(to.x, to.y, radius * 1.55, -progress * 4, Math.PI * 1.4 - progress * 4); ctx.stroke();
+                }
             }
             ctx.restore();
         }

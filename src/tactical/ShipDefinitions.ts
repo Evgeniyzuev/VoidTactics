@@ -6,6 +6,8 @@ export type ShipState = 'active' | 'disabled' | 'destroyed';
 
 export const COMBAT_BALANCE = {
     damageScale: 0.55,
+    /** Extra damage dealt by mobile fleets; stations keep the base scale. */
+    fleetDamageMultiplier: 1.0,
     hullRewardMultiplier: 3,
     hullThreatWeight: 0.24,
     offenseThreatWeight: 0.35,
@@ -23,6 +25,8 @@ export const TACTICAL_BALANCE = {
     afterburnerSignatureMultiplier: 1.75,
     afterburnerEnergyFraction: 0.12,
     afterburnerReadinessPerSecond: 2,
+    /** Fleet steering response. Lower values make acceleration and turns take longer. */
+    fleetSteeringResponse: 1.2,
     emergencySpeedMultiplier: 0.25,
     emptyFuelSignatureMultiplier: 1.25,
     combatReadinessPerSecond: 0.05,
@@ -37,6 +41,8 @@ export const TACTICAL_BALANCE = {
     scanPulseEnergyFraction: 0.15,
     scanPulseDuration: 4,
     scanPulseSignatureDuration: 8,
+    scanPulseEnergyPerSecond: 0.035,
+    scanPulseSpeedMultiplier: 0.72,
     sensorDamageMultiplier: 0.55,
     staleContactSeconds: 8,
     disabledStabilizeSeconds: 4,
@@ -49,6 +55,13 @@ export const TACTICAL_BALANCE = {
     shieldCellCooldown: 12,
     overchargeDamageMultiplier: 1.5,
     overchargeEnergyMultiplier: 1.75,
+    assaultDamageMultiplier: 1.4,
+    assaultSpeedMultiplier: 0.72,
+    assaultEnergyRechargeMultiplier: 0.65,
+    assaultEnergyCostMultiplier: 1.25,
+    assaultReadinessPerSecond: 0.7,
+    assaultSignatureMultiplier: 1.45,
+    assaultSensorRangeMultiplier: 0.7,
     energyFuelPerPoint: 0.01,
     minimumEnergyEfficiency: 0.35,
     fieldRepairEnergyPerHull: 0.5,
@@ -56,6 +69,7 @@ export const TACTICAL_BALANCE = {
     netSpeedMultiplier: 0.5,
     netDuration: 5,
     netCooldown: 10,
+    warpMineDamageMultiplier: 1,
     fieldHullPerSupply: 5,
     fieldArmorPerSupply: 4,
     ammunitionPerSupply: 20,
@@ -63,15 +77,88 @@ export const TACTICAL_BALANCE = {
     fieldHullRepairPerSecond: 4,
     fieldArmorRepairPerSecond: 2,
     fieldAmmoRestorePerSecond: 10,
-    stationFuelPrice: 0.2,
-    stationSupplyPrice: 2.5,
-    stationAmmoPrice: 0.1,
-    stationHullPrice: 0.3,
-    stationArmorPrice: 0.2,
+    salvageDamageChunk: 12,
+    salvageDamageValueDivisor: 3.5,
+    salvageFleetValueDivisor: 16,
+    stationFuelPrice: 0.4,
+    stationSupplyPrice: 5,
+    stationAmmoPrice: 0.2,
+    stationHullPrice: 0.6,
+    stationArmorPrice: 0.4,
     damageExperienceThreatMultiplier: 1.25,
     killExperienceThreatMultiplier: 1.5,
     salvageExperienceMultiplier: 0.05
 } as const;
+
+/**
+ * Shared progression math for the shipyard and live ships. Size is physical
+ * scale/command burden; Tech is efficiency and systems maturity. Heavy
+ * attributes use the Size x Tech product, while mobility and signature use
+ * deliberately softer curves so a large hull does not become an absurdly
+ * fast scout.
+ */
+export const SHIP_PROGRESSION_BALANCE = {
+    maxLevel: 10,
+    baseFleetSpeed: 500,
+    techSpeedPerLevel: 0.035,
+    sizeSpeedPenaltyPerLevel: 0.045,
+    techAccelerationPerLevel: 0.04,
+    sizeAccelerationPenaltyPerLevel: 0.06,
+    techTurnRatePerLevel: 0.03,
+    sizeTurnRatePenaltyPerLevel: 0.05,
+    techSensorPerLevel: 0.05,
+    sizeSensorPerLevel: 0.012,
+    sizeSignaturePerLevel: 0.04,
+    techSignatureReductionPerLevel: 0.02,
+    sizeMassPerLevel: 0.18
+} as const;
+
+export function clampShipProgressionLevel(level: number): number {
+    return Math.max(1, Math.min(SHIP_PROGRESSION_BALANCE.maxLevel, Math.floor(level)));
+}
+
+export function getShipProgressionScale(sizeLevel: number, techLevel: number): number {
+    return clampShipProgressionLevel(sizeLevel) * clampShipProgressionLevel(techLevel);
+}
+
+export function getShipSpeedMultiplier(sizeLevel: number, techLevel: number): number {
+    const size = clampShipProgressionLevel(sizeLevel);
+    const tech = clampShipProgressionLevel(techLevel);
+    return (1 + (tech - 1) * SHIP_PROGRESSION_BALANCE.techSpeedPerLevel)
+        / (1 + (size - 1) * SHIP_PROGRESSION_BALANCE.sizeSpeedPenaltyPerLevel);
+}
+
+export function getShipAccelerationMultiplier(sizeLevel: number, techLevel: number): number {
+    const size = clampShipProgressionLevel(sizeLevel);
+    const tech = clampShipProgressionLevel(techLevel);
+    return (1 + (tech - 1) * SHIP_PROGRESSION_BALANCE.techAccelerationPerLevel)
+        / (1 + (size - 1) * SHIP_PROGRESSION_BALANCE.sizeAccelerationPenaltyPerLevel);
+}
+
+export function getShipTurnRateMultiplier(sizeLevel: number, techLevel: number): number {
+    const size = clampShipProgressionLevel(sizeLevel);
+    const tech = clampShipProgressionLevel(techLevel);
+    return (1 + (tech - 1) * SHIP_PROGRESSION_BALANCE.techTurnRatePerLevel)
+        / (1 + (size - 1) * SHIP_PROGRESSION_BALANCE.sizeTurnRatePenaltyPerLevel);
+}
+
+export function getShipSensorMultiplier(sizeLevel: number, techLevel: number): number {
+    const size = clampShipProgressionLevel(sizeLevel);
+    const tech = clampShipProgressionLevel(techLevel);
+    return (1 + (tech - 1) * SHIP_PROGRESSION_BALANCE.techSensorPerLevel)
+        * (1 + (size - 1) * SHIP_PROGRESSION_BALANCE.sizeSensorPerLevel);
+}
+
+export function getShipSignatureMultiplier(sizeLevel: number, techLevel: number): number {
+    const size = clampShipProgressionLevel(sizeLevel);
+    const tech = clampShipProgressionLevel(techLevel);
+    return (1 + (size - 1) * SHIP_PROGRESSION_BALANCE.sizeSignaturePerLevel)
+        / (1 + (tech - 1) * SHIP_PROGRESSION_BALANCE.techSignatureReductionPerLevel);
+}
+
+export function getShipMassMultiplier(sizeLevel: number): number {
+    return 1 + (clampShipProgressionLevel(sizeLevel) - 1) * SHIP_PROGRESSION_BALANCE.sizeMassPerLevel;
+}
 
 export interface FleetDoctrine {
     targetPriority: TargetPriority;

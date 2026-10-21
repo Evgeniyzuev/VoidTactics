@@ -1,13 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Attack } from '../src/core/Attack';
 import type { Game } from '../src/core/Game';
-import { Fleet } from '../src/entities/Fleet';
+import { Fleet, getThreatIndicatorProgress } from '../src/entities/Fleet';
 import { ABILITY_DEFINITIONS, ABILITY_EQUIPMENT_MARKET, AbilityService } from '../src/tactical/AbilityService';
 import { SystemManager } from '../src/core/SystemManager';
+import { MilitaryStation } from '../src/entities/MilitaryStation';
 import { SensorService } from '../src/tactical/SensorService';
 import { RepairService } from '../src/tactical/RepairService';
 import { Ship } from '../src/tactical/Ship';
 import { TACTICAL_BALANCE, WEAPONS } from '../src/tactical/ShipDefinitions';
+import { getShopRequirements, getShopShipStats, SHOP_SHIPS } from '../src/tactical/FleetGenerator';
+import { getFleetLootProfile, rollFleetLoot } from '../src/tactical/LootBalance';
 import { Vector2 } from '../src/utils/Vector2';
 
 function createFleet(x = 0) {
@@ -33,7 +36,125 @@ function createGameStub(player: Fleet) {
     } as unknown as Game;
 }
 
+describe('ship progression and fleet stances', () => {
+    it('builds the complete 10 by 10 shipyard progression matrix', () => {
+        expect(SHOP_SHIPS).toHaveLength(100);
+        expect(new Set(SHOP_SHIPS.map(ship => ship.id)).size).toBe(100);
+
+        const first = SHOP_SHIPS.find(ship => ship.id === 'ship-s1-t1')!;
+        const sameSizeTech10 = SHOP_SHIPS.find(ship => ship.id === 'ship-s1-t10')!;
+        const size10Tech1 = SHOP_SHIPS.find(ship => ship.id === 'ship-s10-t1')!;
+        const last = SHOP_SHIPS.find(ship => ship.id === 'ship-s10-t10')!;
+
+        expect(getShopShipStats(first).commandCost).toBe(1);
+        expect(getShopShipStats(last).commandCost).toBe(10);
+        expect(getShopShipStats(sameSizeTech10).dps).toBeGreaterThan(getShopShipStats(first).dps);
+        expect(getShopShipStats(size10Tech1).hull).toBeGreaterThan(getShopShipStats(first).hull);
+        expect(getShopShipStats(last).energy).toBeGreaterThan(getShopShipStats(size10Tech1).energy);
+        expect(getShopShipStats(size10Tech1).hull).toBeGreaterThan(getShopShipStats(SHOP_SHIPS.find(ship => ship.id === 'ship-s9-t1')!).hull);
+        expect(getShopShipStats(last).hull).toBeGreaterThan(getShopShipStats(SHOP_SHIPS.find(ship => ship.id === 'ship-s9-t10')!).hull);
+        expect(last.price).toBeGreaterThan(first.price);
+        expect(getShopRequirements(first)).toEqual({ size: 1, tech: 1 });
+        expect(getShopRequirements(last)).toEqual({ size: 10, tech: 10 });
+    });
+
+    it('accepts Size and Tech ten without changing the progression product', () => {
+        const ship = new Ship({ hullId: 'lance', weaponIds: ['pulse'], moduleIds: [] });
+        ship.setProgression(10, 10);
+
+        expect(ship.sizeLevel).toBe(10);
+        expect(ship.techLevel).toBe(10);
+        expect(ship.progressionMultiplier).toBe(100);
+        expect(ship.commandCost).toBe(10);
+        expect(ship.maxSpeed).toBeGreaterThan(500 / 2);
+    });
+
+    it('scales ship output by Size x Tech while command cost follows Size', () => {
+        const ship = new Ship({ hullId: 'lance', weaponIds: ['pulse'], moduleIds: [] });
+        const baseHull = ship.maxHull;
+        const baseDps = ship.weaponDps;
+
+        ship.setProgression(3, 2);
+        ship.setStatScale(ship.progressionMultiplier);
+
+        expect(ship.commandCost).toBe(3);
+        expect(ship.maxHull).toBeCloseTo(baseHull * 6, 10);
+        expect(ship.weaponDps).toBeCloseTo(baseDps * 6, 10);
+
+        const restored = Ship.fromSnapshot(ship.snapshot());
+        expect(restored.sizeLevel).toBe(3);
+        expect(restored.techLevel).toBe(2);
+        expect(restored.commandCost).toBe(3);
+    });
+
+    it('gives Leadership ten command points per level', () => {
+        const fleet = new Fleet(0, 0, '#fff', true);
+        const before = fleet.commandCapacity;
+        expect(fleet.learnSkill('leadership')).toBe(true);
+        expect(fleet.commandCapacity).toBe(before + 10);
+    });
+
+    it('uses the slower steering response for acceleration and turns', () => {
+        const fleet = createFleet();
+        fleet.setTarget(new Vector2(10_000, 0));
+
+        fleet.update(0.1);
+
+        const expectedSpeed = 500 * (1 - Math.exp(-TACTICAL_BALANCE.fleetSteeringResponse * 0.1));
+        expect(fleet.velocity.mag()).toBeCloseTo(expectedSpeed, 8);
+    });
+
+    it('makes scan pulse consume additional Energy and slow the fleet while active', () => {
+        const fleet = createFleet();
+        const sensors = new SensorService();
+        fleet.setTarget(new Vector2(10_000, 0));
+        const result = AbilityService.activateScanPulse(fleet, sensors, 0);
+        expect(result.ok).toBe(true);
+
+        const baseline = createFleet();
+        baseline.setTarget(new Vector2(10_000, 0));
+        baseline.update(1);
+        fleet.update(1);
+
+        expect(fleet.totalEnergy).toBeLessThan(baseline.totalEnergy);
+        expect(fleet.scanPulseActive).toBe(true);
+        expect(sensors.getFleetProfile(fleet, 1).scanPulseActive).toBe(true);
+    });
+});
+
 describe('fleet fuel and readiness', () => {
+    it('rolls independent fuel and supply drops that scale with wreck size', () => {
+        const small = {
+            shipCount: 1,
+            commandCost: 3,
+            fuelCapacity: 90,
+            cargoCapacity: 10
+        };
+        const large = {
+            shipCount: 6,
+            commandCost: 22,
+            fuelCapacity: 600,
+            cargoCapacity: 240
+        };
+        const smallProfile = getFleetLootProfile(small);
+        const largeProfile = getFleetLootProfile(large);
+
+        expect(largeProfile.fuelMax).toBeGreaterThan(smallProfile.fuelMax);
+        expect(largeProfile.suppliesMax).toBeGreaterThan(smallProfile.suppliesMax);
+        expect(largeProfile.fuelChance).toBeGreaterThan(smallProfile.fuelChance);
+        expect(largeProfile.suppliesChance).toBeGreaterThan(smallProfile.suppliesChance);
+        expect(rollFleetLoot(large, () => 0).fuel).toBe(largeProfile.fuelMin);
+        expect(rollFleetLoot(large, () => 0).supplies).toBe(largeProfile.suppliesMin);
+        expect(rollFleetLoot(large, () => 0.999).fuel).toBe(0);
+        expect(rollFleetLoot(large, () => 0.999).supplies).toBe(0);
+    });
+
+    it('maps threat to a logarithmic clock fill around player strength', () => {
+        expect(getThreatIndicatorProgress(100, 100)).toBeCloseTo(0.5, 10);
+        expect(getThreatIndicatorProgress(200, 100)).toBeCloseTo(0.75, 10);
+        expect(getThreatIndicatorProgress(400, 100)).toBeCloseTo(0.875, 10);
+    });
+
     it('allows the player to steer while an active battle is running', () => {
         const fleet = new Fleet(0, 0, '#fff', true);
         fleet.activeBattle = {};
@@ -291,8 +412,8 @@ describe('narrow consumable effects', () => {
 
        const result = AbilityService.activate(fleet, 'shield');
         ship.shieldRechargeDelay = 100;
-        fleet.fuel = 0;
         fleet.supplies = 0;
+        fleet.fuel = 0;
         fleet.update(TACTICAL_BALANCE.shieldCellDuration);
 
        expect(result.ok).toBe(true);
@@ -429,28 +550,28 @@ describe('supplies and station service', () => {
     it('partially refuels with the available station budget', () => {
         const fleet = createRepairFleet();
         fleet.fuel = fleet.maxFuel - 10;
-        fleet.money = 1;
+        fleet.money = 3;
 
         const result = RepairService.purchaseStationService(fleet, 'fuel');
 
         expect(result.ok).toBe(true);
         expect(result.partial).toBe(true);
-        expect(result.cost).toBeCloseTo(1, 10);
+        expect(result.cost).toBeCloseTo(3, 10);
         expect(fleet.money).toBeCloseTo(0, 10);
-        expect(fleet.fuel).toBeCloseTo(fleet.maxFuel - (10 - 1 / TACTICAL_BALANCE.stationFuelPrice), 10);
+        expect(fleet.fuel).toBeCloseTo(fleet.maxFuel - (10 - 3 / TACTICAL_BALANCE.stationFuelPrice), 10);
     });
 
     it('partially repairs hull when a full station repair is unaffordable', () => {
         const fleet = createRepairFleet();
         const target = fleet.ships[0];
         target.hull -= 20;
-        fleet.money = 3;
+        fleet.money = 6;
 
         const result = RepairService.purchaseStationService(fleet, 'repairs');
 
         expect(result.ok).toBe(true);
         expect(result.partial).toBe(true);
-        expect(result.cost).toBeCloseTo(3, 10);
+        expect(result.cost).toBeCloseTo(6, 10);
         expect(target.hull).toBeCloseTo(target.maxHull - 10, 10);
         expect(fleet.money).toBeCloseTo(0, 10);
     });
@@ -507,10 +628,17 @@ describe('ship tactical persistence', () => {
 });
 
 describe('Terra defense ring', () => {
-    it('does not create permanent defense fleets around Terra', () => {
+    it('creates an immortal civilian Terra fleet with a doubled defense radius', () => {
         const entities = new SystemManager().getSystemEntities(1);
-        const defenseFleets = entities.filter(entity => entity instanceof Fleet && entity.faction === 'military' && entity.maxSpeed === 0);
+        const defenseFleets = entities.filter(entity => entity instanceof MilitaryStation) as MilitaryStation[];
 
-        expect(defenseFleets).toHaveLength(0);
+        expect(defenseFleets).toHaveLength(1);
+        expect(defenseFleets[0]?.faction).toBe('civilian');
+        expect(defenseFleets[0]?.maxSpeed).toBe(0);
+        expect(defenseFleets[0]?.attackRadius).toBe(200);
+        const station = defenseFleets[0]!;
+        const before = station.threatRating;
+        station.receiveTacticalDamage(99999, 'energy');
+        expect(station.threatRating).toBeCloseTo(before, 8);
     });
 });

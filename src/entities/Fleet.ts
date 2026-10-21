@@ -5,24 +5,49 @@ import type { NpcIntent } from '../tactical/Ecosystem';
 import { Camera } from '../renderer/Camera';
 import { Vector2 } from '../utils/Vector2';
 import { Ship, createStarterShips } from '../tactical/Ship';
-import { DEFAULT_FORMATION, TACTICAL_BALANCE, type DamageType, type FleetDoctrine, type FleetOrderType } from '../tactical/ShipDefinitions';
+import { COMBAT_BALANCE, DEFAULT_FORMATION, TACTICAL_BALANCE, type DamageType, type FleetDoctrine, type FleetOrderType } from '../tactical/ShipDefinitions';
 import { FleetGenerator } from '../tactical/FleetGenerator';
 import { RepairService } from '../tactical/RepairService';
 import { ABILITY_CHARGE_BALANCE, ABILITY_DEFINITIONS, type FleetAbilityId } from '../tactical/AbilityService';
 
 export type Faction = 'civilian' | 'pirate' | 'orc' | 'military' | 'player' | 'raider' | 'trader' | 'mercenary';
 export interface FleetResources { fuel: number; maxFuel: number; supplies: number; maxSupplies: number; readiness: number }
+export interface FleetCombatProfile {
+    damageByType: Record<DamageType, number>;
+    ammunitionDamageByType: Record<DamageType, number>;
+    energyPerSecond: number;
+    ammunitionPerSecond: number;
+    weaponSlots: number;
+    usableWeaponSlots: number;
+    ammunitionWeaponSlots: number;
+    firingShips: number;
+}
 export type FleetSkillId = 'leadership' | 'logistics' | 'engineering' | 'sensors' | 'navigation' | 'tactics' | 'size' | 'tech';
 export const FLEET_SKILLS: Record<FleetSkillId, { name: string; description: string }> = {
-    leadership: { name: 'Leadership', description: '+3 command capacity per level' },
+    leadership: { name: 'Leadership', description: '+10 command capacity per level' },
     logistics: { name: 'Logistics', description: '+10 supply capacity and better readiness' },
     engineering: { name: 'Engineering', description: 'Faster field repairs' },
     sensors: { name: 'Sensors', description: 'Longer sensor range and lower fleet signature' },
     navigation: { name: 'Navigation', description: 'Higher strategic speed' },
     tactics: { name: 'Tactics', description: 'More defender intercept charges' },
-    size: { name: 'Size', description: 'Unlocks medium and large hulls' },
-    tech: { name: 'Tech', description: 'Unlocks higher ship tiers' }
+    size: { name: 'Size', description: 'Unlocks ships one size class larger per level' },
+    tech: { name: 'Tech', description: 'Unlocks the next technology tier per level' }
 };
+
+/**
+ * Converts relative fleet power into a clock-like ring fill.
+ *
+ * Six o'clock is the player's reference strength. Stronger fleets use a
+ * compressed logarithmic-style tail: 2x reaches nine o'clock and 4x reaches
+ * ten-thirty instead of immediately saturating the ring.
+ */
+export function getThreatIndicatorProgress(threat: number, referenceThreat: number): number {
+    const ratio = Math.max(0, threat) / Math.max(1, referenceThreat);
+    const progress = ratio < 1
+        ? ratio * 0.5
+        : 1 - 0.5 / Math.max(1, ratio);
+    return Math.max(0.03, Math.min(0.98, progress));
+}
 
 export class Fleet extends Entity {
     public ships: Ship[] = [];
@@ -55,6 +80,9 @@ export class Fleet extends Entity {
     public inAsteroidBelt = false;
     private stopThreshold: number = 5;
 
+    /** Inertial world-space nucleus position; lags behind the course while moving. */
+    private nucleusWorld: Vector2 | null = null;
+
     private rotation: number = 0;
     public color: string;
     public isPlayer: boolean = false;
@@ -70,6 +98,10 @@ export class Fleet extends Entity {
     public lastAcceleration: Vector2 = new Vector2(0, 0);
     public currentTarget: Fleet | null = null; // Current attack target
     public hostileTo: Set<Fleet> = new Set(); // Persistent hostility to other fleets
+    /** Temporary legal hostility created only when this fleet witnesses an attack. */
+    public witnessHostility: Set<Fleet> = new Set();
+    /** One-use permission to answer the aggressor of a battle seen at its start. */
+    public witnessedAggressors: Set<Fleet> = new Set();
     public lootDropped: boolean = false;
     /** Rule-bending upgrades owned by the player (see Relics.ts). */
     public relics: RelicId[] = [];
@@ -111,6 +143,21 @@ export class Fleet extends Entity {
     public shieldCellRate = 0;
     public stunTimer: number = 0;
     public money: number = 0; // Only for player
+    /** Active scan has an upfront cost and continues draining Energy. */
+    private scanPulseTimer = 0;
+    /** Assault is a free stance, balanced by speed, Energy and readiness loss. */
+    public assaultMode = false;
+
+    public get scanPulseActive() { return this.scanPulseTimer > 0; }
+
+    public startScanPulse(duration = TACTICAL_BALANCE.scanPulseDuration) {
+        this.scanPulseTimer = Math.max(this.scanPulseTimer, duration);
+    }
+
+    public setAssaultMode(active: boolean) {
+        this.assaultMode = Boolean(active);
+        return this.assaultMode;
+    }
 
     // Mining properties
     public isMining: boolean = false;
@@ -141,6 +188,20 @@ export class Fleet extends Entity {
     public get maximumThreatRating() { return this.ships.reduce((sum, ship) => sum + ship.maxCombatRating, 0); }
     public get threatRating() { return this.baseThreatRating * this.readinessEfficiency; }
     public get commandUsed() { return this.ships.filter(ship => ship.state !== 'destroyed').reduce((sum, ship) => sum + ship.commandCost, 0); }
+    public get accelerationMultiplier() {
+        const active = this.ships.filter(ship => ship.alive);
+        return active.length > 0
+            ? active.reduce((sum, ship) => sum + ship.acceleration * ship.commandCost, 0)
+                / Math.max(1, active.reduce((sum, ship) => sum + ship.commandCost, 0))
+            : 1;
+    }
+    public get turnRateMultiplier() {
+        const active = this.ships.filter(ship => ship.alive);
+        return active.length > 0
+            ? active.reduce((sum, ship) => sum + ship.turnRate * ship.commandCost, 0)
+                / Math.max(1, active.reduce((sum, ship) => sum + ship.commandCost, 0))
+            : 1;
+    }
     /** One shared pool for afterburner, bubble, cloak, mine and all other systems. */
     public get abilityChargeCapacity() {
         return ABILITY_CHARGE_BALANCE.baseCapacity
@@ -193,7 +254,7 @@ export class Fleet extends Entity {
     private get baseSupplyCapacity() {
         const cargo = this.ships
             .filter(ship => ship.state !== 'destroyed')
-            .reduce((sum, ship) => sum + ship.definition.cargo * ship.statScale, 0);
+            .reduce((sum, ship) => sum + ship.cargoCapacity, 0);
         // Ten units of ship cargo form one shared supply unit. A new fleet
         // always starts with at least five supplies and scales with cargo.
         return Math.max(5, Math.ceil(cargo / 10) + this.skills.logistics * 10);
@@ -211,6 +272,7 @@ export class Fleet extends Entity {
     }
     public get totalEnergy() { return this.ships.filter(ship => ship.alive).reduce((sum, ship) => sum + ship.energy, 0); }
     public get maxEnergy() { return this.ships.filter(ship => ship.alive).reduce((sum, ship) => sum + ship.maxEnergy, 0); }
+    public get totalAmmunition() { return this.ships.filter(ship => ship.alive).reduce((sum, ship) => sum + Math.max(0, ship.ammunition), 0); }
     public get maxShield() { return this.ships.filter(ship => ship.alive).reduce((sum, ship) => sum + ship.maxShield, 0); }
     public get fuelBurnPerDistance() {
         return TACTICAL_BALANCE.fuelPerDistance * (this.hasRelic('thrifty-drive') ? RELIC_EFFECTS.fuelBurnMultiplier : 1)
@@ -223,11 +285,13 @@ export class Fleet extends Entity {
     }
     public get signature() {
         let signature = this.ships.filter(ship => ship.alive)
-            .reduce((sum, ship) => sum + ship.definition.signature * Math.sqrt(Math.max(0.02, ship.statScale)), 0);
+            .reduce((sum, ship) => sum + ship.signature, 0);
         signature *= Math.max(0.6, 1 - this.skills.sensors * 0.08);
         if (this.isCloaked) signature *= 0.25;
         if (this.hasRelic('ghost-hull')) signature *= RELIC_EFFECTS.signatureMultiplier;
         if (this.abilities.afterburner.active) signature *= TACTICAL_BALANCE.afterburnerSignatureMultiplier;
+        if (this.scanPulseActive) signature *= TACTICAL_BALANCE.scanPulseSignatureMultiplier;
+        if (this.assaultMode) signature *= TACTICAL_BALANCE.assaultSignatureMultiplier;
         if (this.fuel <= 0) signature *= TACTICAL_BALANCE.emptyFuelSignatureMultiplier;
         return Math.max(0.01, signature);
     }
@@ -237,7 +301,7 @@ export class Fleet extends Entity {
         if (!this.canLearnSkill(skill)) return false;
         this.skillPoints--;
         this.skills[skill]++;
-        if (skill === 'leadership') this.commandCapacity += 3;
+        if (skill === 'leadership') this.commandCapacity += 10;
         if (skill === 'logistics') { this.supplies += 10; }
         return true;
     }
@@ -296,6 +360,80 @@ export class Fleet extends Entity {
         return this.consumePooledEnergy(cost) + 1e-6 >= cost;
     }
 
+    /** Consume a concrete pooled ammunition amount, preserving the existing per-ship reserves. */
+    public consumePooledAmmunition(amount: number) {
+        const active = this.ships.filter(ship => ship.alive && ship.ammunition > 0);
+        const requested = Math.max(0, amount);
+        const available = active.reduce((sum, ship) => sum + Math.max(0, ship.ammunition), 0);
+        const consumed = Math.min(requested, available);
+        if (consumed <= 0 || available <= 0) return 0;
+        for (const ship of active) {
+            ship.ammunition = Math.max(0, ship.ammunition - consumed * ship.ammunition / available);
+        }
+        return consumed;
+    }
+
+    /**
+     * Collapse all ship weapons into one fleet-level tactical profile.
+     * The profile is intentionally calculated once per salvo; Attack then
+     * applies at most one packet per damage type instead of one packet per
+     * weapon and one target sort per ship.
+     */
+    public getCombatProfile(): FleetCombatProfile {
+        const damageByType: Record<DamageType, number> = { kinetic: 0, energy: 0, explosive: 0 };
+        const ammunitionDamageByType: Record<DamageType, number> = { kinetic: 0, energy: 0, explosive: 0 };
+        let energyPerSecond = 0;
+        let ammunitionPerSecond = 0;
+        let weaponSlots = 0;
+        let usableWeaponSlots = 0;
+        let ammunitionWeaponSlots = 0;
+        let firingShips = 0;
+        const fleetEfficiency = this.readinessEfficiency * this.energyEfficiency;
+        const damageMultiplier = COMBAT_BALANCE.damageScale
+            * (this.isStation ? 1 : COMBAT_BALANCE.fleetDamageMultiplier)
+            * fleetEfficiency
+            * (this.assaultMode ? TACTICAL_BALANCE.assaultDamageMultiplier : 1);
+        const energyMultiplier = (this.assaultMode ? TACTICAL_BALANCE.assaultEnergyCostMultiplier : 1);
+
+        for (const ship of this.ships) {
+            if (!ship.alive || ship.order.type === 'retreat' || ship.order.type === 'repair') continue;
+            firingShips++;
+            const weaponsPenalty = ship.damagedSystems.includes('weapons') ? 0.55 : 1;
+            for (const weapon of ship.weapons) {
+                weaponSlots++;
+                const usesAmmo = weapon.damageType !== 'energy';
+                if (usesAmmo) ammunitionWeaponSlots++;
+                if (usesAmmo && ship.ammunition <= 0) continue;
+                usableWeaponSlots++;
+
+                const overcharged = ship.overchargeTimer > 0;
+                const cooldown = Math.max(0.1, weapon.cooldown);
+                energyPerSecond += weapon.energyCost / cooldown
+                    * (overcharged ? TACTICAL_BALANCE.overchargeEnergyMultiplier : 1)
+                    * energyMultiplier;
+
+                let damagePerSecond = weapon.damage * ship.statScale / cooldown * damageMultiplier * weaponsPenalty;
+                if (overcharged) damagePerSecond *= TACTICAL_BALANCE.overchargeDamageMultiplier;
+                damageByType[weapon.damageType] += damagePerSecond;
+                if (usesAmmo) {
+                    ammunitionPerSecond += 0.05 / cooldown;
+                    ammunitionDamageByType[weapon.damageType] += damagePerSecond;
+                }
+            }
+        }
+
+        return {
+            damageByType,
+            ammunitionDamageByType,
+            energyPerSecond,
+            ammunitionPerSecond,
+            weaponSlots,
+            usableWeaponSlots,
+            ammunitionWeaponSlots,
+            firingShips,
+        };
+    }
+
     public clampSuppliesToCapacity() {
         this.supplies = Math.max(0, Math.min(this.maxSupplies, this.supplies));
         return this.supplies;
@@ -344,6 +482,15 @@ export class Fleet extends Entity {
     public get flagship() { return this.ships.find(ship => ship.role === 'flagship' && ship.alive) || this.ships.find(ship => ship.alive); }
 
     private refreshFleetState(dt = 0) {
+        if (!this.isStation) {
+            const active = this.ships.filter(ship => ship.alive);
+            if (active.length > 0) {
+                const command = Math.max(1, active.reduce((sum, ship) => sum + ship.commandCost, 0));
+                this.maxSpeed = active.reduce((sum, ship) => sum + ship.maxSpeed * ship.commandCost, 0) / command;
+            } else {
+                this.maxSpeed = 0;
+            }
+        }
         const defenders = this.ships.filter(ship => ship.alive && ship.role === 'defender' && ship.order.type === 'protect').length;
         const cap = defenders * (3 + this.skills.tactics);
         this.interceptCharges = Math.min(cap, this.interceptCharges + defenders * (0.75 + this.skills.tactics * 0.15) * dt);
@@ -397,18 +544,24 @@ export class Fleet extends Entity {
         this.clampSuppliesToCapacity();
         this.clampFuelToCapacity();
         this.netSlowTimer = Math.max(0, this.netSlowTimer - Math.max(0, dt));
+        this.scanPulseTimer = Math.max(0, this.scanPulseTimer - Math.max(0, dt));
         const activeShips = this.ships.filter(ship => ship.alive);
+        const stanceRechargeMultiplier = this.assaultMode ? TACTICAL_BALANCE.assaultEnergyRechargeMultiplier : 1;
         const potentialEnergy = activeShips.reduce((sum, ship) => sum + Math.min(
             Math.max(0, ship.maxEnergy - ship.energy),
             ship.energyRecharge * this.readinessEfficiency * Math.max(0, dt)
-        ), 0);
+        ), 0) * stanceRechargeMultiplier;
         const energyFuel = potentialEnergy * TACTICAL_BALANCE.energyFuelPerPoint;
         const energyRechargeMultiplier = energyFuel > 0 ? Math.min(1, this.fuel / energyFuel) : 0;
         let energyRestored = 0;
         for (const ship of this.ships) {
-            energyRestored += ship.update(dt, this.readinessEfficiency, energyRechargeMultiplier);
+            energyRestored += ship.update(dt, this.readinessEfficiency, energyRechargeMultiplier * stanceRechargeMultiplier, stanceRechargeMultiplier);
         }
         this.fuel = Math.max(0, this.fuel - energyRestored * TACTICAL_BALANCE.energyFuelPerPoint);
+        if (this.scanPulseActive) {
+            const scanDrain = this.maxEnergy * TACTICAL_BALANCE.scanPulseEnergyPerSecond * Math.max(0, dt);
+            if (this.consumePooledEnergy(scanDrain) + 1e-6 < scanDrain) this.scanPulseTimer = 0;
+        }
         this.updateShieldCell(dt);
         if (this.velocity.mag() > 5) {
             const afterburnerMultiplier = this.abilities.afterburner.active ? TACTICAL_BALANCE.afterburnerFuelMultiplier : 1;
@@ -419,7 +572,11 @@ export class Fleet extends Entity {
         if (inCombat) this.setReadiness(this.operationalReadiness - TACTICAL_BALANCE.combatReadinessPerSecond * dt);
         if (this.abilities.afterburner.active) {
             this.setReadiness(this.operationalReadiness - TACTICAL_BALANCE.afterburnerReadinessPerSecond * dt);
-        } else if (!inCombat && this.operationalReadiness < 100 && this.supplies > 0) {
+        }
+        if (this.assaultMode) {
+            this.setReadiness(this.operationalReadiness - TACTICAL_BALANCE.assaultReadinessPerSecond * dt);
+        }
+        if (!this.assaultMode && !this.abilities.afterburner.active && !inCombat && this.operationalReadiness < 100 && this.supplies > 0) {
             const recovery = Math.min(TACTICAL_BALANCE.readinessRecoveryPerSecond * dt, 100 - this.operationalReadiness, this.supplies * TACTICAL_BALANCE.readinessPerSupply);
             this.setReadiness(this.operationalReadiness + recovery);
             this.supplies = Math.max(0, this.supplies - recovery / TACTICAL_BALANCE.readinessPerSupply);
@@ -435,7 +592,7 @@ export class Fleet extends Entity {
 
         if (this.stunTimer > 0) {
             this.stunTimer -= dt;
-            this.velocity = this.velocity.scale(0.5); // Rapidly bleed velocity
+            this.velocity = this.velocity.scale(Math.pow(0.5, Math.max(0, dt) * 8)); // Smoothly bleed velocity
             if (this.velocity.mag() < 1) this.velocity = new Vector2(0, 0);
             this.position = this.position.add(this.velocity.scale(dt));
             return;
@@ -477,7 +634,7 @@ export class Fleet extends Entity {
             // The normal movement code below applies the combat speed cap and
             // still honours direct targets and manual steering.
             if (!this.isPlayer) {
-                this.velocity = this.velocity.scale(0.9);
+                this.velocity = this.velocity.scale(Math.pow(0.9, Math.max(0, dt) * 60));
                 this.position = this.position.add(this.velocity.scale(dt));
                 return;
             }
@@ -492,6 +649,8 @@ export class Fleet extends Entity {
         if (this.abilities.afterburner.active) {
             currentMaxSpeed *= TACTICAL_BALANCE.afterburnerSpeedMultiplier;
         }
+        if (this.scanPulseActive) currentMaxSpeed *= TACTICAL_BALANCE.scanPulseSpeedMultiplier;
+        if (this.assaultMode) currentMaxSpeed *= TACTICAL_BALANCE.assaultSpeedMultiplier;
         if (this.fuel <= 0) currentMaxSpeed *= TACTICAL_BALANCE.emergencySpeedMultiplier;
         currentMaxSpeed *= this.readinessEfficiency;
         currentMaxSpeed *= this.energyEfficiency;
@@ -623,24 +782,41 @@ export class Fleet extends Entity {
 
                 const steering = desired.sub(this.velocity);
 
-                // Acceleration depends on size (larger is slower to accelerate)
-                // Snappier responsiveness: 1.2 base
-                let responsiveness = 1.2;
-                if (this.abilities.afterburner.active) responsiveness *= 1.5;
-
-                let steerForce = steering.scale(responsiveness * dt);
+                // Lower steering response makes acceleration, braking and
+                // direction changes take roughly twice as long as before.
+                let responsiveness = TACTICAL_BALANCE.fleetSteeringResponse * this.accelerationMultiplier;
+                if (this.abilities.afterburner.active) responsiveness *= 1.25;
+                // Critically damped steering: frame-rate independent and
+                // visually smooth when a fleet changes course or speed.
+                if (desired.mag() < this.velocity.mag()) responsiveness *= 1.45;
+                const response = 1 - Math.exp(-responsiveness * Math.max(0, dt));
+                let steerForce = steering.scale(response);
                 if (!isFinite(steerForce.x) || !isFinite(steerForce.y)) steerForce = new Vector2(0, 0);
                 this.velocity = this.velocity.add(steerForce);
-                this.lastAcceleration = steerForce.scale(1 / dt);
+                this.lastAcceleration = dt > 0 ? steerForce.scale(1 / dt) : new Vector2(0, 0);
             }
         } else {
             // Friction/Drag when no target
-            this.velocity = this.velocity.scale(0.95); // simple drag
+            this.velocity = this.velocity.scale(Math.pow(0.95, Math.max(0, dt) * 60));
+            if (this.velocity.mag() < 0.5) this.velocity = new Vector2(0, 0);
             this.lastAcceleration = new Vector2(0, 0);
         }
 
         // Apply Velocity
         this.position = this.position.add(this.velocity.scale(dt));
+
+        // The nucleus is a mass with inertia: it trails the course and only
+        // drifts back to centre while the fleet rests, which gives turns and
+        // burns a soft organic lag instead of the whole icon snapping around.
+        if (!this.nucleusWorld) this.nucleusWorld = this.position.clone();
+        this.nucleusWorld = this.nucleusWorld.add(this.velocity.scale(dt));
+        const nucleusToBody = this.position.sub(this.nucleusWorld);
+        const drag = Math.pow(0.12, dt);
+        if (nucleusToBody.mag() < 2.5) {
+            this.nucleusWorld = this.position.clone();
+        } else {
+            this.nucleusWorld = this.position.sub(nucleusToBody.scale(drag));
+        }
 
         // Final sanitization to prevent NaN errors
         if (!isFinite(this.position.x) || !isFinite(this.position.y)) this.position = new Vector2(0, 0);
@@ -649,9 +825,9 @@ export class Fleet extends Entity {
         // Update Rotation (Smooth turn towards velocity)
         if (this.velocity.mag() > 1) {
             const desiredAngle = Math.atan2(this.velocity.y, this.velocity.x);
-            // Simple approach: Set rotation directly for now.
-            // Better: Lerp rotation. But instant is fine for this style.
-            this.rotation = desiredAngle;
+            const delta = Math.atan2(Math.sin(desiredAngle - this.rotation), Math.cos(desiredAngle - this.rotation));
+            const turnResponse = 1 - Math.exp(-9 * this.turnRateMultiplier * Math.max(0, dt));
+            this.rotation += delta * turnResponse;
         }
     }
 
@@ -665,167 +841,133 @@ export class Fleet extends Entity {
             ctx.globalAlpha = 0.1;
         }
 
-        if (this.ships.length) { this.drawTacticalFleet(ctx, camera); ctx.restore(); return; }
-
-        ctx.rotate(this.rotation + Math.PI / 2); // +90deg because drawing points up
-
-        // Draw Ship (Perfect Warp Bubble)
-        ctx.beginPath();
-        const baseRadius = 8;
-        const shipRadius = baseRadius;
-        ctx.arc(0, 0, shipRadius, 0, Math.PI * 2);
-
-        // Calculate highlight relative to the sun (0,0)
-        const toSun = new Vector2(-this.position.x, -this.position.y);
-        const angleToSun = Math.atan2(toSun.y, toSun.x);
-        // Ship is already rotated by (this.rotation + Math.PI / 2)
-        const currentRotation = this.rotation + Math.PI / 2;
-        const relAngle = angleToSun - currentRotation;
-
-        const hOffset = shipRadius * 0.4;
-        const hX = Math.cos(relAngle) * hOffset;
-        const hY = Math.sin(relAngle) * hOffset;
-
-        // Fill with Gradient for "Bubble" effect
-        const grad = ctx.createRadialGradient(hX, hY, shipRadius * 0.1, 0, 0, shipRadius);
-        grad.addColorStop(0, '#FFFFFF'); // Highlight
-        grad.addColorStop(0.5, this.color);
-        grad.addColorStop(1, '#000033'); // Darker edge
-        ctx.fillStyle = grad;
-        ctx.fill();
-
-        // Combat Flashes
-        if (this.state === 'combat' && Math.sin(this.tacticalClock * 13 + this.position.x * 0.01) > 0.45) {
-            ctx.fillStyle = 'white';
-            ctx.fill();
-        }
-
-        // High contrast stroke with glow
-        ctx.strokeStyle = '#FFFFFF';
-        ctx.lineWidth = 1.5;
-        ctx.shadowBlur = this.state === 'combat' ? 20 : 8;
-        ctx.shadowColor = this.state === 'combat' ? '#FFFFFF' : this.color;
-        ctx.stroke();
-        ctx.shadowBlur = 0; // Reset after stroke
-
-        // Directional Indicator (Centered Arrow)
-        ctx.beginPath();
-        const arrowSize = 4;
-        ctx.moveTo(0, -arrowSize * 1.25); // Front
-        ctx.lineTo(arrowSize * 0.75, arrowSize * 0.75);
-        ctx.lineTo(-arrowSize * 0.75, arrowSize * 0.75);
-        ctx.closePath();
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-        ctx.fill();
-
-        // Engine Glow/Trail (Behind)
-        if (this.velocity.mag() > 10 && this.state !== 'combat') {
-            ctx.beginPath();
-            ctx.moveTo(-arrowSize, arrowSize * 1.75);
-            ctx.quadraticCurveTo(0, arrowSize * 3, arrowSize, arrowSize * 1.75);
-            ctx.strokeStyle = this.color;
-            ctx.lineWidth = 1.5;
-            ctx.stroke();
-        }
+        // Keep one strategic icon at every zoom level. The camera may scale
+        // the icon, but its silhouette never switches to a detailed ship
+        // organism when the player zooms in.
+        this.drawFleetIcon(ctx, camera, 'strategic');
 
         ctx.restore();
+    }
 
-        // Draw Attack Line - If attacking
-        if (this.currentTarget && !this.currentTarget.isCloaked) {
-            const targetScreenPos = camera.worldToScreen(this.currentTarget.position);
-            const myScreenPos = camera.worldToScreen(this.position);
+    /**
+     * Use the compact strategic directional glyph at every zoom level. The
+     * camera still scales world-space size naturally, but the icon's visual
+     * language never changes.
+     */
+    private drawFleetIcon(
+        ctx: CanvasRenderingContext2D,
+        camera: Camera,
+        tier: 'tactical' | 'strategic'
+    ) {
+        const commandMass = Math.max(1, this.commandUsed);
+        const size = tier === 'strategic'
+            ? Math.max(4.5, Math.min(10.5, 4.5 + Math.sqrt(commandMass) * 1.3))
+            : Math.max(8, Math.min(17, 8 + Math.sqrt(commandMass) * 1.8));
+        const heading = this.velocity.mag() > 1
+            ? Math.atan2(this.velocity.y, this.velocity.x) + Math.PI / 2
+            : this.rotation + Math.PI / 2;
+        const color = this.getFleetIconColor();
 
-            // Pulsing attack line with particles
-            const time = this.tacticalClock * 5;
-            const pulse = 0.5 + 0.5 * Math.sin(time);
-            const alpha = 0.8 + 0.2 * Math.sin(time * 2);
+        ctx.save();
+        ctx.rotate(heading);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = tier === 'strategic' ? 0.18 : 0.28;
+        ctx.fillStyle = color;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = tier === 'strategic' ? 7 : 12;
+        ctx.beginPath();
+        ctx.arc(0, 0, size * 1.25, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.shadowBlur = 0;
 
-            // Main attack line
-            ctx.strokeStyle = `rgba(255, 50, 50, ${alpha})`;
-            ctx.lineWidth = 3 + pulse * 2;
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = 'rgba(255, 0, 0, 0.8)';
+        // A compact pointed hull reads at both zoom levels and communicates
+        // direction without requiring a sprite sheet.
+        ctx.fillStyle = '#06131e';
+        ctx.strokeStyle = color;
+        ctx.lineWidth = tier === 'strategic' ? 1 : 1.4;
+        ctx.beginPath();
+        ctx.moveTo(0, -size * 1.25);
+        ctx.lineTo(size * 0.9, size * 0.55);
+        ctx.lineTo(0, size * 0.25);
+        ctx.lineTo(-size * 0.9, size * 0.55);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
 
+        if (tier === 'tactical') {
+            ctx.globalAlpha = 0.72;
+            ctx.strokeStyle = '#e7fbff';
+            ctx.lineWidth = 0.8;
             ctx.beginPath();
-            ctx.moveTo(myScreenPos.x, myScreenPos.y);
-            ctx.lineTo(targetScreenPos.x, targetScreenPos.y);
+            ctx.moveTo(-size * 0.45, -size * 0.12);
+            ctx.lineTo(size * 0.45, -size * 0.12);
+            ctx.moveTo(-size * 0.35, size * 0.3);
+            ctx.lineTo(size * 0.35, size * 0.3);
             ctx.stroke();
-
-            // Energy particles along the line
-            const dist = Math.sqrt((targetScreenPos.x - myScreenPos.x) ** 2 + (targetScreenPos.y - myScreenPos.y) ** 2);
-            const numParticles = Math.floor(dist / 20);
-            for (let i = 0; i < numParticles; i++) {
-                const t = i / numParticles;
-                const wave = Math.sin(i * 12.9898 + this.tacticalClock * 7.1);
-                const crossWave = Math.cos(i * 8.233 + this.tacticalClock * 5.7);
-                const x = myScreenPos.x + (targetScreenPos.x - myScreenPos.x) * t + wave * 5;
-                const y = myScreenPos.y + (targetScreenPos.y - myScreenPos.y) * t + crossWave * 5;
-                const size = 1 + (wave * 0.5 + 0.5) * 2;
-                ctx.fillStyle = `rgba(255, 150, 0, ${0.15 + (crossWave * 0.5 + 0.5) * 0.35})`;
-                ctx.beginPath();
-                ctx.arc(x, y, size, 0, Math.PI * 2);
-                ctx.fill();
-            }
-
-            ctx.shadowBlur = 0; // Reset shadow
         }
 
-        // Draw Target Marker (Bubble) - Only for Player
-        if (this.isPlayer && this.target) {
-            const tPos = camera.worldToScreen(this.target);
-            ctx.fillStyle = 'rgba(0, 255, 255, 0.2)';
-            ctx.strokeStyle = 'rgba(0, 255, 255, 0.6)';
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.fillStyle = color;
+        ctx.beginPath(); ctx.arc(0, -size * 0.35, tier === 'strategic' ? 1.1 : 1.6, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+
+        if (this.isPlayer) {
+            ctx.save();
+            ctx.strokeStyle = '#a9f5ff';
+            ctx.globalAlpha = 0.82;
+            ctx.lineWidth = tier === 'strategic' ? 1 : 1.3;
+            ctx.setLineDash(tier === 'strategic' ? [2, 3] : [4, 3]);
+            ctx.beginPath(); ctx.arc(0, 0, size * 1.65, 0, Math.PI * 2); ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.restore();
+        } else if (tier === 'strategic' && commandMass > 2) {
+            ctx.save();
+            ctx.fillStyle = color;
+            ctx.globalAlpha = 0.82;
+            ctx.font = '8px ui-monospace, monospace';
+            ctx.textAlign = 'left';
+            ctx.fillText(`${Math.min(99, commandMass)}`, size * 1.8, 3);
+            ctx.restore();
+        }
+
+        // Keep an important pursuit legible even when the ships collapse to
+        // strategic markers.
+        if (this.currentTarget && !this.currentTarget.isCloaked && tier === 'tactical') {
+            const targetScreen = camera.worldToScreen(this.currentTarget.position);
+            const originScreen = camera.worldToScreen(this.position);
+            ctx.save();
+            ctx.strokeStyle = `${color}66`;
             ctx.lineWidth = 1;
-
+            ctx.setLineDash([3, 8]);
             ctx.beginPath();
-            ctx.arc(tPos.x, tPos.y, 10, 0, Math.PI * 2);
-            ctx.fill();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(targetScreen.x - originScreen.x, targetScreen.y - originScreen.y);
             ctx.stroke();
-
-            // Inner dot (softer)
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-            ctx.beginPath();
-            ctx.arc(tPos.x, tPos.y, 2, 0, Math.PI * 2);
-            ctx.fill();
+            ctx.setLineDash([]);
+            ctx.restore();
         }
     }
 
-    private drawTacticalFleet(ctx: CanvasRenderingContext2D, camera: Camera) {
-        const alive = this.ships.filter(ship => ship.alive);
-        const velocityAngle = this.velocity.mag() > 1 ? Math.atan2(this.velocity.y, this.velocity.x) + Math.PI / 2 : this.rotation + Math.PI / 2;
-        const iconShip = this.flagship || alive[0];
-        if (!iconShip) return;
-        ctx.save(); ctx.rotate(velocityAngle);
-        this.drawShipSilhouette(ctx, iconShip.role, this.isPlayer, iconShip.hitFlash);
-        if (iconShip.shieldFlash > 0) {
-                ctx.strokeStyle = `rgba(80, 210, 255, ${iconShip.shieldFlash * 0.85})`; ctx.lineWidth = 2;
-                ctx.beginPath(); ctx.ellipse(0, 0, 13, 18, 0, 0, Math.PI * 2); ctx.stroke();
-        }
-        if (this.velocity.mag() > 20) {
-                const flicker = 4 + 2 * Math.sin(this.tacticalClock * 17);
-                ctx.strokeStyle = this.color; ctx.lineWidth = 2; ctx.beginPath();
-                ctx.moveTo(-4, 10); ctx.lineTo(-3, 10 + flicker); ctx.moveTo(4, 10); ctx.lineTo(3, 10 + flicker); ctx.stroke();
-        }
-        ctx.restore();
-        if (this.currentTarget && !this.currentTarget.isCloaked) {
-            const targetScreen = camera.worldToScreen(this.currentTarget.position);
-            const originScreen = camera.worldToScreen(this.position);
-            const tx = targetScreen.x - originScreen.x, ty = targetScreen.y - originScreen.y;
-            const phase = (this.tacticalClock * 1.7) % 1;
-            ctx.strokeStyle = 'rgba(255,100,60,.28)'; ctx.setLineDash([3, 10]);
-            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(tx, ty); ctx.stroke(); ctx.setLineDash([]);
-            ctx.fillStyle = '#ffe0a8'; ctx.shadowColor = '#ff5a2a'; ctx.shadowBlur = 10;
-            ctx.beginPath(); ctx.arc(tx * phase, ty * phase, 2.5, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+    private getFleetIconColor(): string {
+        if (this.isPlayer || this.faction === 'player') return '#75ecff';
+        switch (this.faction) {
+            case 'pirate':
+            case 'raider': return '#ff5f68';
+            case 'military': return '#ffd66b';
+            case 'mercenary': return '#ffad67';
+            case 'orc': return '#c59aff';
+            case 'trader': return '#e8cc84';
+            case 'civilian': return '#d8f5ff';
+            default: return this.color;
         }
     }
 
     public drawThreatIndicator(ctx: CanvasRenderingContext2D, camera: Camera, referenceThreat: number) {
         if (!this.ships.some(ship => ship.state !== 'destroyed')) return;
         const screen = camera.worldToScreen(this.position);
-        const ratio = this.isPlayer ? 1 : this.threatRating / Math.max(1, referenceThreat);
-        const level = this.isPlayer ? 0 : ratio < 0.55 ? 1 : ratio < 1.5 ? 2 : ratio < 6 ? 3 : 4;
-        const color = this.isPlayer ? '#55d8ff' : level === 1 ? '#67dc88' : level === 2 ? '#ffe06b' : level === 3 ? '#ffad5c' : '#ff5f63';
-        const progress = this.isPlayer ? 1 : level === 1 ? 0.25 : level === 2 ? 0.5 : level === 3 ? 0.75 : 1;
+        const color = this.color;
+        const progress = getThreatIndicatorProgress(this.threatRating, referenceThreat);
         const radius = 10 * Math.max(0.85, Math.min(1.15, camera.zoom));
 
         ctx.save();
@@ -842,16 +984,4 @@ export class Fleet extends Entity {
         ctx.restore();
     }
 
-    private drawShipSilhouette(ctx: CanvasRenderingContext2D, role: Ship['role'], selected: boolean, hitFlash: number) {
-        ctx.beginPath();
-        if (role === 'defender') { ctx.moveTo(0, -13); ctx.lineTo(11, -4); ctx.lineTo(9, 10); ctx.lineTo(0, 7); ctx.lineTo(-9, 10); ctx.lineTo(-11, -4); }
-        else if (role === 'artillery') { ctx.moveTo(0, -18); ctx.lineTo(5, -6); ctx.lineTo(7, 12); ctx.lineTo(0, 8); ctx.lineTo(-7, 12); ctx.lineTo(-5, -6); }
-        else if (role === 'scout') { ctx.moveTo(0, -11); ctx.lineTo(7, 8); ctx.lineTo(0, 5); ctx.lineTo(-7, 8); }
-        else if (role === 'support') { ctx.moveTo(0, -10); ctx.lineTo(9, -1); ctx.lineTo(7, 11); ctx.lineTo(-7, 11); ctx.lineTo(-9, -1); }
-        else if (role === 'striker') { ctx.moveTo(0, -15); ctx.lineTo(8, 10); ctx.lineTo(0, 6); ctx.lineTo(-8, 10); }
-        else { ctx.moveTo(0, -16); ctx.lineTo(10, 7); ctx.lineTo(5, 11); ctx.lineTo(0, 7); ctx.lineTo(-5, 11); ctx.lineTo(-10, 7); }
-        ctx.closePath(); ctx.fillStyle = hitFlash > 0 ? '#fff' : '#182434'; ctx.strokeStyle = selected ? '#fff' : this.color;
-        ctx.lineWidth = selected ? 2.4 : 1.5; ctx.shadowColor = this.color; ctx.shadowBlur = selected ? 12 : 5;
-        ctx.fill(); ctx.stroke(); ctx.shadowBlur = 0; ctx.fillStyle = this.color; ctx.fillRect(-2, -3, 4, 7);
-    }
 }

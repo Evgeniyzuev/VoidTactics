@@ -121,8 +121,6 @@ interface ObserverState {
     lastUpdateAt: number;
 }
 
-type FutureHullDefinition = Fleet['ships'][number]['definition'] & { scanResolution?: number };
-
 function clamp(value: number, minimum: number, maximum: number) {
     return Math.min(maximum, Math.max(minimum, value));
 }
@@ -220,12 +218,11 @@ export class SensorService {
             const sensorDamageMultiplier = ship.damagedSystems.includes('sensors')
                 ? this.config.damagedSensorMultiplier
                 : 1;
-            const shipSensorRange = (ship.definition.sensorRange + moduleSensorBonus) * sensorDamageMultiplier;
+            const shipSensorRange = (ship.sensorRange + moduleSensorBonus) * sensorDamageMultiplier;
             sensorRange = Math.max(sensorRange, shipSensorRange);
 
-            const definition = ship.definition as FutureHullDefinition;
-            const baseResolution = definition.scanResolution
-                ?? shipSensorRange / this.config.scanResolutionRangeDivisor;
+            const baseResolution = ship.scanResolution
+                || shipSensorRange / this.config.scanResolutionRangeDivisor;
             const commandMultiplier = ship.damagedSystems.includes('command')
                 ? this.config.damagedCommandScanMultiplier
                 : 1;
@@ -243,6 +240,7 @@ export class SensorService {
         if (fleet.isCloaked) signatureMultiplier *= this.config.cloakSignatureMultiplier;
         if (fleet.abilities.afterburner.active) signatureMultiplier *= this.config.afterburnerSignatureMultiplier;
         if (scanPulseSignatureActive) signatureMultiplier *= this.config.scanPulseSignatureMultiplier;
+        if (fleet.assaultMode) signatureMultiplier *= TACTICAL_BALANCE.assaultSignatureMultiplier;
         if (activeShips.length > 0 && fleet.fuel <= 0) {
             signatureMultiplier *= this.config.emptyFuelSignatureMultiplier;
         }
@@ -254,11 +252,12 @@ export class SensorService {
             1 - this.config.sensorSkillSignaturePerLevel * skillLevel
         );
         const signature = activeShips.reduce((sum, ship) => (
-            sum + ship.definition.signature * Math.sqrt(Math.max(0.02, ship.statScale))
+            sum + ship.signature
         ), 0) * signatureSkillMultiplier * signatureMultiplier * relicSignature;
 
         return {
             sensorRange: sensorRange * this.config.baseSensorRangeMultiplier * skillRangeMultiplier * rangeMultiplier * relicRange
+                * (fleet.assaultMode ? TACTICAL_BALANCE.assaultSensorRangeMultiplier : 1)
                 * (fleet.inAsteroidBelt ? 0.2 : 1),
             scanResolution: Math.max(this.config.minimumScanResolution, scanResolution),
             signature: Math.max(0.01, signature),

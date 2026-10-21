@@ -85,11 +85,23 @@ export class CelestialBody extends Entity {
             ctx.fill();
             ctx.restore();
 
-            // Star Solid Core
-            ctx.fillStyle = 'white';
+            // Star core: keep a hot center, but retain color and contour so a
+            // nearby sun reads as a luminous object rather than a white disk.
+            const core = ctx.createRadialGradient(
+                screenPos.x - r * 0.18, screenPos.y - r * 0.18, r * 0.04,
+                screenPos.x, screenPos.y, r * 0.82
+            );
+            core.addColorStop(0, '#ffffff');
+            core.addColorStop(0.24, this.color);
+            core.addColorStop(0.82, this.color);
+            core.addColorStop(1, 'rgba(2, 12, 20, .72)');
+            ctx.fillStyle = core;
             ctx.beginPath();
             ctx.arc(screenPos.x, screenPos.y, r * 0.8, 0, Math.PI * 2);
             ctx.fill();
+            ctx.strokeStyle = `${this.color}aa`;
+            ctx.lineWidth = Math.max(1, r * 0.025);
+            ctx.stroke();
 
         } else {
             // 1. Draw Planet Base Color

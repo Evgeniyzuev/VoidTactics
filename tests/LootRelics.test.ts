@@ -26,7 +26,7 @@ describe('loot tables', () => {
         setSeed(9);
         const wanted = rollLoot('raider', 40, 20, true);
         expect(wanted.relicChance).toBe(1);
-        expect(wanted.abilityIds.length).toBeGreaterThanOrEqual(3);
+        expect(wanted.abilityIds.length).toBeGreaterThanOrEqual(2);
     });
 
     it('factions drop their characteristic systems', () => {

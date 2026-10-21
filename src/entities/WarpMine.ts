@@ -3,6 +3,7 @@ import { Vector2 } from '../utils/Vector2';
 import { Camera } from '../renderer/Camera';
 import { Fleet } from './Fleet';
 import { BubbleZone } from './BubbleZone';
+import { TACTICAL_BALANCE } from '../tactical/ShipDefinitions';
 
 export class WarpMine extends Entity {
     public owner: Fleet;
@@ -65,7 +66,7 @@ export class WarpMine extends Entity {
         for (const fleet of fleets) {
             const dist = Vector2.distance(this.position, fleet.position);
             if (dist < 200) { // Same as bubble radius
-                const damage = 10 + fleet.signature * 2;
+                const damage = (10 + fleet.signature * 2) * TACTICAL_BALANCE.warpMineDamageMultiplier;
                 fleet.receiveTacticalDamage(damage, 'explosive');
                 if (fleet !== this.owner) this.damageDealt += fleet.lastTacticalDamage;
 

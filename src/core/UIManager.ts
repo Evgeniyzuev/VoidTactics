@@ -5,6 +5,19 @@ import { bindButtonAction } from '../utils/TouchButton';
 import type { WorldEvent } from '../entities/WorldEvent';
 import type { SensorContact } from '../tactical/SensorService';
 
+export interface ExpeditionHudState {
+    sectorName: string;
+    sectorType: string;
+    dangerTier: number;
+    danger: number;
+    discovered: number;
+    totalSectors: number;
+    artifacts: number;
+    totalArtifacts: number;
+    nextDecision: string;
+    recovery: boolean;
+}
+
 export class UIManager {
     private container: HTMLElement;
     private onPlayPause: () => void;
@@ -16,6 +29,7 @@ export class UIManager {
     private onDoctrine: (priority: TargetPriority) => void;
     private onFaq: () => void;
     private onSignalAction: (action: 'track' | 'inspect', event: WorldEvent) => void;
+    private onExpeditionMap: () => void;
     private fleetPanel!: HTMLElement;
     private eventLog!: HTMLElement;
     private signalTracker!: HTMLElement;
@@ -39,6 +53,7 @@ export class UIManager {
     private levelText!: HTMLElement;
     private levelFill!: HTMLElement;
     private abilityPoolDisplay!: HTMLElement;
+    private expeditionDisplay!: HTMLElement;
 
     constructor(
         containerId: string,
@@ -51,7 +66,8 @@ export class UIManager {
             onOrder: (order: FleetOrderType) => void,
             onDoctrine: (priority: TargetPriority) => void,
             onFaq: () => void,
-            onSignalAction: (action: 'track' | 'inspect', event: WorldEvent) => void
+            onSignalAction: (action: 'track' | 'inspect', event: WorldEvent) => void,
+            onExpeditionMap: () => void
         }
     ) {
         const el = document.getElementById(containerId);
@@ -66,6 +82,7 @@ export class UIManager {
         this.onDoctrine = callbacks.onDoctrine;
         this.onFaq = callbacks.onFaq;
         this.onSignalAction = callbacks.onSignalAction;
+        this.onExpeditionMap = callbacks.onExpeditionMap;
 
         this.render();
     }
@@ -187,12 +204,24 @@ export class UIManager {
         faqBtn.title = 'FAQ / Help';
         bindButtonAction(faqBtn, () => this.onFaq());
 
+        const mapBtn = document.createElement('button');
+        mapBtn.className = 'control-btn';
+        mapBtn.innerText = '✦';
+        mapBtn.title = 'Expedition map';
+        bindButtonAction(mapBtn, () => this.onExpeditionMap());
+
         hud.appendChild(this.playBtn);
         hud.appendChild(speedContainer);
         hud.appendChild(this.cameraFollowBtn);
         hud.appendChild(faqBtn);
+        hud.appendChild(mapBtn);
         hud.appendChild(menuBtn);
         this.container.appendChild(hud);
+
+        this.expeditionDisplay = document.createElement('div');
+        this.expeditionDisplay.id = 'expedition-status';
+        this.expeditionDisplay.textContent = 'EXPEDITION · SOL SYSTEM';
+        this.container.appendChild(this.expeditionDisplay);
 
         // Initialize speed scaling (fix for page reload issue)
         this.onSpeedChange(this.currentSpeed);
@@ -352,7 +381,12 @@ export class UIManager {
             const effect = ship.overchargeTimer > 0 ? ` · OVR +${Math.round((TACTICAL_BALANCE.overchargeDamageMultiplier - 1) * 100)}% ${ship.overchargeTimer.toFixed(1)}s`
                 : ship.emergencyRepairTimer > 0 ? ` · REPAIR ${ship.emergencyRepairTimer.toFixed(1)}s` : '';
             row.innerHTML = `<i></i><span><b>${ship.displayName}</b><small>${ship.role} · ${ship.state} · ${ship.order.type}${effect}</small><small class="defense-stats">S ${shield}/${Math.ceil(ship.maxShield)} · A ${armor}/${Math.ceil(ship.maxArmor)} · H ${hull}/${Math.ceil(ship.maxHull)} · E ${Math.round(ship.energy)}/${Math.round(ship.maxEnergy)} · AM ${Math.floor(ship.ammunition)}</small></span><em>${hp}%</em>`;
+            const progression = document.createElement('small');
+            progression.textContent = `Size ${ship.sizeLevel} · Tech ${ship.techLevel} · Command ${ship.commandCost}`;
+            progression.style.color = '#9edfff';
+            row.querySelector('span')?.appendChild(progression);
             roster.appendChild(row);
+            row.title = `Size ${ship.sizeLevel} · Tech ${ship.techLevel} · Command ${ship.commandCost}`;
             existingRows.delete(ship.id);
         }
         existingRows.forEach(row => row.remove());
@@ -361,7 +395,7 @@ export class UIManager {
     private updateFleetSummary(fleet: Fleet, active = fleet.ships.filter(ship => ship.state === 'active').length, disabled = fleet.ships.filter(ship => ship.state === 'disabled').length) {
         const summary = this.fleetPanel.querySelector('.fleet-summary');
         if (!summary) return;
-        const dps = fleet.ships.filter(ship => ship.alive && ship.order.type !== 'repair').reduce((sum, ship) => sum + ship.weaponDps * fleet.readinessEfficiency * fleet.energyEfficiency * COMBAT_BALANCE.damageScale * (ship.overchargeTimer > 0 ? TACTICAL_BALANCE.overchargeDamageMultiplier : 1), 0);
+        const dps = fleet.ships.filter(ship => ship.alive && ship.order.type !== 'repair').reduce((sum, ship) => sum + ship.weaponDps * fleet.readinessEfficiency * fleet.energyEfficiency * COMBAT_BALANCE.damageScale * (fleet.isStation ? 1 : COMBAT_BALANCE.fleetDamageMultiplier) * (fleet.assaultMode ? TACTICAL_BALANCE.assaultDamageMultiplier : 1) * (ship.overchargeTimer > 0 ? TACTICAL_BALANCE.overchargeDamageMultiplier : 1), 0);
         const energy = Math.ceil(fleet.totalEnergy);
         const maxEnergy = Math.ceil(fleet.maxEnergy);
         const selected = fleet.ships.find(ship => ship.id === fleet.selectedShipId);
@@ -404,6 +438,11 @@ export class UIManager {
             (panel.style as any).webkitOverflowScrolling = 'touch';
         }
 
+        const resourceStrip = document.createElement('div');
+        resourceStrip.id = 'resource-strip';
+        resourceStrip.addEventListener('click', (e) => e.stopPropagation());
+        resourceStrip.addEventListener('pointerdown', (e) => e.stopPropagation());
+
         // Strength display
         const strengthDisplay = document.createElement('div');
         strengthDisplay.id = 'strength-display';
@@ -413,7 +452,7 @@ export class UIManager {
         strengthDisplay.style.fontFamily = 'monospace';
         strengthDisplay.style.whiteSpace = 'nowrap';
         strengthDisplay.textContent = '10/10';
-        panel.appendChild(strengthDisplay);
+        resourceStrip.appendChild(strengthDisplay);
 
         // Money display
         const moneyDisplay = document.createElement('div');
@@ -424,7 +463,7 @@ export class UIManager {
         moneyDisplay.style.fontFamily = 'monospace';
         moneyDisplay.style.whiteSpace = 'nowrap';
         moneyDisplay.textContent = '$0';
-        panel.appendChild(moneyDisplay);
+        resourceStrip.appendChild(moneyDisplay);
 
         const levelDisplay = document.createElement('div');
         levelDisplay.id = 'level-display';
@@ -443,7 +482,7 @@ export class UIManager {
         levelTrack.appendChild(this.levelFill);
         levelDisplay.appendChild(this.levelText);
         levelDisplay.appendChild(levelTrack);
-        panel.appendChild(levelDisplay);
+        resourceStrip.appendChild(levelDisplay);
 
         this.abilityPoolDisplay = document.createElement('div');
         this.abilityPoolDisplay.className = 'ability-pool-display';
@@ -453,7 +492,7 @@ export class UIManager {
         this.abilityPoolDisplay.style.fontWeight = 'bold';
         this.abilityPoolDisplay.style.whiteSpace = 'nowrap';
         this.abilityPoolDisplay.textContent = 'SYSTEM CHARGES 0/5';
-        panel.appendChild(this.abilityPoolDisplay);
+        resourceStrip.appendChild(this.abilityPoolDisplay);
 
         const abilities = [
             { id: 'scan', icon: '◎', color: '#68FF9A', title: 'Active Scan Pulse (2x radar, costs 15% Energy)' },
@@ -478,6 +517,20 @@ export class UIManager {
             color: '#D58CFF',
             title: 'Stasis Net (halve target speed for ' + TACTICAL_BALANCE.netDuration + 's)'
         });
+        abilities.push({
+            id: 'assault',
+            icon: '⚔',
+            color: '#FF6B6B',
+            title: `Assault stance (+${Math.round((TACTICAL_BALANCE.assaultDamageMultiplier - 1) * 100)}% damage, lower speed, sensor range and Energy recovery)`
+        });
+        const scanAbility = abilities.find(ability => ability.id === 'scan');
+        if (scanAbility) {
+            scanAbility.title = `Active Scan Pulse (2x radar, -${Math.round((1 - TACTICAL_BALANCE.scanPulseSpeedMultiplier) * 100)}% speed, Energy drain, visible signature)`;
+        }
+        const afterburnerAbility = abilities.find(ability => ability.id === 'afterburner');
+        if (afterburnerAbility) {
+            afterburnerAbility.title = `Afterburner (+${Math.round((TACTICAL_BALANCE.afterburnerSpeedMultiplier - 1) * 100)}% speed, fuel x${TACTICAL_BALANCE.afterburnerFuelMultiplier}, readiness drain)`;
+        }
         const shieldAbility = abilities.find(ability => ability.id === 'shield');
         if (shieldAbility) {
             shieldAbility.title = 'Shield Cell (restore ' +
@@ -548,6 +601,7 @@ export class UIManager {
         panel.addEventListener('click', (e) => e.stopPropagation());
         panel.addEventListener('pointerdown', (e) => e.stopPropagation());
 
+        this.container.appendChild(resourceStrip);
         this.container.appendChild(panel);
     }
 
@@ -613,6 +667,15 @@ export class UIManager {
             }
         }
 
+        const assaultBtn = this.abilityButtons.assault;
+        if (assaultBtn) {
+            const active = Boolean(fleet.assaultMode);
+            assaultBtn.style.opacity = '1';
+            assaultBtn.style.cursor = 'pointer';
+            assaultBtn.style.border = active ? '2px solid #FF6B6B' : '2px solid rgba(255, 255, 255, 0.1)';
+            assaultBtn.style.boxShadow = active ? '0 0 18px rgba(255,107,107,.85)' : 'none';
+        }
+
     }
 
     public updateScanPulse(secondsRemaining: number) {
@@ -674,5 +737,11 @@ export class UIManager {
         this.levelText.textContent = `Lv ${level} · XP ${formatNumber(prog)}/${formatNumber(required)}`;
         this.levelFill.style.width = `${Math.min(100, (prog / required) * 100)}%`;
         this.levelDisplay.title = `Level ${level}: ${formatNumber(prog)} / ${formatNumber(required)} XP`;
+    }
+
+    public updateExpedition(state: ExpeditionHudState) {
+        if (!this.expeditionDisplay) return;
+        const recovery = state.recovery ? ' · RECOVERY' : '';
+        this.expeditionDisplay.textContent = `${state.sectorName.toUpperCase()} · TIER ${state.dangerTier} · DANGER ${Math.round(state.danger)}% · MAP ${state.discovered}/${state.totalSectors} · ARTIFACTS ${state.artifacts}/${state.totalArtifacts}${recovery}${state.nextDecision ? ` · ${state.nextDecision}` : ''}`;
     }
 }
